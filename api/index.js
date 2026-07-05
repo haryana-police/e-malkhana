@@ -1,11 +1,13 @@
 // Vercel serverless function entry point.
-// Re-exports the Express app from server/server.js so every /api/* request
-// hits the same routing as the local `node server.js` dev process.
 //
-// On Vercel the function is stateless and `/tmp` is per-instance, so:
-//   - db.json resets on cold start
-//   - uploaded files reset on cold start
-// This is acceptable for a demo deployment; production needs Vercel KV /
-// Postgres + Vercel Blob.  See README for details.
+// Vercel requires the root package.json to declare `"type": "module"` so
+// Node.js functions stay as native ESM (otherwise Vercel silently compiles
+// them to CommonJS, and `export { default }` re-exports stop being
+// recognised as the request handler — leading to FUNCTION_INVOCATION_FAILED).
+//
+// We re-export the Express `app` as the default export.  The bundler
+// follows the import chain through `server/server.js` → `store.js` +
+// `uploads.js` and packages the whole server in a single function.
 
-export { default } from '../server/server.js';
+import app from '../server/server.js';
+export default app;

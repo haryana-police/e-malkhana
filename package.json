@@ -2,6 +2,7 @@
   "name": "e-malkhana",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "E-Malkhana — Haryana Police digital evidence / case property register",
   "scripts": {
     "dev": "concurrently -n server,client -c yellow,cyan \"npm:dev:server\" \"npm:dev:client\"",

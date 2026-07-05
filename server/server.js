@@ -749,10 +749,20 @@ if (!IS_VERCEL) {
   // a fresh container we backfill the seeded cases' placeholder images.
   // (The function's request handler will still call getDb() lazily, so this
   // is safe to do at module-load time.)
-  ensureUploadsDir();
-  backfillImages();
-  mutate(d => { rebuildSectionCountsIn(d); });
-  scanAlerts();
+  //
+  // Every async op is wrapped so a boot-time error (e.g. /tmp permission
+  // glitch, malformed seed) can never crash the serverless function and
+  // turn into a FUNCTION_INVOCATION_FAILED 500 for the user.
+  try {
+    ensureUploadsDir();
+    backfillImages();
+  } catch (e) {
+    console.error('[boot] sync init error (non-fatal):', e && e.message);
+  }
+  const p1 = mutate(d => { rebuildSectionCountsIn(d); });
+  if (p1 && typeof p1.catch === 'function') p1.catch(e => console.error('[boot] mutate error (non-fatal):', e && e.message));
+  const p2 = scanAlerts();
+  if (p2 && typeof p2.catch === 'function') p2.catch(e => console.error('[boot] scanAlerts error (non-fatal):', e && e.message));
 }
 
 export default app;
