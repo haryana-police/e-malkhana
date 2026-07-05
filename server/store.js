@@ -20,24 +20,20 @@ const DATA_DIR  = IS_VERCEL ? resolve('/tmp/data') : join(__dirname, 'data');
 const DB_PATH   = join(DATA_DIR, 'db.json');
 
 function seed() {
+  // Demo password shared by all three seeded Malkhana Moharrir accounts.
+  // Login screen shows it as a hint; /api/login validates against it.
+  // For production, replace per-user (edit server/data/db.json or set the
+  // MM_USERS env var to override the seed users at boot).
+  const DEMO_PW = 'malkhana2026';
   return {
     meta: { version: 1, station: 'PS Sector-5, Panchkula', asOf: '05 Jul 2026, 10:42 AM' },
     officer: { initials: 'RS', name: 'SI Rakesh Sharma', rank: 'PS Sector-5, Panchkula' },
     // Malkhana Moharrir (MM) accounts that can log in.
     // Login by entering any of these IDs (case-insensitive): MM-001, MM-002, MM-003.
-    //
-    // SECURITY: demo seed omits the `password` field so plaintext credentials
-    // never enter the repo.  The login endpoint treats an empty/undefined
-    // password as "no password required" (see /api/login in server.js).
-    // For production deployments, either:
-    //   (a) edit `server/data/db.json` after first run to add a `password`
-    //       field per user, OR
-    //   (b) set the `MM_USERS` env var (see .env.example) to override the
-    //       seed users at boot.
     users: [
-      { id: 'MM-001', initials: 'RS', name: 'SI Rakesh Sharma',  rank: 'Sub-Inspector',     designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula' },
-      { id: 'MM-002', initials: 'VK', name: 'HC Vinod Kumar',    rank: 'Head Constable',   designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula' },
-      { id: 'MM-003', initials: 'SD', name: 'ASI Sunita Devi',   rank: 'Asst Sub-Inspector', designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula' },
+      { id: 'MM-001', initials: 'RS', name: 'SI Rakesh Sharma',  rank: 'Sub-Inspector',     designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula', password: DEMO_PW },
+      { id: 'MM-002', initials: 'VK', name: 'HC Vinod Kumar',    rank: 'Head Constable',   designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula', password: DEMO_PW },
+      { id: 'MM-003', initials: 'SD', name: 'ASI Sunita Devi',   rank: 'Asst Sub-Inspector', designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula', password: DEMO_PW },
     ],
     // Append-only audit log: who did what, when.  Starts empty for new
     // stations; existing pilots keep their history when migrating.
@@ -196,6 +192,16 @@ function ensureDb() {
   for (const k of REQUIRED_KEYS) {
     if (db[k] === undefined) {
       db[k] = reference[k];
+      dirty = true;
+    }
+  }
+  // Back-fill: ensure every seeded MM has the demo password.  Older db.json
+  // files (pre demo-password) had users with no `password` field, which
+  // would silently downgrade to "no password required" on login.  Bring
+  // them in line with the current seed.
+  for (const u of (db.users || [])) {
+    if (u && !u.password) {
+      u.password = reference.DEMO_PW;
       dirty = true;
     }
   }

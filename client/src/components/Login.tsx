@@ -14,15 +14,20 @@ interface Sample {
 }
 
 // Demo accounts shown on the login screen for quick one-click sign-in.
-// Passwords are intentionally NOT included here — this is a public repo.
-// The seed in server/store.js leaves each user's `password` field empty,
-// which the /api/login endpoint treats as "no password required" (see
-// SECURITY note in server/store.js for production guidance).
+// All three share a single demo password (set on the server seed in
+// server/store.js) so the /api/login endpoint has something real to
+// validate.  The hint below the password field shows it for the demo;
+// production deployments must override per-user via the MM_USERS env var
+// or by editing server/data/db.json after first run.
 const SAMPLE_IDS: Sample[] = [
   { id: 'MM-001', name: 'SI Rakesh Sharma',  rank: 'Sub-Inspector',      initials: 'RS' },
   { id: 'MM-002', name: 'HC Vinod Kumar',    rank: 'Head Constable',     initials: 'VK' },
   { id: 'MM-003', name: 'ASI Sunita Devi',   rank: 'Asst Sub-Inspector', initials: 'SD' },
 ];
+
+// MUST match the DEMO_PW in server/store.js.  Kept in sync by convention;
+// both ends of the demo depend on it.
+const DEMO_PASSWORD = 'malkhana2026';
 
 export function Login({ onLogin }: Props) {
   const [loginId, setLoginId]   = useState('MM-001');
@@ -33,7 +38,7 @@ export function Login({ onLogin }: Props) {
 
   function pickSample(s: Sample) {
     setLoginId(s.id);
-    setPassword('');  // demo accounts are passwordless; production users set their own
+    setPassword(DEMO_PASSWORD);
     setMsg(null);
   }
 
@@ -81,7 +86,7 @@ export function Login({ onLogin }: Props) {
               key={s.id}
               className="login-quick-btn"
               disabled={busy}
-              onClick={() => doLogin(s.id, '', 'quick')}
+              onClick={() => doLogin(s.id, DEMO_PASSWORD, 'quick')}
             >
               <div className="login-quick-avatar">{s.initials}</div>
               <div className="login-quick-body">
@@ -117,8 +122,9 @@ export function Login({ onLogin }: Props) {
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="••••••"
+                placeholder={DEMO_PASSWORD}
               />
+              <div className="login-pw-hint">Demo password: <code>{DEMO_PASSWORD}</code> (shared by MM-001 / 002 / 003)</div>
             </label>
           </div>
 
