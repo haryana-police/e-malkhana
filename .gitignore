@@ -24,3 +24,14 @@ server/data/
 # Editor
 .vscode/
 .idea/
+
+.vercel
+
+# Vercel deploy tokens + helper scripts (NEVER commit)
+.vercel-token
+.auth-*.sh
+.deploy-*.sh
+.vercel-api.sh
+.vercel-cmd.sh
+deploy.out
+deploy.err

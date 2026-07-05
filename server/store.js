@@ -3,14 +3,21 @@
 // store API level — there is no `updateMovement` or `deleteMovement`.
 // All mutations write the whole file atomically via a temp file + rename.
 
-import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
-const DB_PATH = join(__dirname, 'data', 'db.json');
+// Vercel sets VERCEL=1 in serverless functions.  The function's local disk
+// is read-only except for /tmp, which is per-instance (lost on cold start).
+// For demo deployments this is fine; production needs Vercel KV / Postgres.
+const IS_VERCEL = !!process.env.VERCEL;
+// path.resolve() makes the path absolute; on Vercel /tmp is the real path,
+// on Windows the test environment uses C:\tmp\ for parity.
+const DATA_DIR  = IS_VERCEL ? resolve('/tmp/data') : join(__dirname, 'data');
+const DB_PATH   = join(DATA_DIR, 'db.json');
 
 function seed() {
   return {

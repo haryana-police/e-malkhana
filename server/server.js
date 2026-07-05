@@ -6,14 +6,18 @@ import express from 'express';
 import cors from 'cors';
 import QRCode from 'qrcode';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import {
   getDb, mutate, getCase, getMovements, nextMovementId, rebuildSectionCounts,
   appendAudit,
 } from './store.js';
-import { ensureUploadsDir, writeUpload, ensureCaseImage } from './uploads.js';
-{}
+import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
+
+// Detect Vercel serverless environment.  On Vercel the function is stateless
+// and persistent state lives in /tmp (per-instance, lost on cold start).
+const IS_VERCEL = !!process.env.VERCEL;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
@@ -47,10 +51,36 @@ function auditMm(req, action, target, details) {
   });
 }
 
-// Serve uploaded files (photos, supporting documents, generated SVGs)
-const uploadsDir = join(__dirname, 'data', 'uploads');
-if (existsSync(uploadsDir)) {
-  app.use('/uploads', express.static(uploadsDir));
+// Serve uploaded files (photos, supporting documents, generated SVGs).
+// Locally we use express.static on the persistent data dir.  On Vercel
+// /tmp/uploads/ is per-instance and not servable by Vercel's static
+// engine, so we expose them through an API route that streams from the
+// UPLOADS_DIR exported by uploads.js (which already points at /tmp on
+// Vercel — see uploads.js).
+//
+// IMPORTANT: this route must be registered BEFORE the
+// `app.use('/api', ...)` 404 catch-all further down the file, otherwise
+// the catch-all will eat every /api/uploads/* request.
+if (!IS_VERCEL) {
+  const uploadsDir = join(__dirname, 'data', 'uploads');
+  if (existsSync(uploadsDir)) {
+    app.use('/uploads', express.static(uploadsDir));
+  }
+} else {
+  app.get('/api/uploads/:filename', (req, res) => {
+    const safe = String(req.params.filename || '').replace(/[^A-Za-z0-9._-]/g, '');
+    if (!safe) return res.status(400).json({ error: 'bad filename' });
+    // resolve() ensures the path is absolute — required by res.sendFile.
+    const full = resolve(join(UPLOADS_DIR, safe));
+    if (!existsSync(full)) return res.status(404).json({ error: 'not found' });
+    const ext = safe.split('.').pop()?.toLowerCase();
+    const mime = ext === 'svg' ? 'image/svg+xml'
+              : ext === 'png' ? 'image/png'
+              : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+              : ext === 'webp' ? 'image/webp'
+              : 'application/octet-stream';
+    res.type(mime).sendFile(full);
+  });
 }
 
 // =================== helpers ===================
@@ -656,29 +686,28 @@ app.use((err, _req, res, _next) => {
   res.status(status).json(body);
 });
 
-// =================== static frontend ===================
+// =================== static frontend (local dev only) ===================
 
-const distDir = join(__dirname, '..', 'client', 'dist');
-if (existsSync(distDir)) {
-  app.use(express.static(distDir));
-  app.get(/^\/(?!api).*/, (_req, res) => {
-    res.sendFile(join(distDir, 'index.html'));
-  });
-  console.log(`[e-malkhana] serving frontend from ${distDir}`);
-} else {
-  app.get('/', (_req, res) => {
-    res.type('text/plain').send(
-      'e-Malkhana API is running, but the frontend has not been built yet.\n' +
-      'Run:  cd ../client && npm run build   then restart this server.\n' +
-      'Or use the dev server:  cd ../client && npm run dev  (port 5173).\n'
-    );
-  });
+if (!IS_VERCEL) {
+  const distDir = join(__dirname, '..', 'client', 'dist');
+  if (existsSync(distDir)) {
+    app.use(express.static(distDir));
+    app.get(/^\/(?!api).*/, (_req, res) => {
+      res.sendFile(join(distDir, 'index.html'));
+    });
+    console.log(`[e-malkhana] serving frontend from ${distDir}`);
+  } else {
+    app.get('/', (_req, res) => {
+      res.type('text/plain').send(
+        'e-Malkhana API is running, but the frontend has not been built yet.\n' +
+        'Run:  cd ../client && npm run build   then restart this server.\n' +
+        'Or use the dev server:  cd ../client && npm run dev  (port 5173).\n'
+      );
+    });
+  }
 }
 
 // =================== boot ===================
-
-// Make sure the uploads dir exists
-ensureUploadsDir();
 
 // Generate a placeholder SVG image for every case that DOES NOT have one.
 // This is a one-time migration: it only ever sets imageUrl on cases that have
@@ -701,17 +730,29 @@ function backfillImages() {
     });
   }
 }
-backfillImages();
 
-// Initialise section counts (in case seed has counts of 0)
-mutate(d => { rebuildSectionCountsIn(d); });
+if (!IS_VERCEL) {
+  // Long-lived Node process: do the one-time migrations and start the listener.
+  ensureUploadsDir();
+  backfillImages();
+  mutate(d => { rebuildSectionCountsIn(d); });
+  scanAlerts();
+  setInterval(scanAlerts, 60 * 60 * 1000);
 
-// Run alert scan on boot, then every hour.
-scanAlerts();
-setInterval(scanAlerts, 60 * 60 * 1000);
+  app.listen(PORT, () => {
+    console.log(`[e-malkhana] http://localhost:${PORT}`);
+    console.log(`[e-malkhana] API:  http://localhost:${PORT}/api/health`);
+    if (existsSync(join(__dirname, '..', 'client', 'dist'))) console.log(`[e-malkhana] App:  http://localhost:${PORT}/`);
+  });
+} else {
+  // Vercel serverless: state is per-instance, so on first invocation within
+  // a fresh container we backfill the seeded cases' placeholder images.
+  // (The function's request handler will still call getDb() lazily, so this
+  // is safe to do at module-load time.)
+  ensureUploadsDir();
+  backfillImages();
+  mutate(d => { rebuildSectionCountsIn(d); });
+  scanAlerts();
+}
 
-app.listen(PORT, () => {
-  console.log(`[e-malkhana] http://localhost:${PORT}`);
-  console.log(`[e-malkhana] API:  http://localhost:${PORT}/api/health`);
-  if (existsSync(distDir)) console.log(`[e-malkhana] App:  http://localhost:${PORT}/`);
-});
+export default app;

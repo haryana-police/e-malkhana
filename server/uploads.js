@@ -8,14 +8,23 @@
 //      item-type keyword.  These are produced on demand for the seeded cases
 //      so the prototype has placeholder imagery for previous records.
 
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
-export const UPLOADS_DIR = join(__dirname, 'data', 'uploads');
+// Vercel: per-instance /tmp.  Locally: persistent data dir.  See store.js.
+const IS_VERCEL = !!process.env.VERCEL;
+// path.resolve() makes the path absolute; on Vercel /tmp is the real path,
+// on Windows the test environment uses C:\tmp\ for parity.
+export const UPLOADS_DIR = IS_VERCEL ? resolve('/tmp/uploads') : join(__dirname, 'data', 'uploads');
+
+// Public URL prefix used by the client.  On Vercel, uploads are streamed
+// through the /api/uploads/:filename route (see server.js).  Locally the
+// express.static handler mounted on /uploads serves them directly.
+export const UPLOADS_URL_PREFIX = IS_VERCEL ? '/api/uploads' : '/uploads';
 
 export function ensureUploadsDir() {
   if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -26,7 +35,7 @@ export function writeUpload(filename, data) {
   ensureUploadsDir();
   const full = join(UPLOADS_DIR, filename);
   writeFileSync(full, data);
-  return `/uploads/${filename}`;
+  return `${UPLOADS_URL_PREFIX}/${filename}`;
 }
 
 // Map an item-type description to an icon glyph + accent colour.
@@ -84,5 +93,5 @@ export function ensureCaseImage(c) {
   if (!existsSync(full)) {
     writeFileSync(full, svgForCase(c.id, c.itemType, c.itemSub));
   }
-  return `/uploads/${filename}`;
+  return `${UPLOADS_URL_PREFIX}/${filename}`;
 }
