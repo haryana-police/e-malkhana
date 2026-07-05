@@ -79,6 +79,36 @@ export default function App() {
   // Separate state from activeStatus because that one filters TO a single status.
   const [excludeDisposed, setExcludeDisposed] = useState<boolean>(false);
 
+  // Mobile sidebar (drawer) — hidden by default on phones, toggled by hamburger
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Close drawer when viewport widens past the mobile breakpoint
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 981px)');
+    const onChange = (e: MediaQueryListEvent) => { if (e.matches) setSidebarOpen(false); };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  // Close on Escape
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSidebarOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
+  // Lock body scroll while drawer is open
+  useEffect(() => {
+    document.body.style.overflow = sidebarOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [sidebarOpen]);
+
+  function navWith(v: ViewName) {
+    setView(v);
+    setActiveSection(null);
+    setActiveStatus(null);
+    setExcludeDisposed(false);
+    setSidebarOpen(false);  // close drawer on any nav click
+  }
+
   async function reload() {
     try {
       const [dash, cases, alerts] = await Promise.all([
@@ -111,13 +141,6 @@ export default function App() {
 
   function onAlertsUpdated(_cfg: AlertConfig) {
     api.alerts().then(alerts => setData(d => d ? { ...d, alerts } : d));
-  }
-
-  function navWith(v: ViewName) {
-    setView(v);
-    setActiveSection(null);
-    setActiveStatus(null);
-    setExcludeDisposed(false);
   }
 
   function handleLogout() {
@@ -170,7 +193,20 @@ export default function App() {
 
   return (
     <>
-      <Letterhead officer={data.officer} user={user} onLogout={handleLogout} />
+      <Letterhead
+        officer={data.officer}
+        user={user}
+        onLogout={handleLogout}
+        onMenuToggle={() => setSidebarOpen(o => !o)}
+        menuOpen={sidebarOpen}
+      />
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
       <div className="app">
         <Sidebar
           active={view}
@@ -183,6 +219,8 @@ export default function App() {
           onSectionFilter={setActiveSection}
           user={user}
           onLogout={handleLogout}
+          mobileOpen={sidebarOpen}
+          onCloseMobile={() => setSidebarOpen(false)}
         />
         <div className="main">
           {view === 'dashboard' && (

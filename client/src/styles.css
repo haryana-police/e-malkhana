@@ -527,10 +527,206 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 .settings-row .desc{ font-size:11px; color: var(--slate-soft); margin-top:2px; }
 .settings-row input{ font-family:'IBM Plex Mono', monospace; font-size:13px; color: var(--ink-navy); font-weight:600; }
 
-@media (max-width: 980px){
-  .sidebar{ display:none; }
-  .stat-row{ grid-template-columns: repeat(2,1fr); }
+/* ============================================================
+   Hamburger menu button + drawer close affordance (mobile only).
+   Base styles declared BEFORE the @media blocks so the media
+   queries win. Hidden on desktop by default.
+   ============================================================ */
+.letterhead-menu{
+  display:none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 36px; height: 36px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 6px;
+  color: var(--paper);
+  font-size: 18px; line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  margin-right: 4px;
+  transition: background 0.15s;
+}
+.letterhead-menu:hover{ background: rgba(255,255,255,0.20); }
+.sidebar-close-btn{
+  display:none;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.30);
+  color: var(--paper);
+  width: 26px; height: 26px;
+  border-radius: 4px;
+  font-size: 18px; line-height: 1;
+  align-items: center; justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.sidebar-close-btn:hover{ background: rgba(255,255,255,0.12); }
+
+/* All panels host a <table> — let the panel scroll horizontally
+   on narrow screens instead of overflowing the page. */
+.panel{ overflow-x: auto; }
+.panel table{ min-width: 560px; }   /* below this width, the panel scrolls */
+
+/* ============================================================
+   RESPONSIVE — Laptop (default) > Tablet > Mobile > Small phone
+   We use max-width breakpoints so the base styles are desktop.
+   ============================================================ */
+
+/* --- Tablet (≤ 1024px) --- */
+@media (max-width: 1024px){
+  .sidebar{ width: 220px; }
+  .main{ padding: 22px 22px 40px; }
+  .page-head h1{ font-size: 23px; }
+  .stat-row{ grid-template-columns: repeat(3, 1fr); }
+  .stat-tile .value{ font-size: 28px; }
+  .form-grid{ grid-template-columns: 1fr 1fr; }
+  /* Officer chip stays full on tablet; rank still shown */
+}
+
+/* --- Mobile (≤ 768px) — sidebar becomes a drawer --- */
+@media (max-width: 768px){
+  .letterhead-menu{ display:flex; }
+
+  .sidebar{
+    display:flex;                       /* override the desktop shown state */
+    position: fixed;
+    top: 0; left: 0;
+    height: 100vh;
+    width: 280px;
+    max-width: 86vw;
+    z-index: 110;
+    transform: translateX(-100%);       /* hidden off-screen by default */
+    transition: transform 0.25s ease;
+    box-shadow: 6px 0 24px rgba(20,36,61,0.35);
+    overflow-y: auto;
+    padding-top: 64px;                  /* leave room for the fixed close affordance */
+  }
+  .sidebar.mobile-open{ transform: translateX(0); }
+
+  .sidebar-backdrop{
+    display:block;
+    position: fixed; inset: 0;
+    background: rgba(20,36,61,0.55);
+    z-index: 100;
+    animation: backdrop-fade 0.2s ease;
+  }
+  @keyframes backdrop-fade{ from{ opacity:0; } to{ opacity:1; } }
+  .sidebar-close-btn{ display:inline-flex; }
+
+  .main{ padding: 18px 16px 40px; max-width: 100%; }
+  .page-head{
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .page-head h1{ font-size: 22px; }
+  .page-head > div:last-child{ width: 100%; }
+  .page-head > div:last-child .btn{ flex: 1; justify-content: center; }
+
+  .stat-row{ grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat-tile{ padding: 14px 14px 12px; }
+  .stat-tile .value{ font-size: 26px; }
+
   .form-grid{ grid-template-columns: 1fr; }
+
+  .letterhead{ padding: 10px 14px; }
+  .letterhead-title .line1{ font-size: 10px; }
+  .letterhead-title .line2{ font-size: 16px; }
+  .letterhead-right{ gap: 8px; }
+  .officer-chip{ padding: 4px 10px 4px 4px; gap: 6px; }
+  .officer-chip .name{ font-size: 11px; }
+  .officer-chip .rank{ display:none; }
+  .logout-btn{ padding: 6px 10px !important; font-size: 11px !important; }
+  .logout-btn .logout-btn-label{ display:none; }    /* icon-only on mobile */
+
+  /* Modals — shrink to fit small viewports */
+  .overlay{ padding: 12px; align-items: flex-start; padding-top: 18px; }
+  .login-card{ width: auto; max-width: 420px; padding: 22px 22px 18px; }
+  .tag-card{ width: auto; max-width: 340px; }
+  .timeline-card{ width: auto; max-width: 460px; padding: 18px 18px; }
+  .form-card{ width: auto; max-width: 520px; padding: 18px 18px; }
+  .audit-card{ width: auto; max-width: 720px; }
+
+  /* (Quick-login list is already a single flex column, no special handling needed.) */
+
+  /* Scan bar wraps cleanly */
+  .scan-bar{ flex-wrap: wrap; }
+  .scan-bar input{ width: 100%; flex: 1 1 100%; order: 2; }
+  .scan-bar .scan-label{ order: 1; }
+  .scan-bar .scan-btn{ order: 3; }
+  .scan-bar .scan-result{ order: 4; width: 100%; }
+
+  /* Tables — keep min-width so the panel scrolls, hide non-essential cols */
+  .panel table{ min-width: 640px; font-size: 12px; }
+  thead th, tbody td{ padding: 10px 12px; }
+
+  /* Section banners stack the close button below */
+  .section-banner{ flex-wrap: wrap; }
+  .section-banner-clear{ margin-left: 0; }
+
+  /* Settings rows: input below label */
+  .settings-row{ grid-template-columns: 1fr; gap: 6px; }
+}
+
+/* --- Small phone (≤ 480px) --- */
+@media (max-width: 480px){
+  .login-shell{ padding: 12px; }
+  .login-card{ padding: 18px 16px 14px; }
+  .login-emblem{ width: 46px; height: 46px; font-size: 16px; }
+  .login-title{ font-size: 24px; }
+
+  /* Letterhead: hide rank line entirely, shrink emblem */
+  .emblem{ width: 34px; height: 34px; font-size: 13px; }
+  .officer-chip .name{ font-size: 10.5px; }
+  .officer-meta{ display: none; }      /* show avatar initials only on tiny phones */
+  .letterhead-title .line1{ display: none; }
+  .letterhead-title .line2{ font-size: 15px; }
+
+  .page-head h1{ font-size: 19px; }
+  .stat-row{ grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-tile{ padding: 12px 12px 10px; }
+  .stat-tile .label{ font-size: 10px; }
+  .stat-tile .value{ font-size: 22px; }
+  .stat-tile .foot{ font-size: 10px; }
+
+  .panel-head{ padding: 12px 14px; }
+  .panel-head h2{ font-size: 13px; }
+  .panel-head .meta{ font-size: 10.5px; }
+
+  /* Hide the "▦ ⏱ ↻" hint on phones — icons themselves are tooltipped */
+  .panel-head .meta{ display: none; }
+
+  .form-actions{ flex-direction: column-reverse; }
+  .form-actions .btn{ width: 100%; justify-content: center; }
+
+  /* Alert row stacks days below */
+  .alert-row{ flex-wrap: wrap; }
+  .alert-days{ margin-left: 0; padding-left: 42px; padding-top: 4px; }
+
+  /* Timeline card scrolls naturally; tighten it further */
+  .timeline-card{ padding: 16px 14px; }
+  .qr-visual, .qr-image{ width: 130px; height: 130px; }
+
+  /* Audit log: stack user / time below */
+  .audit-row-foot{ flex-direction: column; align-items: flex-start; gap: 4px; }
+  .audit-detail{ text-align: left; max-width: 100%; }
+}
+
+/* ============================================================
+   Reduced motion — respect OS-level preference
+   ============================================================ */
+@media (prefers-reduced-motion: reduce){
+  .sidebar, .sidebar-backdrop, .btn, .stat-tile, .icon-btn,
+  .letterhead-menu, .sidebar-close-btn, .login-quick-btn,
+  .login-sample, .section-banner-clear, .rack-row,
+  .system-setting-btn, .sidebar-logout-btn, .file-remove{
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 /* ============================================================
