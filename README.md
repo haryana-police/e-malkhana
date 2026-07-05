@@ -52,6 +52,24 @@ npm start                # start the unified server on :4000
 
 Then open **<http://localhost:4000>** — that's it.
 
+## Security & demo accounts
+
+The repo ships with three **passwordless demo accounts** (`MM-001`, `MM-002`,
+`MM-003`) so the login screen has something to show.  The `/api/login`
+endpoint treats an empty/missing `password` field as "no password required" —
+fine for offline demos, **not safe for any real deployment**.
+
+For production, set real passwords in one of two ways:
+
+1. **After first boot**, edit `server/data/db.json` and add a `password` key
+   to each user object.  Restart the server.
+2. **At boot**, set the `MM_USERS` env var (see `.env.example`) with a JSON
+   array of fully-configured user records.  When set, it replaces the seed
+   users entirely.
+
+> ℹ️  `server/data/` is `.gitignore`d — your local `db.json` (with real
+> passwords) will never be committed.
+
 ## Run in dev mode (with hot reload)
 
 ```bash

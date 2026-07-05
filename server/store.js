@@ -18,10 +18,19 @@ function seed() {
     officer: { initials: 'RS', name: 'SI Rakesh Sharma', rank: 'PS Sector-5, Panchkula' },
     // Malkhana Moharrir (MM) accounts that can log in.
     // Login by entering any of these IDs (case-insensitive): MM-001, MM-002, MM-003.
+    //
+    // SECURITY: demo seed omits the `password` field so plaintext credentials
+    // never enter the repo.  The login endpoint treats an empty/undefined
+    // password as "no password required" (see /api/login in server.js).
+    // For production deployments, either:
+    //   (a) edit `server/data/db.json` after first run to add a `password`
+    //       field per user, OR
+    //   (b) set the `MM_USERS` env var (see .env.example) to override the
+    //       seed users at boot.
     users: [
-      { id: 'MM-001', password: 'rakesh',  initials: 'RS', name: 'SI Rakesh Sharma',  rank: 'Sub-Inspector',  designation: 'Malkhana Moharrir',  station: 'PS Sector-5, Panchkula' },
-      { id: 'MM-002', password: 'vinod',   initials: 'VK', name: 'HC Vinod Kumar',    rank: 'Head Constable', designation: 'Malkhana Moharrir',  station: 'PS Sector-5, Panchkula' },
-      { id: 'MM-003', password: 'sunita',  initials: 'SD', name: 'ASI Sunita Devi',   rank: 'Asst Sub-Inspector', designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula' },
+      { id: 'MM-001', initials: 'RS', name: 'SI Rakesh Sharma',  rank: 'Sub-Inspector',     designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula' },
+      { id: 'MM-002', initials: 'VK', name: 'HC Vinod Kumar',    rank: 'Head Constable',   designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula' },
+      { id: 'MM-003', initials: 'SD', name: 'ASI Sunita Devi',   rank: 'Asst Sub-Inspector', designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula' },
     ],
     // Append-only audit log: who did what, when.  Starts empty for new
     // stations; existing pilots keep their history when migrating.

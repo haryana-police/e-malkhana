@@ -8,28 +8,32 @@ interface Props {
 
 interface Sample {
   id: string;
-  password: string;
   name: string;
   rank: string;
   initials: string;
 }
 
+// Demo accounts shown on the login screen for quick one-click sign-in.
+// Passwords are intentionally NOT included here — this is a public repo.
+// The seed in server/store.js leaves each user's `password` field empty,
+// which the /api/login endpoint treats as "no password required" (see
+// SECURITY note in server/store.js for production guidance).
 const SAMPLE_IDS: Sample[] = [
-  { id: 'MM-001', password: 'rakesh', name: 'SI Rakesh Sharma',  rank: 'Sub-Inspector',      initials: 'RS' },
-  { id: 'MM-002', password: 'vinod',  name: 'HC Vinod Kumar',    rank: 'Head Constable',     initials: 'VK' },
-  { id: 'MM-003', password: 'sunita', name: 'ASI Sunita Devi',   rank: 'Asst Sub-Inspector', initials: 'SD' },
+  { id: 'MM-001', name: 'SI Rakesh Sharma',  rank: 'Sub-Inspector',      initials: 'RS' },
+  { id: 'MM-002', name: 'HC Vinod Kumar',    rank: 'Head Constable',     initials: 'VK' },
+  { id: 'MM-003', name: 'ASI Sunita Devi',   rank: 'Asst Sub-Inspector', initials: 'SD' },
 ];
 
 export function Login({ onLogin }: Props) {
   const [loginId, setLoginId]   = useState('MM-001');
-  const [password, setPassword] = useState('rakesh');
+  const [password, setPassword] = useState('');
   const [busy, setBusy]         = useState(false);
   const [busyId, setBusyId]     = useState<string | null>(null);
   const [msg, setMsg]           = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   function pickSample(s: Sample) {
     setLoginId(s.id);
-    setPassword(s.password);
+    setPassword('');  // demo accounts are passwordless; production users set their own
     setMsg(null);
   }
 
@@ -77,7 +81,7 @@ export function Login({ onLogin }: Props) {
               key={s.id}
               className="login-quick-btn"
               disabled={busy}
-              onClick={() => doLogin(s.id, s.password, 'quick')}
+              onClick={() => doLogin(s.id, '', 'quick')}
             >
               <div className="login-quick-avatar">{s.initials}</div>
               <div className="login-quick-body">
@@ -127,24 +131,23 @@ export function Login({ onLogin }: Props) {
           </div>
         </form>
 
-        {/* =============== CREDENTIALS TABLE =============== */}
-        <div className="login-creds-header">Sample login credentials (for reference)</div>
+        {/* =============== ACCOUNTS TABLE =============== */}
+        <div className="login-creds-header">Demo accounts (one-click sign-in above, or copy ID below)</div>
         <table className="login-creds">
           <thead>
-            <tr><th>Login ID</th><th>Password</th><th>Officer</th><th></th></tr>
+            <tr><th>Login ID</th><th>Officer</th><th></th></tr>
           </thead>
           <tbody>
             {SAMPLE_IDS.map(s => (
               <tr key={s.id}>
                 <td><b>{s.id}</b></td>
-                <td><code>{s.password}</code></td>
                 <td>{s.name}</td>
                 <td>
                   <button
                     type="button"
                     className="btn ghost xsmall"
                     onClick={() => pickSample(s)}
-                    title="Fill the form with these credentials"
+                    title="Copy this ID into the sign-in form"
                   >fill</button>
                 </td>
               </tr>
