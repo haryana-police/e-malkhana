@@ -13,7 +13,7 @@ import {
   appendAudit,
 } from './store.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage } from './uploads.js';
-
+{}
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
