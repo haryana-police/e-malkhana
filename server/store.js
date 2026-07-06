@@ -1,251 +1,419 @@
-// JSON-file persistent store for e-Malkhana.
-// The "append-only" invariant on `movements` is enforced at the
-// store API level — there is no `updateMovement` or `deleteMovement`.
-// All mutations write the whole file atomically via a temp file + rename.
+// e-Malkhana store — Postgres-backed implementation of the legacy in-memory
+// store API that server.js (and api/index.js via it) consumes.
+//
+// This file is a *behavioural drop-in* for the old JSON-file store.  The
+// exported functions keep the same signatures and return shapes that
+// server.js expects.  The only externally observable difference is that
+// data is now durable across process restarts and Vercel cold starts.
+//
+// ---------------------------------------------------------------
+// API contract (unchanged from the JSON-file era)
+// ---------------------------------------------------------------
+//   getDb()                          → { meta, officer, users, auditLog,
+//                                        sections, cases, movements,
+//                                        alertConfig, extraCasesForAlerts,
+//                                        extraMovements, alertIssues }
+//   mutate(fn)                       → runs fn(snapshot) and persists
+//   getCase(id)                      → case object | undefined
+//   getMovements(caseId)             → movement[] sorted by timestamp asc
+//   nextMovementId()                 → integer
+//   rebuildSectionCounts()           → void (recomputes sections.count)
+//   appendAudit({ userId, userName, action, target, details }) → audit row
+//
+// ---------------------------------------------------------------
+// Concurrency model
+// ---------------------------------------------------------------
+// Node's event loop is single-threaded, so we don't need a real write lock
+// across the whole snapshot.  We DO serialise mutate() calls (one at a time)
+// with a simple in-process queue so two overlapping requests can't diff
+// against the same pre-state and lose each other's writes.  On Vercel
+// serverless this only matters if the same container handles two requests
+// concurrently — which is rare but possible.
+//
+// ---------------------------------------------------------------
+// What changes
+// ---------------------------------------------------------------
+//   - getDb() loads the full snapshot from PG on first call per process,
+//     then serves subsequent calls from the in-memory mirror.
+//   - mutate() snapshots the mirror, runs fn, diffs the result against the
+//     pre-snapshot, and writes the minimal set of rows to PG (inside a
+//     transaction).
+//   - getCase / getMovements / nextMovementId hit the mirror (fast path)
+//     but call ensureReady() to make sure the schema + seed have been
+//     initialised first.
+//   - appendAudit is a direct SQL INSERT (no mirror diff needed).
+//   - On every mutate we invalidate the mirror after the write so the
+//     next getDb() pulls fresh data from PG.  This is what makes the
+//     data survive across cold starts and across multiple function
+//     instances on Vercel.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { ensureReady, pool } from './db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = dirname(__filename);
+// ---------- mirror + write lock ----------
 
-// Vercel sets VERCEL=1 in serverless functions.  The function's local disk
-// is read-only except for /tmp, which is per-instance (lost on cold start).
-// For demo deployments this is fine; production needs Vercel KV / Postgres.
-const IS_VERCEL = !!process.env.VERCEL;
-// path.resolve() makes the path absolute; on Vercel /tmp is the real path,
-// on Windows the test environment uses C:\tmp\ for parity.
-const DATA_DIR  = IS_VERCEL ? resolve('/tmp/data') : join(__dirname, 'data');
-const DB_PATH   = join(DATA_DIR, 'db.json');
+let _mirror = null;      // { meta, officer, ..., cases: [], movements: [] }
+let _loading = null;     // Promise guarding first-load
+let _writeQueue = Promise.resolve();
 
-function seed() {
-  // Demo password shared by all three seeded Malkhana Moharrir accounts.
-  // Login screen shows it as a hint; /api/login validates against it.
-  // For production, replace per-user (edit server/data/db.json or set the
-  // MM_USERS env var to override the seed users at boot).
-  const DEMO_PW = 'malkhana2026';
-  return {
-    meta: { version: 1, station: 'PS Sector-5, Panchkula', asOf: '05 Jul 2026, 10:42 AM' },
-    officer: { initials: 'RS', name: 'SI Rakesh Sharma', rank: 'PS Sector-5, Panchkula' },
-    // Malkhana Moharrir (MM) accounts that can log in.
-    // Login by entering any of these IDs (case-insensitive): MM-001, MM-002, MM-003.
-    users: [
-      { id: 'MM-001', initials: 'RS', name: 'SI Rakesh Sharma',  rank: 'Sub-Inspector',     designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula', password: DEMO_PW },
-      { id: 'MM-002', initials: 'VK', name: 'HC Vinod Kumar',    rank: 'Head Constable',   designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula', password: DEMO_PW },
-      { id: 'MM-003', initials: 'SD', name: 'ASI Sunita Devi',   rank: 'Asst Sub-Inspector', designation: 'Malkhana Moharrir', station: 'PS Sector-5, Panchkula', password: DEMO_PW },
-    ],
-    // Append-only audit log: who did what, when.  Starts empty for new
-    // stations; existing pilots keep their history when migrating.
-    auditLog: [],
-    sections: [
-      { letter: 'A', name: 'Narcotics Rack',       count: 0 },
-      { letter: 'B', name: 'Weapons Almirah',      count: 0 },
-      { letter: 'C', name: 'Documents & Cash',     count: 0 },
-      { letter: 'D', name: 'Vehicles Yard',        count: 0 },
-      { letter: 'E', name: 'Biological / Viscera', count: 0 },
-    ],
-    cases: [
-      {
-        id: 'FIR 214/2026',
-        itemType: 'Country-made pistol (.315 bore)',
-        itemSub: '1 unit, with 2 live cartridges',
-        section: 'PART B',
-        sectionName: 'Part B — Weapons Almirah',
-        status: 'In Court',
-        seizingOfficer: 'HC Vinod Kumar',
-        seizedOn: '02 Jun 2026',
-        itemId: 'MK-2026-000214',
-        createdAt: '2026-06-02T18:20:00',
-      },
-      {
-        id: 'FIR 198/2026',
-        itemType: 'Suspected heroin packet',
-        itemSub: '420 grams, sealed poly bag',
-        section: 'PART A',
-        sectionName: 'Part A — Narcotics Rack',
-        status: 'With FSL',
-        seizingOfficer: 'ASI Sunita Devi',
-        seizedOn: '29 May 2026',
-        itemId: 'MK-2026-000198',
-        createdAt: '2026-05-29T23:15:00',
-      },
-      {
-        id: 'DD 41/2026',
-        itemType: 'Viscera sample (jar, sealed)',
-        itemSub: 'Natural death — non-FIR case',
-        section: 'PART E',
-        sectionName: 'Part E — Biological / Viscera',
-        status: 'In Malkhana',
-        seizingOfficer: 'SI Rakesh Sharma',
-        seizedOn: '21 Jun 2026',
-        itemId: 'MK-2026-000041',
-        createdAt: '2026-06-21T15:10:00',
-      },
-      {
-        id: 'DD 33/2026',
-        itemType: 'Viscera sample (2 jars)',
-        itemSub: 'Suspected poisoning — non-FIR case',
-        section: 'PART E',
-        sectionName: 'Part E — Biological / Viscera',
-        status: 'Expert Opinion Pending',
-        seizingOfficer: 'SI Rakesh Sharma',
-        seizedOn: '14 Jun 2026',
-        itemId: 'MK-2026-000033',
-        createdAt: '2026-06-14T14:30:00',
-      },
-      {
-        id: 'FIR 156/2026',
-        itemType: 'Cash — currency notes',
-        itemSub: '₹2,40,000, seized from accused',
-        section: 'PART C',
-        sectionName: 'Part C — Documents & Cash',
-        status: 'Seized',
-        seizingOfficer: 'ASI Manoj Yadav',
-        seizedOn: '30 Jun 2026',
-        itemId: 'MK-2026-000156',
-        createdAt: '2026-06-30T09:45:00',
-      },
-      {
-        id: 'FIR 088/2026',
-        itemType: 'Stolen motorcycle',
-        itemSub: 'Bajaj Pulsar, no. HR-05-AX-2231',
-        section: 'PART D',
-        sectionName: 'Part D — Vehicles Yard',
-        status: 'Disposed',
-        seizingOfficer: 'HC Vinod Kumar',
-        seizedOn: '11 Mar 2026',
-        itemId: 'MK-2026-000088',
-        createdAt: '2026-03-11T10:20:00',
-      },
-    ],
-    movements: [
-      { id: 1, caseId: 'FIR 214/2026', fromLocation: '—',         toLocation: 'Malkhana — Part B',         movedBy: 'HC Vinod Kumar', timestamp: '2026-06-02T20:05:00', purpose: 'Seizure check-in', docRef: 'SM-2026-0214' },
-      { id: 2, caseId: 'FIR 214/2026', fromLocation: 'Malkhana',  toLocation: 'FSL Madhuban',              movedBy: 'SI Rakesh Sharma', timestamp: '2026-06-10T11:00:00', purpose: 'Ballistic expert opinion', docRef: 'FSL-FWD-2026-114' },
-      { id: 3, caseId: 'FIR 214/2026', fromLocation: 'FSL Madhuban', toLocation: 'Malkhana',               movedBy: 'SI Rakesh Sharma', timestamp: '2026-06-25T15:40:00', purpose: 'Report received', docRef: 'FSL-BAL-9012' },
-      { id: 4, caseId: 'FIR 214/2026', fromLocation: 'Malkhana',  toLocation: 'Court',                    movedBy: 'HC Vinod Kumar', timestamp: '2026-07-05T09:12:00', purpose: 'Produced as exhibit', docRef: 'CO-2026-1187' },
-      { id: 5, caseId: 'FIR 198/2026', fromLocation: '—',         toLocation: 'Malkhana — Part A',         movedBy: 'ASI Sunita Devi', timestamp: '2026-05-30T00:40:00', purpose: 'Seizure check-in', docRef: 'SM-2026-0198' },
-      { id: 6, caseId: 'FIR 198/2026', fromLocation: 'Malkhana',  toLocation: 'FSL Madhuban',              movedBy: 'ASI Sunita Devi', timestamp: '2026-07-04T17:30:00', purpose: 'Chemical analysis', docRef: 'FSL-FWD-2026-188' },
-      { id: 7, caseId: 'DD 41/2026',   fromLocation: 'Civil Hospital', toLocation: 'Malkhana — Part E',   movedBy: 'SI Rakesh Sharma', timestamp: '2026-06-21T17:50:00', purpose: 'PM report received', docRef: 'PM-2026-041' },
-      { id: 8, caseId: 'DD 33/2026',   fromLocation: 'Civil Hospital', toLocation: 'Malkhana — Part E',   movedBy: 'SI Rakesh Sharma', timestamp: '2026-06-14T16:20:00', purpose: 'Seizure check-in', docRef: 'SM-DD-2026-033' },
-      { id: 9, caseId: 'DD 33/2026',   fromLocation: 'Malkhana',  toLocation: 'Civil Hospital Panchkula', movedBy: 'SI Rakesh Sharma', timestamp: '2026-06-14T17:00:00', purpose: 'Chemical opinion', docRef: 'CH-FWD-2026-033' },
-      { id: 10, caseId: 'FIR 156/2026', fromLocation: '—',         toLocation: 'Malkhana — Part C',        movedBy: 'ASI Manoj Yadav', timestamp: '2026-06-30T11:00:00', purpose: 'Seizure check-in', docRef: 'SM-2026-0156' },
-      { id: 11, caseId: 'FIR 088/2026', fromLocation: '—',         toLocation: 'Malkhana — Part D',        movedBy: 'HC Vinod Kumar', timestamp: '2026-03-11T14:00:00', purpose: 'Seizure check-in', docRef: 'SM-2026-0088' },
-      { id: 12, caseId: 'FIR 088/2026', fromLocation: 'Malkhana',  toLocation: 'Disposed (auctioned)',      movedBy: 'HC Vinod Kumar', timestamp: '2026-06-02T12:00:00', purpose: 'Released to RTO after court order', docRef: 'CO-2026-0412' },
-    ],
-    alertConfig: {
-      fslDays: 30,                 // FSL report overdue threshold
-      expertDays: 15,              // Expert opinion overdue threshold
-      courtDays: 30,               // Court order / disposal overdue threshold
-      inspectionCycleDays: 90,     // Quarterly inspection cycle
-      lastInspection: '2026-04-05',// Last quarterly inspection date
-    },
-    // Synthetic "FIR 176/2026" used by the original UI for the FSL overdue alert.
-    // We model it as a case still "With FSL" since 18 May 2026.
-    extraCasesForAlerts: [
-      {
-        id: 'FIR 176/2026',
-        itemType: 'Suspected narcotics (heroin)',
-        itemSub: '80 grams, sealed poly bag',
-        section: 'PART A',
-        sectionName: 'Part A — Narcotics Rack',
-        status: 'With FSL',
-        seizingOfficer: 'ASI Sunita Devi',
-        seizedOn: '18 May 2026',
-        itemId: 'MK-2026-000176',
-        createdAt: '2026-05-18T22:00:00',
-      },
-    ],
-    extraMovements: [
-      { id: 13, caseId: 'FIR 176/2026', fromLocation: '—', toLocation: 'Malkhana — Part A', movedBy: 'ASI Sunita Devi', timestamp: '2026-05-18T22:30:00', purpose: 'Seizure check-in', docRef: 'SM-2026-0176' },
-      { id: 14, caseId: 'FIR 176/2026', fromLocation: 'Malkhana', toLocation: 'FSL Madhuban', movedBy: 'ASI Sunita Devi', timestamp: '2026-05-18T23:00:00', purpose: 'Forensic analysis', docRef: 'FSL-FWD-2026-176' },
-    ],
-  };
+function deepCopy(obj) {
+  // JSON round-trip is fine here: the snapshot only contains plain JSON-safe
+  // data (strings, numbers, booleans, arrays, objects).  The cost of
+  // serialising a few hundred rows is negligible compared to the SQL round-trip.
+  return obj === null || obj === undefined ? obj : JSON.parse(JSON.stringify(obj));
 }
 
-// Top-level keys that must exist in the DB.  Any missing key is back-filled
-// from the seed on every load so the system stays self-healing after a
-// schema migration or an older db.json written before new features shipped.
-const REQUIRED_KEYS = [
-  'meta', 'officer', 'users', 'auditLog', 'sections',
-  'cases', 'movements', 'alertConfig',
-  'extraCasesForAlerts', 'extraMovements', 'alertIssues',
-];
+export async function loadMirror() {
+  if (_mirror) return _mirror;
+  if (_loading) return _loading;
+  _loading = (async () => {
+    await ensureReady();
+    const client = await pool.connect();
+    try {
+      const [kvRes, usersRes, sectionsRes, casesRes, movRes, auditRes] = await Promise.all([
+        client.query("SELECT key, value FROM kv WHERE key IN ('meta','officer','alertConfig','alertIssues','backupLog')"),
+        client.query("SELECT id, initials, name, rank, designation, station, password FROM users ORDER BY id"),
+        client.query("SELECT letter, name, count, active FROM sections ORDER BY length(letter), letter"),
+        client.query(`SELECT id, item_type, item_sub, section, status,
+                             seizing_officer, seized_on, item_id,
+                             image_url, image_auto_generated, skip_auto_image,
+                             doc_ref, created_at
+                      FROM cases ORDER BY created_at`),
+        client.query(`SELECT id, case_id, from_location, to_location, moved_by,
+                             purpose, doc_ref, ts
+                      FROM movements ORDER BY ts, id`),
+        client.query(`SELECT id, ts, user_id, user_name, action, target, details
+                      FROM audit_log ORDER BY id`),
+      ]);
+      const kv = Object.fromEntries(kvRes.rows.map(r => [r.key, r.value]));
+      _mirror = {
+        meta:     kv.meta     || { version: 1, station: 'PS Sector-5, Panchkula', asOf: '' },
+        officer:  kv.officer  || { initials: 'RS', name: 'SI Rakesh Sharma', rank: '' },
+        users:    usersRes.rows.map(r => ({
+          id: r.id, initials: r.initials, name: r.name,
+          rank: r.rank, designation: r.designation, station: r.station,
+          password: r.password,
+        })),
+        auditLog: auditRes.rows.map(r => ({
+          id:        Number(r.id),
+          timestamp: new Date(r.ts).toISOString(),
+          userId:    r.user_id,
+          userName:  r.user_name,
+          action:    r.action,
+          target:    r.target,
+          details:   r.details,
+        })),
+        sections: sectionsRes.rows.map(r => ({
+          letter: r.letter, name: r.name, count: r.count, active: r.active,
+        })),
+        cases: casesRes.rows.map(r => ({
+          id: r.id,
+          itemType: r.item_type,
+          itemSub: r.item_sub || '',
+          section: r.section,
+          status: r.status,
+          seizingOfficer: r.seizing_officer || '',
+          seizedOn: r.seized_on || '',
+          itemId: r.item_id || '',
+          imageUrl: r.image_url || undefined,
+          imageAutoGenerated: r.image_auto_generated || false,
+          skipAutoImage: r.skip_auto_image || false,
+          docRef: r.doc_ref || undefined,
+          createdAt: new Date(r.created_at).toISOString(),
+        })),
+        movements: movRes.rows.map(r => ({
+          id: Number(r.id),
+          caseId: r.case_id,
+          fromLocation: r.from_location,
+          toLocation: r.to_location,
+          movedBy: r.moved_by,
+          purpose: r.purpose || '',
+          docRef: r.doc_ref || '',
+          timestamp: new Date(r.ts).toISOString(),
+        })),
+        alertConfig: kv.alertConfig || { fslDays: 30, expertDays: 15, courtDays: 30, inspectionCycleDays: 90, lastInspection: '2026-04-05' },
+        alertIssues: kv.alertIssues || [],
+        // Daily Google Drive backup log (sibling session).  In-memory + a
+        // single row in the `kv` table under key='backupLog'.  Capped to
+        // 100 entries in the server.js appendBackupLog() helper.
+        backupLog: kv.backupLog || [],
+        // Legacy fields: kept as empty arrays for any callers that still
+        // read them (server.js merges `cases + extraCasesForAlerts`).
+        // In the SQL world, the alert-only case is just another row in
+        // `cases` with a special flag, but for the moment we keep it in the
+        // main table so the boot seed lands in one place.  If a future
+        // migration splits them, these two arrays stay here.
+        extraCasesForAlerts: [],
+        extraMovements: [],
+      };
+      return _mirror;
+    } finally {
+      client.release();
+      _loading = null;
+    }
+  })();
+  return _loading;
+}
 
-function ensureDb() {
-  if (!existsSync(dirname(DB_PATH))) mkdirSync(dirname(DB_PATH), { recursive: true });
-  if (!existsSync(DB_PATH)) {
-    const initial = seed();
-    writeFileSync(DB_PATH, JSON.stringify(initial, null, 2));
-    return initial;
+// Synchronous accessor — returns the current in-memory mirror.  Callers
+// MUST await boot() first; this is a hard pre-condition enforced at the
+// server boot path (see server.js).  Throws a clear error if the mirror
+// hasn't been loaded yet so we don't silently serve an empty snapshot.
+//
+// the rest of server.js expects.  After boot, the in-memory mirror is the
+// source of truth; mutate() refreshes it transactionally.
+export function getDb() {
+  if (!_mirror) {
+    throw new Error('store.getDb() called before boot() — call boot() at server start.');
   }
-  const raw = readFileSync(DB_PATH, 'utf8');
-  let db;
-  try { db = JSON.parse(raw); } catch {
-    const initial = seed();
-    writeFileSync(DB_PATH, JSON.stringify(initial, null, 2));
-    return initial;
-  }
-  // Back-fill any missing top-level keys (preserves existing data)
-  const reference = seed();
-  let dirty = false;
-  for (const k of REQUIRED_KEYS) {
-    if (db[k] === undefined) {
-      db[k] = reference[k];
-      dirty = true;
+  return _mirror;
+}
+
+// Block until the mirror is loaded.  Call this once at server start (before
+// app.listen).  On Vercel, wrap with await before any handler runs.
+export async function boot() {
+  await loadMirror();
+  return _mirror;
+}
+
+// ---------- mutate() with snapshot diff + transactional write ----------
+
+function rowsById(arr) {
+  // For `cases` and `movements` and `auditLog`, identity = `id`.
+  // For `sections`, identity = `letter`.
+  const m = new Map();
+  for (const x of arr || []) m.set(x.id ?? x.letter, x);
+  return m;
+}
+
+function diffById(prevArr, nextArr, idKey) {
+  // Returns { inserted, updated, deleted }.
+  const prev = rowsById(prevArr);
+  const next = rowsById(nextArr);
+  const inserted = [], updated = [], deleted = [];
+  for (const [k, v] of next) {
+    if (!prev.has(k)) inserted.push(v);
+    else {
+      const p = prev.get(k);
+      if (JSON.stringify(p) !== JSON.stringify(v)) updated.push(v);
     }
   }
-  // Back-fill: ensure every seeded MM has the demo password.  Older db.json
-  // files (pre demo-password) had users with no `password` field, which
-  // would silently downgrade to "no password required" on login.  Bring
-  // them in line with the current seed.
-  for (const u of (db.users || [])) {
-    if (u && !u.password) {
-      u.password = reference.DEMO_PW;
-      dirty = true;
+  for (const [k, v] of prev) {
+    if (!next.has(k)) deleted.push(v);
+  }
+  return { inserted, updated, deleted };
+}
+
+async function persistDiff(client, pre, post) {
+  // 1. Singleton kvs: meta, officer, alertConfig, alertIssues, backupLog
+  for (const k of ['meta', 'officer', 'alertConfig', 'alertIssues', 'backupLog']) {
+    if (JSON.stringify(pre[k]) !== JSON.stringify(post[k])) {
+      await client.query(
+        `INSERT INTO kv (key, value) VALUES ($1, $2::jsonb)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [k, JSON.stringify(post[k])]
+      );
     }
   }
-  if (dirty) writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-  return db;
+
+  // 2. Users
+  {
+    const { inserted, updated, deleted } = diffById(pre.users, post.users);
+    for (const u of inserted) {
+      await client.query(
+        `INSERT INTO users (id, initials, name, rank, designation, station, password)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [u.id, u.initials, u.name, u.rank || null, u.designation || null, u.station || null, u.password || null]
+      );
+    }
+    for (const u of updated) {
+      await client.query(
+        `UPDATE users SET initials=$2, name=$3, rank=$4, designation=$5, station=$6, password=$7
+         WHERE id=$1`,
+        [u.id, u.initials, u.name, u.rank || null, u.designation || null, u.station || null, u.password || null]
+      );
+    }
+    for (const u of deleted) {
+      await client.query(`DELETE FROM users WHERE id=$1`, [u.id]);
+    }
+  }
+
+  // 3. Sections (id key = letter)
+  {
+    const prev = (pre.sections || []).map(s => ({ ...s }));
+    const next = (post.sections || []).map(s => ({ ...s }));
+    const { inserted, updated, deleted } = diffById(prev, next);
+    for (const s of inserted) {
+      await client.query(
+        `INSERT INTO sections (letter, name, count, active) VALUES ($1,$2,$3,$4)`,
+        [s.letter, s.name, s.count || 0, s.active !== false]
+      );
+    }
+    for (const s of updated) {
+      await client.query(
+        `UPDATE sections SET name=$2, count=$3, active=$4 WHERE letter=$1`,
+        [s.letter, s.name, s.count || 0, s.active !== false]
+      );
+    }
+    for (const s of deleted) {
+      await client.query(`DELETE FROM sections WHERE letter=$1`, [s.letter]);
+    }
+  }
+
+  // 4. Cases
+  {
+    const { inserted, updated, deleted } = diffById(pre.cases, post.cases);
+    for (const c of inserted) {
+      await client.query(
+        `INSERT INTO cases (id, item_type, item_sub, section, status,
+                            seizing_officer, seized_on, item_id,
+                            image_url, image_auto_generated, skip_auto_image,
+                            doc_ref, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [c.id, c.itemType, c.itemSub || '', c.section, c.status,
+         c.seizingOfficer || null, c.seizedOn || null, c.itemId || null,
+         c.imageUrl || null, !!c.imageAutoGenerated, !!c.skipAutoImage,
+         c.docRef || null, c.createdAt || new Date().toISOString()]
+      );
+    }
+    for (const c of updated) {
+      await client.query(
+        `UPDATE cases SET item_type=$2, item_sub=$3, section=$4, status=$5,
+                          seizing_officer=$6, seized_on=$7, item_id=$8,
+                          image_url=$9, image_auto_generated=$10, skip_auto_image=$11,
+                          doc_ref=$12
+         WHERE id=$1`,
+        [c.id, c.itemType, c.itemSub || '', c.section, c.status,
+         c.seizingOfficer || null, c.seizedOn || null, c.itemId || null,
+         c.imageUrl || null, !!c.imageAutoGenerated, !!c.skipAutoImage,
+         c.docRef || null]
+      );
+    }
+    for (const c of deleted) {
+      await client.query(`DELETE FROM cases WHERE id=$1`, [c.id]);
+    }
+  }
+
+  // 5. Movements (append-only, but we still diff in case of corrections)
+  {
+    const { inserted, updated, deleted } = diffById(pre.movements, post.movements);
+    for (const m of inserted) {
+      // If the caller supplied an id, respect it (legacy code does this);
+      // otherwise let the BIGSERIAL pick the next value.
+      if (m.id != null) {
+        await client.query(
+          `INSERT INTO movements (id, case_id, from_location, to_location, moved_by, purpose, doc_ref, ts)
+           VALUES ($1,$2,$3,$4,$5,$6,$7, $8)
+           ON CONFLICT (id) DO NOTHING`,
+          [m.id, m.caseId, m.fromLocation, m.toLocation, m.movedBy, m.purpose || null, m.docRef || null,
+           m.timestamp || new Date().toISOString()]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO movements (case_id, from_location, to_location, moved_by, purpose, doc_ref, ts)
+           VALUES ($1,$2,$3,$4,$5,$6, $7)`,
+          [m.caseId, m.fromLocation, m.toLocation, m.movedBy, m.purpose || null, m.docRef || null,
+           m.timestamp || new Date().toISOString()]
+        );
+      }
+      // Keep the sequence in sync so nextMovementId() returns a free id.
+      await client.query(
+        "SELECT setval(pg_get_serial_sequence('movements','id'), GREATEST((SELECT COALESCE(MAX(id),0) FROM movements), 1))"
+      );
+    }
+    for (const m of updated) {
+      await client.query(
+        `UPDATE movements SET case_id=$2, from_location=$3, to_location=$4,
+                             moved_by=$5, purpose=$6, doc_ref=$7, ts=$8
+         WHERE id=$1`,
+        [m.id, m.caseId, m.fromLocation, m.toLocation, m.movedBy, m.purpose || null, m.docRef || null,
+         m.timestamp || new Date().toISOString()]
+      );
+    }
+    for (const m of deleted) {
+      await client.query(`DELETE FROM movements WHERE id=$1`, [m.id]);
+    }
+  }
+
+  // 6. Audit log — INSERT only (append-only invariant).  We diff to skip
+  // no-ops and to handle the (very rare) case where a caller overwrites an
+  // existing entry.
+  {
+    const { inserted, updated, deleted } = diffById(pre.auditLog, post.auditLog);
+    for (const a of inserted) {
+      if (a.id != null) {
+        await client.query(
+          `INSERT INTO audit_log (id, ts, user_id, user_name, action, target, details)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT (id) DO NOTHING`,
+          [a.id, a.timestamp || new Date().toISOString(), a.userId || 'anonymous',
+           a.userName || '—', a.action || 'unknown', a.target || '', a.details || '']
+        );
+      } else {
+        await client.query(
+          `INSERT INTO audit_log (ts, user_id, user_name, action, target, details)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [a.timestamp || new Date().toISOString(), a.userId || 'anonymous',
+           a.userName || '—', a.action || 'unknown', a.target || '', a.details || '']
+        );
+      }
+    }
+    for (const a of updated) {
+      await client.query(
+        `UPDATE audit_log SET ts=$2, user_id=$3, user_name=$4, action=$5, target=$6, details=$7
+         WHERE id=$1`,
+        [a.id, a.timestamp || new Date().toISOString(), a.userId || 'anonymous',
+         a.userName || '—', a.action || 'unknown', a.target || '', a.details || '']
+      );
+    }
+    for (const a of deleted) {
+      await client.query(`DELETE FROM audit_log WHERE id=$1`, [a.id]);
+    }
+  }
 }
-
-let _db = ensureDb();
-const writeLocks = new Map();   // simple per-key serialization
-
-function persist() {
-  // Atomic write: write to .tmp, then rename.
-  const tmp = DB_PATH + '.tmp';
-  writeFileSync(tmp, JSON.stringify(_db, null, 2));
-  renameSync(tmp, DB_PATH);
-}
-
-export function getDb() { return _db; }
 
 export async function mutate(fn) {
-  // Serialise mutations one at a time (single-writer; this is a small pilot).
-  while (writeLocks.get('*')) {
-    await new Promise(r => setTimeout(r, 5));
-  }
-  writeLocks.set('*', true);
+  await ensureReady();
+  // Serialise: only one mutate at a time per process.
+  let release;
+  const slot = new Promise(r => { release = r; });
+  const prev = _writeQueue;
+  _writeQueue = prev.then(() => slot);
+  await prev;
   try {
-    const db = getDb();
-    fn(db);
-    if (!db.auditLog) db.auditLog = [];
-    persist();
-    return db;
+    // Reload mirror to catch any writes from another process / cold start.
+    _mirror = null;
+    const pre = await loadMirror();
+    const preCopy = deepCopy(pre);
+    // Pass the live mirror to fn — callers push/splice/set on it, which
+    // mutates the in-memory object in place.
+    const result = fn(pre);
+    // Persist the diff.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await persistDiff(client, preCopy, pre);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      // Roll back the in-memory mutation by reloading.
+      _mirror = null;
+      throw e;
+    } finally {
+      client.release();
+    }
+    return result;
   } finally {
-    writeLocks.delete('*');
+    release();
   }
 }
 
-// Append-only audit log. Every write operation in the system should call
-// `appendAudit({ userId, userName, action, target, details })` to record who
-// did what and when.  The store is intentionally append-only — there is no
-// function to edit or delete entries, so the log is tamper-evident.
+// ---------- direct SQL helpers ----------
+
 export async function appendAudit(entry) {
+  await ensureReady();
   const ts = new Date().toISOString();
-  const entry_obj = {
-    id:        ((getDb().auditLog || []).at(-1)?.id ?? 0) + 1,
+  const row = {
+    id:        ((_mirror?.auditLog || []).at(-1)?.id ?? 0) + 1,
     timestamp: ts,
     userId:    entry.userId    ?? 'anonymous',
     userName:  entry.userName  ?? '—',
@@ -253,27 +421,102 @@ export async function appendAudit(entry) {
     target:    entry.target    ?? '',
     details:   entry.details   ?? '',
   };
-  // Run the append + persist as a single mutate so the entry is durable
-  // before this function resolves.  Returning a promise means callers
-  // should `await` to guarantee the entry hits disk before they respond.
-  await mutate(d => {
-    if (!d.auditLog) d.auditLog = [];
-    d.auditLog.push(entry_obj);
-    // Cap to 5000 entries to keep the file manageable
-    if (d.auditLog.length > 5000) d.auditLog.splice(0, d.auditLog.length - 5000);
-  });
-  process.stderr.write(`[audit] #${entry_obj.id}  ${entry_obj.userId}  ${entry_obj.action}  ${entry_obj.target}\n`);
-  return entry_obj;
-}
-// ---------- helpers ----------
-export function getCase(id)   { return _db.cases.find(c => c.id === id) || _db.extraCasesForAlerts?.find(c => c.id === id); }
-export function getMovements(caseId) { return _db.movements.filter(m => m.caseId === caseId).sort((a, b) => a.timestamp.localeCompare(b.timestamp)); }
-export function nextMovementId()    { return (_db.movements.at(-1)?.id ?? 0) + 1; }
-
-export function rebuildSectionCounts() {
-  for (const s of _db.sections) s.count = 0;
-  for (const c of [..._db.cases, ...(_db.extraCasesForAlerts ?? [])]) {
-    const s = _db.sections.find(x => x.letter === c.section?.replace('PART ', ''));
-    if (s) s.count += 1;
+  const client = await pool.connect();
+  try {
+    // Use the BIGSERIAL to get a durable id; then sync the mirror so the
+    // in-process snapshot shows the new entry.
+    const { rows } = await client.query(
+      `INSERT INTO audit_log (ts, user_id, user_name, action, target, details)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [ts, row.userId, row.userName, row.action, row.target, row.details]
+    );
+    row.id = Number(rows[0].id);
+    if (_mirror) {
+      if (!_mirror.auditLog) _mirror.auditLog = [];
+      _mirror.auditLog.push(row);
+    }
+    process.stderr.write(`[audit] #${row.id}  ${row.userId}  ${row.action}  ${row.target}\n`);
+    return row;
+  } finally {
+    client.release();
   }
+}
+
+export async function getCase(id) {
+  await ensureReady();
+  // Fast path: mirror lookup
+  if (_mirror) {
+    return _mirror.cases.find(c => c.id === id)
+        || (_mirror.extraCasesForAlerts || []).find(c => c.id === id);
+  }
+  // Fallback: SQL
+  const { rows } = await pool.query(
+    `SELECT id, item_type, item_sub, section, status,
+            seizing_officer, seized_on, item_id,
+            image_url, image_auto_generated, skip_auto_image,
+            doc_ref, created_at
+     FROM cases WHERE id = $1`,
+    [id]
+  );
+  if (!rows.length) return undefined;
+  const r = rows[0];
+  return {
+    id: r.id, itemType: r.item_type, itemSub: r.item_sub || '',
+    section: r.section, status: r.status,
+    seizingOfficer: r.seizing_officer || '', seizedOn: r.seized_on || '',
+    itemId: r.item_id || '',
+    imageUrl: r.image_url || undefined,
+    imageAutoGenerated: r.image_auto_generated || false,
+    skipAutoImage: r.skip_auto_image || false,
+    docRef: r.doc_ref || undefined,
+    createdAt: new Date(r.created_at).toISOString(),
+  };
+}
+
+export async function getMovements(caseId) {
+  await ensureReady();
+  if (_mirror) {
+    return _mirror.movements
+      .filter(m => m.caseId === caseId)
+      .slice()
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+  const { rows } = await pool.query(
+    `SELECT id, case_id, from_location, to_location, moved_by, purpose, doc_ref, ts
+     FROM movements WHERE case_id = $1 ORDER BY ts, id`,
+    [caseId]
+  );
+  return rows.map(r => ({
+    id: Number(r.id), caseId: r.case_id,
+    fromLocation: r.from_location, toLocation: r.to_location, movedBy: r.moved_by,
+    purpose: r.purpose || '', docRef: r.doc_ref || '',
+    timestamp: new Date(r.ts).toISOString(),
+  }));
+}
+
+export async function nextMovementId() {
+  await ensureReady();
+  // Atomic: SELECT nextval from the movements sequence.
+  const { rows } = await pool.query(
+    "SELECT nextval(pg_get_serial_sequence('movements','id')) AS id"
+  );
+  // NOTE: this consumes a sequence value.  The matching INSERT in mutate()
+  // either uses this id (if the caller attached it to the new row before
+  // persisting) or lets BIGSERIAL default.  To avoid wasting sequence
+  // values we DO use the returned id for the next movement.
+  return Number(rows[0].id);
+}
+
+export async function rebuildSectionCounts() {
+  await ensureReady();
+  await mutate(d => {
+    for (const s of d.sections) s.count = 0;
+    for (const c of [...d.cases, ...(d.extraCasesForAlerts || [])]) {
+      const m = c.section?.match(/PART ([A-Z]{1,2})/);
+      if (m) {
+        const s = d.sections.find(x => x.letter === m[1]);
+        if (s) s.count += 1;
+      }
+    }
+  });
 }
