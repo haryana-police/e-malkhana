@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { CaseRow, CaseStatus } from '../types';
 import { api } from '../api';
 
@@ -40,6 +40,12 @@ export function CaseProperty({
   onDownloadReport, onGenerateRegister,
 }: Props) {
   const [textFilter, setTextFilter] = useState('');
+  // Used to make the whole <tr> clickable (per PRD #7).  We can't just
+  // put a <Link> around the row because <tr> can't be a <a>; we attach an
+  // onClick that does a navigate() and let the inner <Link>s / buttons
+  // stopPropagation() so the user can still hit the per-row actions
+  // (QR / timeline / change-status) without triggering the row nav.
+  const navigate = useNavigate();
 
   // Three filters: text + section + status.  When `excludeDisposed` is set
   // (dashboard "Pending Disposal" tile), the 'Disposed' rows are dropped on
@@ -157,11 +163,26 @@ export function CaseProperty({
               </td></tr>
             )}
             {visible.map(c => (
-              <tr key={c.id}>
+              // Whole row is clickable → /case-property/:id (PRD #7).  The
+              // inner <Link>s and the change-status <div> call stopPropagation
+              // so they keep their own click semantics (deep-link with
+              // ?tab=tag / ?tab=timeline, or open the change-status modal)
+              // and don't also fire the row navigation.
+              <tr
+                key={c.id}
+                className="row-clickable"
+                onClick={() => navigate(`/case-property/${encodeURIComponent(c.id)}`)}
+                onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/case-property/${encodeURIComponent(c.id)}`); }}
+                tabIndex={0}
+                role="link"
+                aria-label={`Open ${c.id} detail page`}
+                title={`Open ${c.id} detail page`}
+              >
                 <td className="fir">
                   <Link
                     to={`/case-property/${encodeURIComponent(c.id)}`}
                     className="case-link"
+                    onClick={(e) => e.stopPropagation()}
                     title={`Open ${c.id} detail page`}
                   >{c.id}</Link>
                 </td>
@@ -178,7 +199,7 @@ export function CaseProperty({
                   <span
                     className="section-tag"
                     style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    onClick={() => { onClearSection(); /* will reset filter, then re-set via sidebar */ }}
+                    onClick={(e) => { e.stopPropagation(); onClearSection(); /* will reset filter, then re-set via sidebar */ }}
                     title={`Part ${c.section?.replace('PART ', '') || '?'} — click rack name in sidebar to filter`}
                   >
                     <small style={{ opacity: 0.7, fontWeight: 500 }}>{c.section?.replace('PART ', '')}</small>
@@ -197,14 +218,16 @@ export function CaseProperty({
                     <Link
                       to={`/case-property/${encodeURIComponent(c.id)}?tab=tag`}
                       className="icon-btn"
+                      onClick={(e) => e.stopPropagation()}
                       title="View evidence tag (real QR) on detail page"
                     >▦</Link>
                     <Link
                       to={`/case-property/${encodeURIComponent(c.id)}?tab=timeline`}
                       className="icon-btn"
+                      onClick={(e) => e.stopPropagation()}
                       title="View movement log on detail page"
                     >⏱</Link>
-                    <div className="icon-btn" title="Change status (record a movement)" onClick={() => onChangeStatus(c)}>↻</div>
+                    <div className="icon-btn" title="Change status (record a movement)" onClick={(e) => { e.stopPropagation(); onChangeStatus(c); }}>↻</div>
                   </div>
                 </td>
               </tr>

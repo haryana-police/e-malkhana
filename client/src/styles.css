@@ -316,6 +316,13 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 }
 
 .row-actions{ display:flex; gap:6px; }
+/* Whole row is clickable (PRD #7) — show pointer + soft hover.  Cursor
+   on .icon-btn overrides to pointer naturally; we only restyle the row
+   so the user knows the whole <tr> is a link target. */
+tr.row-clickable { cursor: pointer; transition: background-color 0.12s; }
+tr.row-clickable:hover,
+tr.row-clickable:focus-visible { background-color: rgba(20, 36, 61, 0.04); outline: none; }
+tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .icon-btn{
   width:28px; height:28px; border-radius:5px;
   border:1px solid var(--line); background: var(--white-paper);
@@ -1305,6 +1312,19 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .case-detail-actions { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .case-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 .case-detail-card { background: var(--white-paper); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
+.case-detail-card.is-highlight {
+  /* Brief highlight for ?tab= deep-link from the case-property table.
+     The class is set in the same render that the URL gets cleaned, so
+     we animate it; it fades out by itself and the URL no longer triggers
+     a re-highlight on refresh. */
+  box-shadow: 0 0 0 3px var(--khaki-light);
+  border-color: var(--khaki);
+  animation: detailSectionFlash 1.6s ease-out 1;
+}
+@keyframes detailSectionFlash {
+  0%   { box-shadow: 0 0 0 6px var(--khaki); background-color: rgba(140,122,84,0.10); }
+  100% { box-shadow: 0 0 0 3px var(--khaki-light); background-color: transparent; }
+}
 .case-detail-card h3 { font-family: 'Rajdhani', sans-serif; color: var(--ink-navy); font-size: 14px; margin-bottom: 12px; }
 .case-detail-qr { width: 200px; height: 200px; display: block; margin: 0 auto 10px; border: 4px solid var(--ink-navy); border-radius: 4px; }
 .case-detail-photo { width: 100%; max-height: 280px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; }

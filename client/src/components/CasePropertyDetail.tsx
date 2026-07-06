@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import type { CaseRow, MovementEvent, MovementLogRow } from '../types';
 
@@ -17,6 +17,13 @@ const STATUS_TONE: Record<string, string> = {
 export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
   const { item_id: itemIdParam } = useParams<{ item_id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The icon links from the case-property table pass ?tab=tag or
+  // ?tab=timeline.  We honour that by scrolling to + briefly highlighting
+  // the relevant section.  We also strip the param from the URL after a
+  // moment so a manual reload doesn't keep jumping on every render.
+  const tab = (searchParams.get('tab') || '').toLowerCase();
+  const highlightTab = (tab === 'tag' || tab === 'timeline') ? tab : null;
   const [caseRow, setCaseRow] = useState<CaseRow | null>(null);
   const [movements, setMovements] = useState<MovementLogRow[]>([]);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
@@ -43,6 +50,24 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
       }
     })();
   }, [itemIdParam]);
+
+  // Honour ?tab=tag / ?tab=timeline from the case-property row icons.
+  // After a short delay (so the DOM is rendered) we scroll the matching
+  // section into view + briefly highlight it, then strip the param so
+  // a refresh of the same URL doesn't keep jumping.
+  useEffect(() => {
+    if (!highlightTab || busy || !caseRow) return;
+    const id = highlightTab === 'tag' ? 'detail-section-tag' : 'detail-section-timeline';
+    const t = setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Clear the param from the URL so a manual refresh doesn't loop.
+      const next = new URLSearchParams(searchParams);
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [highlightTab, busy, caseRow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function fmtTime(iso: string) {
     return new Date(iso).toLocaleString('en-IN', {
@@ -119,7 +144,10 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
 
       {/* QR + photo side-by-side */}
       <div className="case-detail-grid">
-        <div className="case-detail-card">
+        <div
+          id="detail-section-tag"
+          className={`case-detail-card${highlightTab === 'tag' ? ' is-highlight' : ''}`}
+        >
           <h3>Evidence Tag</h3>
           {qrUrl
             ? <img src={qrUrl} alt="QR code" className="case-detail-qr" />
@@ -137,7 +165,10 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
       </div>
 
       {/* timeline (inline, not modal) */}
-      <div className="case-detail-card">
+      <div
+        id="detail-section-timeline"
+        className={`case-detail-card${highlightTab === 'timeline' ? ' is-highlight' : ''}`}
+      >
         <h3>Movement Timeline <span className="audit-tab-count">{movements.length}</span></h3>
         {movements.length === 0
           ? <div className="sub">No movements recorded yet.</div>
