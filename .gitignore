@@ -39,4 +39,10 @@ deploy.err
 
 server/secrets/
 
+# Throwaway Vercel diagnostic scripts (not project code)
+.check-*.py
+.check-*.sh
+.fetch-*.py
+
+
 # docs/
