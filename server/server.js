@@ -1530,12 +1530,26 @@ if (!IS_VERCEL) {
   // (The function's request handler will still call getDb() lazily, so this
   // is safe to do at module-load time.)
   //
-  // Every async op is wrapped so a boot-time error (e.g. /tmp permission
-  // glitch, malformed seed) can never crash the serverless function and
-  // turn into a FUNCTION_INVOCATION_FAILED 500 for the user.
+  // We LOG (but don't swallow) bootStore errors — if DATABASE_URL is wrong
+  // or the pool can't reach Neon, the user MUST see the real reason, not
+  // the silent "store.getDb() called before boot()" error in the response.
+  console.log('[boot] Vercel cold start.  DATABASE_URL present:', !!process.env.DATABASE_URL,
+    ' length:', (process.env.DATABASE_URL || '').length,
+    ' prefix:', (process.env.DATABASE_URL || '').slice(0, 30) + '...');
   (async () => {
-    try { await bootStore(); }
-    catch (e) { console.error('[boot] store mirror load failed (non-fatal):', e && e.message); }
+    try {
+      await bootStore();
+      console.log('[boot] store mirror loaded; rows:',
+        'users=' + (getDb().users.length),
+        'cases=' + (getDb().cases.length),
+        'sections=' + (getDb().sections.length));
+    } catch (e) {
+      console.error('[boot] FATAL — store mirror load failed:', e && e.message);
+      console.error('[boot] stack:', e && e.stack);
+      // NOTE: we deliberately do NOT swallow this.  The error is recorded
+      // in store.js's _bootError so getDb() throws the real message.
+      throw e;
+    }
     try {
       ensureUploadsDir();
       backfillImages();

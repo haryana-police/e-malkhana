@@ -169,16 +169,27 @@ export async function loadMirror() {
 let _waiters = [];
 export function getDb() {
   if (_mirror) return _mirror;
-  // Defer: try to load synchronously.  The only way this works is if
-  // _mirror is already loaded; if not, throw with a clear message.
-  throw new Error('store.getDb() called before boot() — call boot() at server start.');
+  // Cold-start race on Vercel: the module-load IIFE in server.js kicks
+  // off bootStore() but the first request can land before it finishes.
+  // Throw with the actual boot error (if we already know it) so the user
+  // sees the REAL reason instead of a generic "before boot()" message.
+  if (_bootError) {
+    throw new Error(`store.getDb() — boot failed earlier: ${_bootError.message || _bootError}`);
+  }
+  throw new Error('store.getDb() called before boot() — boot still in progress (cold start). Retry in 1-2s.');
 }
 
 // Block until the mirror is loaded.  Call this once at server start (before
 // app.listen).  On Vercel, wrap with await before any handler runs.
+let _bootError = null;
 export async function boot() {
-  await loadMirror();
-  return _mirror;
+  try {
+    await loadMirror();
+    return _mirror;
+  } catch (e) {
+    _bootError = e;
+    throw e;
+  }
 }
 
 // ---------- mutate() with snapshot diff + transactional write ----------
