@@ -14,8 +14,9 @@ export interface CaseRow {
   id: string;                 // "FIR 214/2026" or "DD 41/2026"
   itemType: string;           // "Country-made pistol (.315 bore)"
   itemSub: string;            // "1 unit, with 2 live cartridges"
-  section: string;            // "PART B"
-  sectionName: string;        // "Part B — Weapons Almirah"
+  section: string;            // "PART B" — letter reference, never display
+  sectionName: string;        // "Weapons Almirah" — joined from sections table at read time
+  sectionLetter?: string;     // "B" — convenience for the UI; same as section.replace('PART ', '')
   status: CaseStatus;
   seizingOfficer: string;
   seizedOn: string;           // "02 Jun 2026"

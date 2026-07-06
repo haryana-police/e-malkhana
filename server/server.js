@@ -118,7 +118,7 @@ function makeItemId(seed) {
 function findOrThrow(id) {
   const r = resolveCaseId(id);
   if (!r.case) { const err = new Error('case not found'); err.status = 404; err.payload = { tried: id, suggestions: r.suggestions }; throw err; }
-  return r.case;
+  return withFreshSectionName(r.case, getDb());
 }
 
 // Resolve a (possibly partial) case id. Returns { case, suggestions }.
@@ -156,7 +156,28 @@ function resolveCaseId(raw) {
 }
 function allCases() {
   const db = getDb();
-  return [...db.cases, ...(db.extraCasesForAlerts || [])];
+  // Always resolve section name at read time so renames propagate.
+  // The case record stores ONLY the letter reference ("PART A"); the
+  // display name is joined from db.sections on every read.
+  return [...db.cases, ...(db.extraCasesForAlerts || [])].map(c => withFreshSectionName(c, db));
+}
+
+// Resolve the current section name for a case. Replaces any stale
+// `sectionName` stored on the case record (e.g. from before a section
+// rename). The letter ("PART A") stays on c.section — only the display
+// name is recomputed. Falls back to whatever was stored if the section
+// is missing or deleted, so we never silently lose data.
+function withFreshSectionName(c, db) {
+  if (!c) return c;
+  const m = String(c.section || '').match(/PART ([A-Z])/i);
+  if (m) {
+    const s = (db.sections || []).find(x => x.letter === m[1].toUpperCase());
+    if (s) { c.sectionName = s.name; c.sectionLetter = m[1].toUpperCase(); return c; }
+  }
+  // Fallback: section was deleted. Keep the stored name (or letter) so the
+  // user can still see what was there, but mark it.
+  if (!c.sectionName) c.sectionName = c.section || 'Unknown section';
+  return c;
 }
 function dashboardStats() {
   const db = getDb();
@@ -365,12 +386,16 @@ app.post('/api/cases', async (req, res, next) => {
     const itemId = body.itemId || makeItemId(id);
     const createdAt = nowISO();
 
+    // NOTE: sectionName is NOT stored on the case record. It's always
+    // resolved from the live sections table at read time (see
+    // withFreshSectionName). This way section renames propagate to every
+    // existing case without a migration. Only the letter reference is
+    // persisted: c.section = "PART A".
     const newCase = {
       id,
       itemType:   body.itemType,
       itemSub:    body.itemSub || '',
       section:    `PART ${section.letter}`,
-      sectionName:`Part ${section.letter} — ${section.name}`,
       status:     body.status || 'Seized',
       seizingOfficer: body.seizingOfficer,
       seizedOn:   body.seizedOn,
@@ -384,8 +409,8 @@ app.post('/api/cases', async (req, res, next) => {
       createdAt,
     };
     await mutate(d => { d.cases.push(newCase); rebuildSectionCountsIn(d); });
-    await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (${newCase.sectionName}) — seized by ${body.seizingOfficer} on ${body.seizedOn}`);
-    res.status(201).json(newCase);
+    await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer} on ${body.seizedOn}`);
+    res.status(201).json(withFreshSectionName(newCase, getDb()));
   } catch (e) { next(e); }
 });
 
@@ -499,7 +524,7 @@ app.post('/api/movements', async (req, res, next) => {
       await mutate(d => { const x = d.cases.find(y => y.id === b.caseId); if (x) x.status = b.setStatus; });
     }
     // return the freshly-saved case (with updated status if any)
-    const updated = getCase(b.caseId) || c;
+    const updated = withFreshSectionName(getCase(b.caseId) || c, getDb());
     await auditMm(req, b.setStatus ? 'movement.record' : 'movement.log', c.id,
       `${b.setStatus ? 'Recorded movement + status: ' : 'Logged movement: '}${b.fromLocation || '—'} → ${b.toLocation}${b.setStatus ? ` (status: ${b.setStatus})` : ''}${b.purpose ? ' — ' + b.purpose : ''}`);
     res.status(201).json({ case: updated, movement });
@@ -532,7 +557,7 @@ app.post('/api/scan', async (req, res, next) => {
       e.payload = { tried: candidate, suggestions: r.suggestions };
       throw e;
     }
-    const c = r.case;
+    const c = withFreshSectionName(r.case, getDb());
 
     // If a destination is provided, log movement. Otherwise, just report the case
     // (this is what the QR scanner typically does first: "what is this item?").
@@ -551,7 +576,7 @@ app.post('/api/scan', async (req, res, next) => {
       if (b.setStatus && STATUSES.includes(b.setStatus)) {
         await mutate(d => { const x = d.cases.find(y => y.id === c.id); if (x) x.status = b.setStatus; });
       }
-      const finalCase = getCase(c.id) || c;
+      const finalCase = withFreshSectionName(getCase(c.id) || c, getDb());
       await auditMm(req, 'scan.record', c.id, `Scan + movement: ${movement.fromLocation} → ${movement.toLocation}${b.setStatus ? ` (status → ${b.setStatus})` : ''}`);
       res.status(201).json({ case: finalCase, movement });
       return;

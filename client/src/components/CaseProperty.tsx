@@ -156,10 +156,13 @@ export function CaseProperty({
                 <td>
                   <span
                     className="section-tag"
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                     onClick={() => { onClearSection(); /* will reset filter, then re-set via sidebar */ }}
-                    title="Click rack name in sidebar to filter"
-                  >{c.section}</span>
+                    title={`Part ${c.section?.replace('PART ', '') || '?'} — click rack name in sidebar to filter`}
+                  >
+                    <small style={{ opacity: 0.7, fontWeight: 500 }}>{c.section?.replace('PART ', '')}</small>
+                    <span>{c.sectionName}</span>
+                  </span>
                 </td>
                 <td>
                   <span className={`stamp ${statusClass(c.status)}`}>
