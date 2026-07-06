@@ -22,11 +22,11 @@
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 
-// Neon serverless driver requires a WebSocket constructor in Node.  In
-// the Edge runtime it's provided globally; in Node we need to wire it up.
-if (typeof globalThis.WebSocket === 'undefined') {
-  neonConfig.webSocketConstructor = ws;
-}
+// Neon serverless driver needs an explicit WebSocket constructor in Node.
+// Node 22+ ships a global WebSocket but neon-serverless's pool proxy
+// (PgBouncer WebSocket transport) needs the `ws` package, not the built-in
+// implementation.  Always set it.
+neonConfig.webSocketConstructor = ws;
 
 let _pool = null;
 let _schemaReady = null;

@@ -174,7 +174,10 @@ export function getDb() {
   // Throw with the actual boot error (if we already know it) so the user
   // sees the REAL reason instead of a generic "before boot()" message.
   if (_bootError) {
-    throw new Error(`store.getDb() — boot failed earlier: ${_bootError.message || _bootError}`);
+    const e = _bootError;
+    const detail = e.message || (e.error && e.error.message) || e.toString?.() || String(e);
+    const code = e.code || e.error?.code || '';
+    throw new Error(`store.getDb() — boot failed earlier: ${detail}${code ? ` (code=${code})` : ''}`);
   }
   throw new Error('store.getDb() called before boot() — boot still in progress (cold start). Retry in 1-2s.');
 }
