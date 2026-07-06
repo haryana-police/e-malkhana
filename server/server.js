@@ -1,16 +1,23 @@
 // e-Malkhana — single-port server: API on /api/* + static frontend on /*.
-// Storage: JSON file at server/data/db.json (atomic writes, append-only log).
+// Storage: Postgres (Neon) via server/store.js.
 // Run:  node server.js   (port 4000 by default, override with PORT env)
+//
+// Load .env at startup so DATABASE_URL is available for the DB layer.  On
+// Vercel the env is supplied by `vercel env add`, so dotenv's "missing file"
+// path is a no-op.
+import 'dotenv/config';
 
 import express from 'express';
 import cors from 'cors';
 import QRCode from 'qrcode';
+import cron from 'node-cron';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import {
   getDb, mutate, getCase, getMovements, nextMovementId, rebuildSectionCounts,
-  appendAudit,
+  appendAudit, boot as bootStore,
 } from './store.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
 
@@ -164,15 +171,16 @@ function allCases() {
 
 // Resolve the current section name for a case. Replaces any stale
 // `sectionName` stored on the case record (e.g. from before a section
-// rename). The letter ("PART A") stays on c.section — only the display
-// name is recomputed. Falls back to whatever was stored if the section
-// is missing or deleted, so we never silently lose data.
+// rename). The letter reference ("PART A" or "PART AA") stays on c.section —
+// only the display name is recomputed. Falls back to whatever was stored
+// if the section is missing or deleted, so we never silently lose data.
 function withFreshSectionName(c, db) {
   if (!c) return c;
-  const m = String(c.section || '').match(/PART ([A-Z])/i);
+  const m = String(c.section || '').match(/PART ([A-Z]{1,2})/i);
   if (m) {
-    const s = (db.sections || []).find(x => x.letter === m[1].toUpperCase());
-    if (s) { c.sectionName = s.name; c.sectionLetter = m[1].toUpperCase(); return c; }
+    const letter = m[1].toUpperCase();
+    const s = (db.sections || []).find(x => x.letter === letter);
+    if (s) { c.sectionName = s.name; c.sectionLetter = letter; return c; }
   }
   // Fallback: section was deleted. Keep the stored name (or letter) so the
   // user can still see what was there, but mark it.
@@ -357,9 +365,14 @@ app.get('/api/users', (_req, res) => {
 
 app.get('/api/dashboard', (_req, res) => {
   const db = getDb();
+  // Only return ACTIVE sections — the sidebar shouldn't show deactivated
+  // rows, and the manager modal fetches `/api/sections?active=all` for the
+  // full list.  Counts (per-section) are still meaningful because the
+  // rebuild pass accounts for cases on deactivated sections too.
+  const activeSections = (db.sections || []).filter(s => s.active !== false);
   res.json({
     officer: db.officer,
-    racks: db.sections,
+    racks: activeSections,
     stats: dashboardStats(),
     recentMovements: recentMovements(),
     priorityAlerts: getAlertIssues().slice(0, 3),
@@ -463,7 +476,8 @@ function db_sectionByLetter(letter) {
 function rebuildSectionCountsIn(d) {
   for (const s of d.sections) s.count = 0;
   for (const c of [...d.cases, ...(d.extraCasesForAlerts || [])]) {
-    const m = c.section?.match(/PART ([A-E])/);
+    // 1- or 2-letter section keys: "PART A" … "PART AZ"
+    const m = c.section?.match(/PART ([A-Z]{1,2})/);
     if (m) {
       const s = d.sections.find(x => x.letter === m[1]);
       if (s) s.count += 1;
@@ -587,8 +601,17 @@ app.post('/api/scan', async (req, res, next) => {
 
 // =================== API: sections (configurable malkhana sections) ===================
 
-app.get('/api/sections', (_req, res) => {
-  res.json(getDb().sections);
+// GET /api/sections?active=true|false|all
+// Default: only active sections (the dropdowns the MM uses should never
+// include deactivated rows; the admin section manager sets the filter to
+// `all` to see every row).
+app.get('/api/sections', (req, res) => {
+  const db = getDb();
+  const all = db.sections || [];
+  const want = String(req.query.active || 'true').toLowerCase();
+  if (want === 'all') return res.json(all);
+  const filter = want === 'false' ? false : true;
+  res.json(all.filter(s => !!s.active === filter));
 });
 
 app.patch('/api/sections/:letter', async (req, res, next) => {
@@ -605,6 +628,27 @@ app.patch('/api/sections/:letter', async (req, res, next) => {
     });
     const updated = db_sectionByLetter(letter);
     await auditMm(req, 'section.rename', letter, `Renamed Part ${letter}: "${prev}" → "${name}"`);
+    res.json(updated);
+  } catch (e) { next(e); }
+});
+
+// Toggle the active flag on a section.  Deactivated sections:
+//   • are hidden from the section dropdown on "Register New Case Property"
+//   • remain in the section manager so admins can re-activate
+//   • keep all cases already stored against them (the case still resolves
+//     its display name via the join, even when the section is inactive).
+app.patch('/api/sections/:letter/active', async (req, res, next) => {
+  try {
+    const letter = String(req.params.letter).toUpperCase();
+    const active = !!(req.body || {}).active;
+    const s = db_sectionByLetter(letter);
+    if (!s) { const e = new Error('section not found'); e.status = 404; throw e; }
+    await mutate(d => {
+      const x = d.sections.find(y => y.letter === letter);
+      if (x) x.active = active;
+    });
+    const updated = db_sectionByLetter(letter);
+    await auditMm(req, 'section.active', letter, `${active ? 'Activated' : 'Deactivated'} Part ${letter}: "${updated.name}"`);
     res.json(updated);
   } catch (e) { next(e); }
 });
@@ -754,6 +798,622 @@ app.patch('/api/alerts/config', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// =================== API: Reports (Excel + PDF) ===================
+// One source of truth for filtering the case list — used by the JSON list
+// endpoint, the xlsx export, and the PDF export, so the "respect currently
+// applied filters" requirement is enforced server-side.
+//
+// Filters accepted via query string (all optional):
+//   section = "A" | "B" | … | "AA" | "all"        (default: all)
+//   status  = "Seized" | "In Malkhana" | … | "all" (default: all)
+//   excludeDisposed = "1"                         (default: false)
+//   from    = "YYYY-MM-DD"   (seizedOn lower bound, inclusive)
+//   to      = "YYYY-MM-DD"   (seizedOn upper bound, inclusive)
+//   q       = "search"       (substring match on FIR/DD, item, officer, …)
+function parseCaseFilters(query) {
+  const section = String(query.section || 'all').toUpperCase();
+  const status  = String(query.status  || 'all');
+  const excludeDisposed = String(query.excludeDisposed || '') === '1';
+  const from = String(query.from || '').trim();
+  const to   = String(query.to   || '').trim();
+  const q    = String(query.q    || '').trim().toLowerCase();
+  return { section, status, excludeDisposed, from, to, q };
+}
+
+function applyCaseFilters(filters) {
+  const db = getDb();
+  let rows = allCases();
+  if (filters.section && filters.section !== 'ALL') {
+    rows = rows.filter(c => (c.sectionLetter || c.section?.replace('PART ', '')) === filters.section);
+  }
+  if (filters.status && filters.status !== 'all') {
+    rows = rows.filter(c => c.status === filters.status);
+  }
+  if (filters.excludeDisposed) {
+    rows = rows.filter(c => c.status !== 'Disposed');
+  }
+  if (filters.from) {
+    rows = rows.filter(c => String(c.seizedOn || '') >= filters.from);
+  }
+  if (filters.to) {
+    rows = rows.filter(c => String(c.seizedOn || '') <= filters.to);
+  }
+  if (filters.q) {
+    const f = filters.q;
+    rows = rows.filter(c =>
+      c.id.toLowerCase().includes(f) ||
+      c.itemType.toLowerCase().includes(f) ||
+      c.itemSub.toLowerCase().includes(f) ||
+      c.seizingOfficer.toLowerCase().includes(f) ||
+      (c.sectionName || '').toLowerCase().includes(f) ||
+      c.status.toLowerCase().includes(f) ||
+      (c.itemId || '').toLowerCase().includes(f)
+    );
+  }
+  return rows;
+}
+
+// Last-movement date per case: used in the "Last Movement Date" column of
+// the report.  Falls back to the case's createdAt / seizedOn for items
+// that have no movement log yet.
+function lastMovementDate(caseId, fallback) {
+  const ms = getMovements(caseId);
+  if (!ms.length) return fallback || '';
+  return ms[ms.length - 1].timestamp.slice(0, 10);
+}
+
+// Canonical 9-column row shape used by both xlsx and PDF outputs.
+const REPORT_COLUMNS = [
+  { key: 'id',              label: 'FIR / DD No.' },
+  { key: 'itemType',        label: 'Item Type' },
+  { key: 'description',     label: 'Description' },
+  { key: 'quantity',        label: 'Quantity' },
+  { key: 'sectionName',     label: 'Section' },
+  { key: 'status',          label: 'Status' },
+  { key: 'seizingOfficer',  label: 'Seizing Officer' },
+  { key: 'seizedOn',        label: 'Seized On' },
+  { key: 'lastMovement',    label: 'Last Movement Date' },
+];
+
+function toReportRow(c) {
+  // Quantity is parsed out of the leading "<n> unit(s) · …" pattern that
+  // RegisterCaseModal prefixes into itemSub; we fall back to "1" when
+  // nothing is parseable (legacy seed rows).
+  let qty = '1';
+  if (c.itemSub) {
+    const m = c.itemSub.match(/^(\d+)\s*unit/i);
+    if (m) qty = m[1];
+  }
+  return {
+    id:              c.id,
+    itemType:        c.itemType,
+    description:     c.itemSub,
+    quantity:        qty,
+    sectionName:     `Part ${c.sectionLetter || c.section?.replace('PART ', '')} — ${c.sectionName}`,
+    status:          c.status,
+    seizingOfficer:  c.seizingOfficer,
+    seizedOn:        c.seizedOn,
+    lastMovement:    lastMovementDate(c.id, c.createdAt?.slice(0, 10) || c.seizedOn),
+  };
+}
+
+function reportFileName(stem, ext, filters) {
+  const today = new Date().toISOString().slice(0, 10);
+  const bits = [stem, today];
+  if (filters.section && filters.section !== 'ALL') bits.push(`part-${filters.section}`);
+  if (filters.status  && filters.status  !== 'all') bits.push(filters.status.toLowerCase().replace(/\s+/g, '-'));
+  if (filters.from) bits.push(`from-${filters.from}`);
+  if (filters.to)   bits.push(`to-${filters.to}`);
+  return bits.join('-') + '.' + ext;
+}
+
+// CSV-style stream of report rows.  Used by both ExcelJS (as in-memory
+// rows) and pdfkit (rendered into a table).
+function buildReportRows(filters) {
+  return applyCaseFilters(filters).map(toReportRow);
+}
+
+// ---------------- Excel (.xlsx) ----------------
+app.get('/api/reports/case-property', async (req, res, next) => {
+  try {
+    const filters = parseCaseFilters(req.query);
+    const format  = String(req.query.format || 'xlsx').toLowerCase();
+
+    const rows = buildReportRows(filters);
+    const db = getDb();
+    const officer = req.mm?.name || db.officer?.name || 'Malkhana Moharrir';
+    const station = db.meta.station;
+    const generatedAt = new Date().toLocaleString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+
+    if (format === 'json') {
+      // Useful for debugging / future integrations.  Not a download.
+      return res.json({ rows, columns: REPORT_COLUMNS, station, officer, generatedAt, filters });
+    }
+
+    if (format === 'xlsx') {
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      wb.creator = officer;
+      wb.created = new Date();
+      const ws = wb.addWorksheet('Case Property Register', {
+        pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+        headerFooter: {
+          oddHeader: `&L&"-,Bold"${station}&C&"-,Bold"Case Property Register&R&"-,Italic"Generated by ${officer} on ${generatedAt}`,
+          oddFooter: '&LPage &P of &N&R&"-,Italic"e-Malkhana',
+        },
+      });
+      // Top title block
+      ws.mergeCells(1, 1, 1, REPORT_COLUMNS.length);
+      const title = ws.getCell('A1');
+      title.value = `${station} — Case Property Register`;
+      title.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF14243D' } };
+      title.alignment = { vertical: 'middle', horizontal: 'center' };
+      ws.getRow(1).height = 24;
+      ws.mergeCells(2, 1, 2, REPORT_COLUMNS.length);
+      const meta = ws.getCell('A2');
+      meta.value = `Generated by ${officer} on ${generatedAt} · ${rows.length} item(s)${filters.section && filters.section !== 'ALL' ? ` · Part ${filters.section}` : ''}${filters.status && filters.status !== 'all' ? ` · ${filters.status}` : ''}`;
+      meta.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF5C5A4E' } };
+      meta.alignment = { vertical: 'middle', horizontal: 'center' };
+      ws.getRow(2).height = 18;
+
+      // Header row
+      const headerRow = ws.getRow(4);
+      headerRow.values = REPORT_COLUMNS.map(c => c.label);
+      headerRow.font = { bold: true, color: { argb: 'FFFAF7EE' } };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14243D' } };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'left' };
+      headerRow.height = 20;
+
+      // Data rows
+      rows.forEach((r, i) => {
+        const row = ws.getRow(5 + i);
+        row.values = REPORT_COLUMNS.map(c => r[c.key]);
+        row.font = { name: 'Calibri', size: 10 };
+        if (i % 2 === 1) {
+          row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0EBDD' } };
+        }
+      });
+
+      // Column widths (approximate; ExcelJS uses character widths)
+      const widths = [16, 28, 38, 8, 30, 18, 22, 12, 16];
+      widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+      // Borders on the table region
+      const lastRow = 4 + rows.length;
+      for (let r = 4; r <= lastRow; r++) {
+        for (let c = 1; c <= REPORT_COLUMNS.length; c++) {
+          const cell = ws.getCell(r, c);
+          cell.border = {
+            top:    { style: 'hair', color: { argb: 'FFC9BFA0' } },
+            bottom: { style: 'hair', color: { argb: 'FFC9BFA0' } },
+            left:   { style: 'hair', color: { argb: 'FFC9BFA0' } },
+            right:  { style: 'hair', color: { argb: 'FFC9BFA0' } },
+          };
+        }
+      }
+
+      const filename = reportFileName('case-property', 'xlsx', filters);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      await wb.xlsx.write(res);
+      res.end();
+      await auditMm(req, 'report.export', 'case-property', `Exported xlsx: ${rows.length} row(s), filters=${JSON.stringify(filters)}`);
+      return;
+    }
+
+    if (format === 'pdf') {
+      const PDFDocument = (await import('pdfkit')).default;
+      const doc = new PDFDocument({
+        size: 'A4',
+        layout: 'landscape',
+        margins: { top: 110, bottom: 70, left: 36, right: 36 },
+        info: { Title: 'Case Property Register', Author: officer, Subject: 'e-Malkhana export' },
+      });
+      const filename = reportFileName('case-property', 'pdf', filters);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      doc.pipe(res);
+
+      // Letterhead (drawn on every page via pageAdded event)
+      function drawHeader() {
+        doc.save();
+        doc.lineWidth(0.5).strokeColor('#14243D').moveTo(36, 80).lineTo(doc.page.width - 36, 80).stroke();
+        doc.fillColor('#14243D').font('Helvetica-Bold').fontSize(14)
+           .text(station, 36, 40, { width: doc.page.width - 72, align: 'center' });
+        doc.font('Helvetica').fontSize(10).fillColor('#5C5A4E')
+           .text('Case Property Register', 36, 58, { width: doc.page.width - 72, align: 'center' });
+        doc.fontSize(8).fillColor('#5C5A4E')
+           .text(`Generated by ${officer} · ${generatedAt} · ${rows.length} item(s)${filters.section && filters.section !== 'ALL' ? ` · Part ${filters.section}` : ''}${filters.status && filters.status !== 'all' ? ` · ${filters.status}` : ''}`,
+                 36, 70, { width: doc.page.width - 72, align: 'center' });
+        doc.restore();
+      }
+      function drawFooter() {
+        const y = doc.page.height - 50;
+        doc.save();
+        doc.lineWidth(0.5).strokeColor('#C9BFA0').moveTo(36, y).lineTo(doc.page.width - 36, y).stroke();
+        doc.fillColor('#5C5A4E').font('Helvetica').fontSize(8)
+           .text(`Page ${doc.pageNumber}`, 36, y + 8, { width: doc.page.width - 72, align: 'center' });
+        doc.restore();
+      }
+      doc.on('pageAdded', () => { drawHeader(); drawFooter(); });
+      drawHeader();
+      drawFooter();
+
+      // Column widths (proportional).  Total = page width minus margins.
+      const colWidths = REPORT_COLUMNS.map((_, i) => {
+        const widths = [70, 110, 145, 38, 130, 80, 95, 60, 75];
+        return widths[i] || 60;
+      });
+      const colTotal = colWidths.reduce((a, b) => a + b, 0);
+      const pageWidth = doc.page.width - 72;
+      const scale = pageWidth / colTotal;
+      const w = colWidths.map(x => x * scale);
+      const rowH = 18;
+
+      function drawTableHeader(y) {
+        let x = 36;
+        doc.save();
+        doc.rect(36, y, pageWidth, rowH).fillAndStroke('#14243D', '#14243D');
+        doc.fillColor('#FAF7EE').font('Helvetica-Bold').fontSize(8);
+        REPORT_COLUMNS.forEach((c, i) => {
+          doc.text(c.label, x + 4, y + 5, { width: w[i] - 6, align: 'left' });
+          x += w[i];
+        });
+        doc.restore();
+        return y + rowH;
+      }
+
+      function drawRow(r, y) {
+        let x = 36;
+        doc.save();
+        doc.rect(36, y, pageWidth, rowH).fillAndStroke('#FAF7EE', '#C9BFA0');
+        doc.fillColor('#2B2B28').font('Helvetica').fontSize(7.5);
+        const values = REPORT_COLUMNS.map(c => String(r[c.key] ?? ''));
+        values.forEach((v, i) => {
+          doc.text(v, x + 4, y + 4, { width: w[i] - 6, align: 'left', height: rowH - 6, ellipsis: true });
+          x += w[i];
+        });
+        doc.restore();
+        return y + rowH;
+      }
+
+      let y = 100;
+      y = drawTableHeader(y);
+      if (rows.length === 0) {
+        doc.font('Helvetica-Oblique').fontSize(10).fillColor('#5C5A4E')
+           .text('No cases match the applied filters.', 36, y + 8);
+      } else {
+        for (const r of rows) {
+          if (y + rowH > doc.page.height - 60) {
+            doc.addPage();
+            y = 100;
+          }
+          y = drawTableHeader(y);
+          if (y + rowH > doc.page.height - 60) { doc.addPage(); y = 100; }
+          y = drawRow(r, y);
+        }
+      }
+      doc.end();
+      await auditMm(req, 'report.export', 'case-property', `Exported pdf: ${rows.length} row(s), filters=${JSON.stringify(filters)}`);
+      return;
+    }
+
+    res.status(400).json({ error: 'unsupported format', expected: ['xlsx', 'pdf', 'json'] });
+  } catch (e) { next(e); }
+});
+
+// ---------------- Malkhana Register (official printed register) ----------------
+// GET /api/reports/malkhana-register?section=all|<letter>&format=pdf
+// Each page: station letterhead, table (Sl. No., FIR/DD, item, seizure date,
+// section, status, blank Remarks), and MM + SHO signature lines at the bottom.
+app.get('/api/reports/malkhana-register', async (req, res, next) => {
+  try {
+    const db = getDb();
+    const sectionFilter = String(req.query.section || 'all').toUpperCase();
+    const format  = String(req.query.format || 'pdf').toLowerCase();
+    if (format !== 'pdf') {
+      return res.status(400).json({ error: 'unsupported format', expected: ['pdf'] });
+    }
+    const officer = req.mm?.name || db.officer?.name || 'Malkhana Moharrir';
+    const station = db.meta.station;
+    const generatedAt = new Date().toLocaleString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+
+    let rows = allCases();
+    if (sectionFilter && sectionFilter !== 'ALL') {
+      rows = rows.filter(c => (c.sectionLetter || c.section?.replace('PART ', '')) === sectionFilter);
+    }
+    // Order: section letter, then FIR number ascending (numeric within FIR/DD)
+    rows.sort((a, b) => {
+      const la = a.sectionLetter || a.section?.replace('PART ', '') || '';
+      const lb = b.sectionLetter || b.section?.replace('PART ', '') || '';
+      if (la !== lb) return la.localeCompare(lb);
+      // numeric part of id ascending
+      const na = parseInt((a.id.match(/\d+/) || ['0'])[0], 10);
+      const nb = parseInt((b.id.match(/\d+/) || ['0'])[0], 10);
+      return na - nb;
+    });
+
+    const PDFDocument = (await import('pdfkit')).default;
+    const doc = new PDFDocument({
+      size: 'A4',
+      layout: 'portrait',
+      margins: { top: 120, bottom: 120, left: 36, right: 36 },
+      info: { Title: 'Malkhana Register', Author: officer, Subject: 'e-Malkhana official register' },
+    });
+    const filename = (sectionFilter && sectionFilter !== 'ALL'
+        ? `malkhana-register-part-${sectionFilter}`
+        : 'malkhana-register') + '.pdf';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    doc.pipe(res);
+
+    const pageW = doc.page.width - 72;
+    const pageH = doc.page.height;
+
+    function drawPageHeader() {
+      doc.save();
+      // Decorative double line
+      doc.lineWidth(1).strokeColor('#14243D').moveTo(36, 70).lineTo(doc.page.width - 36, 70).stroke();
+      doc.lineWidth(0.4).moveTo(36, 73).lineTo(doc.page.width - 36, 73).stroke();
+      doc.fillColor('#14243D').font('Helvetica-Bold').fontSize(15)
+         .text(station, 36, 36, { width: pageW, align: 'center' });
+      doc.font('Helvetica-Bold').fontSize(13).fillColor('#2B2B28')
+         .text('MALKHANA REGISTER', 36, 56, { width: pageW, align: 'center' });
+      const sub = sectionFilter && sectionFilter !== 'ALL'
+        ? `Part ${sectionFilter} only · ${rows.length} entries`
+        : `All sections · ${rows.length} entries`;
+      doc.font('Helvetica-Oblique').fontSize(9).fillColor('#5C5A4E')
+         .text(sub, 36, 80, { width: pageW, align: 'center' });
+      doc.font('Helvetica').fontSize(8).fillColor('#5C5A4E')
+         .text(`Generated by ${officer} on ${generatedAt}`, 36, 92, { width: pageW, align: 'center' });
+      doc.restore();
+    }
+
+    function drawSignatureBlock() {
+      const y = pageH - 90;
+      doc.save();
+      doc.lineWidth(0.4).strokeColor('#2B2B28')
+         .moveTo(36, y).lineTo(60, y).stroke();
+      doc.moveTo(pageW / 2 - 24, y).lineTo(pageW / 2 + 24, y).stroke();
+      doc.moveTo(doc.page.width - 60, y).lineTo(doc.page.width - 36, y).stroke();
+      doc.font('Helvetica').fontSize(9).fillColor('#2B2B28')
+         .text('Prepared by', 36, y + 4, { width: 100 });
+      doc.text('Checked by', pageW / 2 - 50, y + 4, { width: 100, align: 'center' });
+      doc.text('Station House Officer', doc.page.width - 200, y + 4, { width: 164, align: 'right' });
+      doc.font('Helvetica-Oblique').fontSize(8).fillColor('#5C5A4E')
+         .text('Malkhana Moharrir', 36, y + 16, { width: 100 });
+      doc.text('(MM Signature)', pageW / 2 - 50, y + 16, { width: 100, align: 'center' });
+      doc.text('(SHO Signature)', doc.page.width - 200, y + 16, { width: 164, align: 'right' });
+      doc.font('Helvetica').fontSize(7).fillColor('#8C7A54')
+         .text(`Page ${doc.pageNumber}  ·  e-Malkhana  ·  ${generatedAt}`,
+               36, pageH - 30, { width: pageW, align: 'center' });
+      doc.restore();
+    }
+
+    // 7 columns: Sl.No. | FIR/DD | Item Description | Seizure Date | Section | Status | Remarks
+    const headers = ['Sl. No.', 'FIR / DD No.', 'Item Description', 'Seizure Date', 'Section', 'Status', 'Remarks'];
+    const widths  = [28, 65, 175, 60, 95, 75, 40];
+    const sumW = widths.reduce((a, b) => a + b, 0);
+    const scale = pageW / sumW;
+    const w = widths.map(x => x * scale);
+    const headerH = 22;
+    const rowH = 22;
+
+    function drawTableHeader(y) {
+      let x = 36;
+      doc.save();
+      doc.rect(36, y, pageW, headerH).fillAndStroke('#14243D', '#14243D');
+      doc.fillColor('#FAF7EE').font('Helvetica-Bold').fontSize(9);
+      headers.forEach((h, i) => {
+        doc.text(h, x + 4, y + 6, { width: w[i] - 6, align: 'left' });
+        x += w[i];
+      });
+      doc.restore();
+      return y + headerH;
+    }
+
+    function drawRow(sl, c, y) {
+      let x = 36;
+      doc.save();
+      doc.rect(36, y, pageW, rowH).fillAndStroke('#FAF7EE', '#C9BFA0');
+      doc.fillColor('#2B2B28').font('Helvetica').fontSize(8);
+      const values = [
+        String(sl),
+        c.id,
+        c.itemSub ? `${c.itemType} — ${c.itemSub}` : c.itemType,
+        c.seizedOn,
+        `Part ${c.sectionLetter || c.section?.replace('PART ', '')} · ${c.sectionName}`,
+        c.status,
+        '',   // blank Remarks
+      ];
+      values.forEach((v, i) => {
+        doc.text(v, x + 4, y + 6, { width: w[i] - 6, align: 'left', height: rowH - 8, ellipsis: true });
+        x += w[i];
+      });
+      doc.restore();
+      return y + rowH;
+    }
+
+    doc.on('pageAdded', () => { drawPageHeader(); drawSignatureBlock(); });
+    drawPageHeader();
+    drawSignatureBlock();
+
+    let y = 130;
+    y = drawTableHeader(y);
+
+    if (rows.length === 0) {
+      doc.font('Helvetica-Oblique').fontSize(10).fillColor('#5C5A4E')
+         .text('No cases match this section filter.', 36, y + 16, { width: pageW, align: 'center' });
+    } else {
+      let sl = 1;
+      for (const c of rows) {
+        if (y + rowH > pageH - 130) {
+          doc.addPage();
+          y = 130;
+          y = drawTableHeader(y);
+        }
+        y = drawRow(sl++, c, y);
+      }
+    }
+    doc.end();
+    await auditMm(req, 'report.export', 'malkhana-register', `Exported pdf: ${rows.length} row(s), section=${sectionFilter}`);
+  } catch (e) { next(e); }
+});
+
+// =================== API: Daily backup to Google Drive ===================
+// Schedules a daily `node server/scripts/backup-to-drive.js` run, logs each
+// attempt to db.backupLog (visible via /api/backups/last), and exposes a
+// "Run backup now" endpoint for admins.
+//
+// Backed by an in-process node-cron task.  On Vercel (serverless) the cron
+// is never triggered (the function instance is short-lived); the
+// /api/backups/run endpoint and the existing scripts/backup-to-drive.js
+// still work for manual / external-cron-driven backups.
+
+const BACKUP_CRON = process.env.BACKUP_CRON || '0 23 * * *';   // 23:00 daily
+const BACKUP_RETENTION_DAYS = parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10);
+const BACKUP_SCRIPT = join(__dirname, 'scripts', 'backup-to-drive.js');
+
+function appendBackupLog(entry) {
+  mutate(d => {
+    if (!d.backupLog) d.backupLog = [];
+    const id = (d.backupLog.at(-1)?.id ?? 0) + 1;
+    d.backupLog.push({
+      id,
+      timestamp: new Date().toISOString(),
+      ...entry,
+    });
+    // Cap at 100 entries — older rows are pruned; the actual file on Drive
+    // is the long-term archive.
+    if (d.backupLog.length > 100) d.backupLog.splice(0, d.backupLog.length - 100);
+  }).catch(e => console.error('[backup] failed to append log:', e && e.message));
+}
+
+async function runBackup(reason) {
+  const startedAt = new Date();
+  appendBackupLog({ status: 'running', reason, startedAt: startedAt.toISOString(), fileName: '' });
+  return new Promise(resolve => {
+    const child = spawn(process.execPath, [BACKUP_SCRIPT], {
+      env: { ...process.env, BACKUP_RETENTION_DAYS: String(BACKUP_RETENTION_DAYS) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', d => stdout += d.toString());
+    child.stderr.on('data', d => stderr += d.toString());
+    child.on('error', e => {
+      appendBackupLog({
+        status: 'failed', reason,
+        startedAt: startedAt.toISOString(),
+        finishedAt: new Date().toISOString(),
+        fileName: '',
+        error: e.message,
+      });
+      resolve({ ok: false, error: e.message });
+    });
+    child.on('close', code => {
+      const finishedAt = new Date();
+      // Extract the uploaded filename from the stdout — the script logs
+      // "✓ uploaded: <name>".  Best-effort; falls back to the timestamped
+      // default if the script's output format changes.
+      const m = stdout.match(/✓ uploaded:\s+(\S+)/);
+      const fileName = m ? m[1] : `emalkhana-backup-${startedAt.toISOString().slice(0, 10)}.json`;
+      if (code === 0) {
+        appendBackupLog({
+          status: 'success', reason,
+          startedAt: startedAt.toISOString(),
+          finishedAt: finishedAt.toISOString(),
+          fileName,
+          durationMs: finishedAt - startedAt,
+        });
+      } else {
+        appendBackupLog({
+          status: 'failed', reason,
+          startedAt: startedAt.toISOString(),
+          finishedAt: finishedAt.toISOString(),
+          fileName: '',
+          exitCode: code,
+          error: stderr.trim() || `backup script exited with code ${code}`,
+        });
+      }
+      resolve({ ok: code === 0, code, fileName });
+    });
+  });
+}
+
+let _backupTask = null;
+function scheduleDailyBackup() {
+  if (_backupTask) return;
+  if (!existsSync(BACKUP_SCRIPT)) {
+    console.warn(`[backup] script not found at ${BACKUP_SCRIPT} — daily backup disabled.`);
+    return;
+  }
+  _backupTask = cron.schedule(BACKUP_CRON, () => {
+    console.log('[backup] cron fired — starting daily backup');
+    runBackup('cron').catch(e => console.error('[backup] cron run failed:', e && e.message));
+  }, { scheduled: true });
+  console.log(`[backup] daily backup scheduled: "${BACKUP_CRON}" (retention: ${BACKUP_RETENTION_DAYS} days)`);
+}
+
+// GET /api/backups/status  —  returns the latest backup entry, plus the
+// configured schedule / retention.  Cheap to call; the admin screen polls it
+// on open + after "Run now" so the user sees fresh status.
+app.get('/api/backups/status', async (req, res, next) => {
+  try {
+    const db = getDb();
+    const log = db.backupLog || [];
+    const last  = log.at(-1) || null;
+    const lastSuccess = [...log].reverse().find(e => e.status === 'success') || null;
+    const lastFailed  = [...log].reverse().find(e => e.status === 'failed')  || null;
+    res.json({
+      cron: BACKUP_CRON,
+      retentionDays: BACKUP_RETENTION_DAYS,
+      scriptPath: BACKUP_SCRIPT,
+      last,
+      lastSuccess,
+      lastFailed,
+      totalRuns: log.length,
+      // Convenience: a single "summary" string the settings screen renders.
+      summary: last
+        ? `Last backup: ${new Date(last.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })} — ${
+            last.status === 'success' ? 'Success' :
+            last.status === 'failed'  ? 'Failed'  :
+            last.status === 'running' ? 'Running…' : 'Unknown'
+          }`
+        : 'No backups yet',
+    });
+  } catch (e) { next(e); }
+});
+
+// GET /api/backups/log?limit=N  —  recent backup attempts, newest first.
+app.get('/api/backups/log', async (req, res, next) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10) || 20, 100);
+    const log = (db.backupLog || []).slice().reverse().slice(0, limit);
+    res.json(log);
+  } catch (e) { next(e); }
+});
+
+// POST /api/backups/run  —  trigger a backup right now.  Used by the admin
+// "Run backup now" button.  Returns when the child process finishes.
+app.post('/api/backups/run', async (req, res, next) => {
+  try {
+    if (!existsSync(BACKUP_SCRIPT)) {
+      return res.status(503).json({ error: 'backup script not found', path: BACKUP_SCRIPT });
+    }
+    const result = await runBackup('manual');
+    await auditMm(req, 'backup.run', 'gdrive', `Manual backup: ${result.ok ? 'success' : 'failed'}${result.fileName ? ' → ' + result.fileName : ''}`);
+    res.json(result);
+  } catch (e) { next(e); }
+});
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not found' }));
 
 // JSON error handler — turns thrown Errors into clean { error, ...payload } responses
@@ -811,17 +1471,29 @@ function backfillImages() {
 
 if (!IS_VERCEL) {
   // Long-lived Node process: do the one-time migrations and start the listener.
-  ensureUploadsDir();
-  backfillImages();
-  mutate(d => { rebuildSectionCountsIn(d); });
-  scanAlerts();
-  setInterval(scanAlerts, 60 * 60 * 1000);
+  // bootStore() loads the PG mirror synchronously into memory; after this point
+  // getDb() can be called as a sync accessor (legacy JSON-store style).
+  (async () => {
+    try {
+      await bootStore();
+    } catch (e) {
+      console.error('[boot] failed to load store mirror:', e && e.message);
+      console.error('[boot] start anyway — first request will retry and surface the real error');
+    }
+    ensureUploadsDir();
+    backfillImages();
+    try { mutate(d => { rebuildSectionCountsIn(d); }); }
+    catch (e) { console.error('[boot] rebuildSectionCountsIn failed (non-fatal):', e && e.message); }
+    scanAlerts();
+    setInterval(scanAlerts, 60 * 60 * 1000);
+    scheduleDailyBackup();
 
-  app.listen(PORT, () => {
-    console.log(`[e-malkhana] http://localhost:${PORT}`);
-    console.log(`[e-malkhana] API:  http://localhost:${PORT}/api/health`);
-    if (existsSync(join(__dirname, '..', 'client', 'dist'))) console.log(`[e-malkhana] App:  http://localhost:${PORT}/`);
-  });
+    app.listen(PORT, () => {
+      console.log(`[e-malkhana] http://localhost:${PORT}`);
+      console.log(`[e-malkhana] API:  http://localhost:${PORT}/api/health`);
+      if (existsSync(join(__dirname, '..', 'client', 'dist'))) console.log(`[e-malkhana] App:  http://localhost:${PORT}/`);
+    });
+  })();
 } else {
   // Vercel serverless: state is per-instance, so on first invocation within
   // a fresh container we backfill the seeded cases' placeholder images.
@@ -831,16 +1503,21 @@ if (!IS_VERCEL) {
   // Every async op is wrapped so a boot-time error (e.g. /tmp permission
   // glitch, malformed seed) can never crash the serverless function and
   // turn into a FUNCTION_INVOCATION_FAILED 500 for the user.
-  try {
-    ensureUploadsDir();
-    backfillImages();
-  } catch (e) {
-    console.error('[boot] sync init error (non-fatal):', e && e.message);
-  }
-  const p1 = mutate(d => { rebuildSectionCountsIn(d); });
-  if (p1 && typeof p1.catch === 'function') p1.catch(e => console.error('[boot] mutate error (non-fatal):', e && e.message));
-  const p2 = scanAlerts();
-  if (p2 && typeof p2.catch === 'function') p2.catch(e => console.error('[boot] scanAlerts error (non-fatal):', e && e.message));
+  (async () => {
+    try { await bootStore(); }
+    catch (e) { console.error('[boot] store mirror load failed (non-fatal):', e && e.message); }
+    try {
+      ensureUploadsDir();
+      backfillImages();
+    } catch (e) {
+      console.error('[boot] sync init error (non-fatal):', e && e.message);
+    }
+    const p1 = mutate(d => { rebuildSectionCountsIn(d); });
+    if (p1 && typeof p1.catch === 'function') p1.catch(e => console.error('[boot] mutate error (non-fatal):', e && e.message));
+    const p2 = scanAlerts();
+    if (p2 && typeof p2.catch === 'function') p2.catch(e => console.error('[boot] scanAlerts error (non-fatal):', e && e.message));
+    scheduleDailyBackup();
+  })();
 }
 
 export default app;
