@@ -19,9 +19,14 @@
 // tables; the singletons (meta, officer, alertConfig) live in a `kv` table
 // keyed by name.
 
-import pg from 'pg';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import ws from 'ws';
 
-const { Pool } = pg;
+// Neon serverless driver requires a WebSocket constructor in Node.  In
+// the Edge runtime it's provided globally; in Node we need to wire it up.
+if (typeof globalThis.WebSocket === 'undefined') {
+  neonConfig.webSocketConstructor = ws;
+}
 
 let _pool = null;
 let _schemaReady = null;
@@ -36,21 +41,14 @@ function getPool() {
       'Get the connection string from the Neon dashboard: https://console.neon.tech'
     );
   }
-  _pool = new Pool({
-    connectionString: cs,
-    // Neon pooler connections idle out after ~5min.  Keep TCP alive so we
-    // don't eat a 1-2s reconnect penalty on the first request after a quiet
-    // period.
-    max: 5,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
-    // Neon's pooler is fine with TLS rejectUnauthorized:false on the
-    // serverless driver, but we keep the default (true) for safety.
-  });
+  // @neondatabase/serverless Pool talks to the pooler over WebSocket — no
+  // TCP connection lifecycle, no idle-client errors, no 10s connect
+  // timeout.  This is the recommended driver for Vercel serverless.
+  _pool = new Pool({ connectionString: cs });
   _pool.on('error', (err) => {
-    // The pg pool emits 'error' for idle clients that get killed by the
-    // server.  This is informational — next query will reconnect.
-    console.error('[db] idle client error:', err && err.message);
+    // The pool emits 'error' for transient issues.  Log and move on; the
+    // next query will reconnect.
+    console.error('[db] pool error:', err && err.message);
   });
   return _pool;
 }
