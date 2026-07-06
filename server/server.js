@@ -295,20 +295,34 @@ app.get('/api/health', (_req, res) => {
 app.post('/api/login', async (req, res) => {
   const { loginId, password } = req.body || {};
   const db = getDb();
-  const id = String(loginId || '').trim().toUpperCase();
-  const u = (db.users || []).find(x => x.id.toUpperCase() === id);
+  // Normalise: trim + uppercase, then accept EITHER the official id (MM-001)
+  // OR the officer's name (full name or first name, case-insensitive). This
+  // matches the real-world flow where MMs type what they remember — the
+  // ledger says "Rakesh" but the form field says "MM-001" and confusion follows.
+  const raw = String(loginId || '').trim();
+  const idKey = raw.toUpperCase();
+  const nameKey = raw.toLowerCase().replace(/\s+/g, ' ').trim();
+  const users = db.users || [];
+  const u = users.find(x =>
+    x.id.toUpperCase() === idKey
+    || (x.name || '').toLowerCase() === nameKey
+    || (x.name || '').toLowerCase().split(/\s+/).includes(nameKey)          // any single word
+    || (nameKey.length >= 3 && (x.name || '').toLowerCase().includes(nameKey))  // "rakesh sharma" → "SI Rakesh Sharma"
+  );
   if (!u) {
     return res.status(401).json({
       error: 'unknown login id',
-      tried: loginId,
-      suggestions: (db.users || []).map(x => x.id),
+      tried: raw,
+      suggestions: users.map(x => x.id),
+      hint: 'Use your MM Login ID (e.g. MM-001). The officer name also works.',
     });
   }
   if (u.password && password !== u.password) {
-    return res.status(401).json({ error: 'wrong password' });
+    return res.status(401).json({ error: 'wrong password', hint: `Demo password: ${process.env.DEMO_PW || 'malkhana2026'}` });
   }
   // strip the password before returning
   const { password: _pw, ...safe } = u;
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.json({ user: safe, station: db.meta.station, asOf: db.meta.asOf });
   // Audit the login (using the same request that we now know is authenticated)
   await auditMm({ mm: { id: u.id, name: u.name } }, 'login', u.id, `Malkhana Moharrir signed in`);
