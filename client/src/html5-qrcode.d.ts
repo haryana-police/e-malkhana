@@ -1,7 +1,7 @@
 // Type stub for html5-qrcode (no official @types package).
-// The library exposes a global Html5Qrcode and a few helpers; we only need
-// `Html5Qrcode` for live-scanning with `start/stop`.  See the project
-// README for the full API surface.
+// The library exposes `Html5Qrcode` plus a static `getCameras` helper.
+// We only need `start/stop/clear` for live-scanning; for the rest we
+// type-narrow at the call site.
 declare module 'html5-qrcode' {
   export interface Html5QrcodeCameraScanConfig {
     fps?: number;
@@ -11,13 +11,17 @@ declare module 'html5-qrcode' {
     videoConstraints?: MediaTrackConstraints;
   }
 
-  export type Html5QrcodeSuccessCallback = (decodedText: string, result: { resultText: string }) => void;
+  export type Html5QrcodeSuccessCallback = (
+    decodedText: string,
+    result: { resultText: string }
+  ) => void;
   export type Html5QrcodeErrorCallback = (errorMessage: string) => void;
 
   export class Html5Qrcode {
     constructor(elementId: string);
     start(
-      cameraConfig: Html5QrcodeCameraScanConfig,
+      cameraConfig: MediaTrackConstraints | Html5QrcodeCameraScanConfig,
+      config: Html5QrcodeCameraScanConfig,
       successCallback: Html5QrcodeSuccessCallback,
       errorCallback?: Html5QrcodeErrorCallback
     ): Promise<void>;

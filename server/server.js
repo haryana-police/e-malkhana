@@ -522,28 +522,31 @@ app.post('/api/movements', async (req, res, next) => {
     for (const k of required) if (!b[k]) { const e = new Error(`missing field: ${k}`); e.status = 400; throw e; }
     const c = findOrThrow(b.caseId);
     // append-only — no id reuse, no from/to mutation
+    const movementId = await nextMovementId();
     const movement = {
-      id: nextMovementId(),
-      caseId: b.caseId,
-      fromLocation: b.fromLocation || lastLocationOf(b.caseId),
+      id: movementId,
+      caseId: c.id,
+      fromLocation: lastLocationOf(c.id),
       toLocation:   b.toLocation,
-      movedBy:      b.movedBy,
-      timestamp:    b.timestamp || nowISO(),
-      purpose:      b.purpose || 'Movement',
-      docRef:       b.docRef || '',
+      movedBy:      b.movedBy || getDb().officer.name,
+      timestamp:    nowISO(),
+      purpose:      b.purpose || `Scan @ ${b.toLocation}`,
+      docRef:       b.docRef || `SCAN-${Date.now()}`,
     };
     await mutate(d => { d.movements.push(movement); });
-    // optional: also update case status to the most-likely intent
     if (b.setStatus && STATUSES.includes(b.setStatus)) {
       await mutate(d => { const x = d.cases.find(y => y.id === b.caseId); if (x) x.status = b.setStatus; });
     }
-    // return the freshly-saved case (with updated status if any)
-    const updated = withFreshSectionName(getCase(b.caseId) || c, getDb());
+    const updatedCase = await getCase(b.caseId);
+    const finalCase = withFreshSectionName(updatedCase || c, getDb());
     await auditMm(req, b.setStatus ? 'movement.record' : 'movement.log', c.id,
-      `${b.setStatus ? 'Recorded movement + status: ' : 'Logged movement: '}${b.fromLocation || '—'} → ${b.toLocation}${b.setStatus ? ` (status: ${b.setStatus})` : ''}${b.purpose ? ' — ' + b.purpose : ''}`);
-    res.status(201).json({ case: updated, movement });
+      `${b.setStatus ? 'Recorded movement + status: ' : 'Logged movement: '}${movement.fromLocation} → ${movement.toLocation}${b.setStatus ? ` (status: ${b.setStatus})` : ''}${b.purpose ? ' — ' + b.purpose : ''}`);
+    res.status(201).json({ case: finalCase, movement });
+    return;
   } catch (e) { next(e); }
 });
+
+// =================== API: scan endpoint ===================
 
 function lastLocationOf(caseId) {
   const ms = getMovements(caseId);
@@ -998,9 +1001,14 @@ app.get('/api/reports/case-property', async (req, res, next) => {
       const filename = reportFileName('case-property', 'xlsx', filters);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      await wb.xlsx.write(res);
+      try {
+        await wb.xlsx.write(res);
+      } catch (e) { console.error('[xlsx] write failed:', e && (e.stack || e.message)); throw e; }
       res.end();
-      await auditMm(req, 'report.export', 'case-property', `Exported xlsx: ${rows.length} row(s), filters=${JSON.stringify(filters)}`);
+      // Audit AFTER res.end() so a slow audit doesn't block the download.
+      // (We don't await — fire-and-forget is fine for an audit row.)
+      auditMm(req, 'report.export', 'case-property', `Exported xlsx: ${rows.length} row(s), filters=${JSON.stringify(filters)}`)
+        .catch(e => console.error('[xlsx] audit failed (non-fatal):', e && e.message));
       return;
     }
 
@@ -1015,9 +1023,14 @@ app.get('/api/reports/case-property', async (req, res, next) => {
       const filename = reportFileName('case-property', 'pdf', filters);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      doc.pipe(res);
+      doc.on('error', e => console.error('[pdf] doc error:', e && (e.stack || e.message)));
+      try {
+        doc.pipe(res);
+      } catch (e) { console.error('[pdf] pipe failed:', e && (e.stack || e.message)); throw e; }
 
-      // Letterhead (drawn on every page via pageAdded event)
+      // Letterhead + footer (drawn manually on every page; the pageAdded
+      // event in older pdfkit builds can recurse on certain text() calls,
+      // so we just call the drawing helpers explicitly before each table).
       function drawHeader() {
         doc.save();
         doc.lineWidth(0.5).strokeColor('#14243D').moveTo(36, 80).lineTo(doc.page.width - 36, 80).stroke();
@@ -1038,7 +1051,7 @@ app.get('/api/reports/case-property', async (req, res, next) => {
            .text(`Page ${doc.pageNumber}`, 36, y + 8, { width: doc.page.width - 72, align: 'center' });
         doc.restore();
       }
-      doc.on('pageAdded', () => { drawHeader(); drawFooter(); });
+      // Draw initial page header/footer
       drawHeader();
       drawFooter();
 
@@ -1089,15 +1102,24 @@ app.get('/api/reports/case-property', async (req, res, next) => {
         for (const r of rows) {
           if (y + rowH > doc.page.height - 60) {
             doc.addPage();
+            drawHeader();
+            drawFooter();
             y = 100;
           }
           y = drawTableHeader(y);
-          if (y + rowH > doc.page.height - 60) { doc.addPage(); y = 100; }
+          if (y + rowH > doc.page.height - 60) {
+            doc.addPage();
+            drawHeader();
+            drawFooter();
+            y = 100;
+          }
           y = drawRow(r, y);
         }
       }
-      doc.end();
-      await auditMm(req, 'report.export', 'case-property', `Exported pdf: ${rows.length} row(s), filters=${JSON.stringify(filters)}`);
+      try { doc.end(); }
+      catch (e) { console.error('[pdf] end failed:', e && (e.stack || e.message)); throw e; }
+      auditMm(req, 'report.export', 'case-property', `Exported pdf: ${rows.length} row(s), filters=${JSON.stringify(filters)}`)
+        .catch(e => console.error('[pdf] audit failed (non-fatal):', e && e.message));
       return;
     }
 
@@ -1151,7 +1173,9 @@ app.get('/api/reports/malkhana-register', async (req, res, next) => {
         : 'malkhana-register') + '.pdf';
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    doc.pipe(res);
+    doc.on('error', e => console.error('[reg] doc error:', e && (e.stack || e.message)));
+    try { doc.pipe(res); }
+    catch (e) { console.error('[reg] pipe failed:', e && (e.stack || e.message)); throw e; }
 
     const pageW = doc.page.width - 72;
     const pageH = doc.page.height;
@@ -1240,7 +1264,9 @@ app.get('/api/reports/malkhana-register', async (req, res, next) => {
       return y + rowH;
     }
 
-    doc.on('pageAdded', () => { drawPageHeader(); drawSignatureBlock(); });
+    // First page: draw header + signature block.  Subsequent pages: call
+    // them again after doc.addPage().  We avoid the pageAdded event here
+    // for the same reason as the case-property PDF.
     drawPageHeader();
     drawSignatureBlock();
 
@@ -1255,14 +1281,18 @@ app.get('/api/reports/malkhana-register', async (req, res, next) => {
       for (const c of rows) {
         if (y + rowH > pageH - 130) {
           doc.addPage();
+          drawPageHeader();
+          drawSignatureBlock();
           y = 130;
           y = drawTableHeader(y);
         }
         y = drawRow(sl++, c, y);
       }
     }
-    doc.end();
-    await auditMm(req, 'report.export', 'malkhana-register', `Exported pdf: ${rows.length} row(s), section=${sectionFilter}`);
+    try { doc.end(); }
+    catch (e) { console.error('[reg] end failed:', e && (e.stack || e.message)); throw e; }
+    auditMm(req, 'report.export', 'malkhana-register', `Exported pdf: ${rows.length} row(s), section=${sectionFilter}`)
+      .catch(e => console.error('[reg] audit failed (non-fatal):', e && e.message));
   } catch (e) { next(e); }
 });
 

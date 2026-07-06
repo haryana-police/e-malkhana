@@ -25,7 +25,7 @@ const QUICK_LOCATIONS = [
 // Returns { id, explicitItemId } — when the payload carries an explicit
 // `item` field we use that for the case lookup too (matches MK-... ids
 // for the rare case where the FIR id is missing/legacy).
-function parsePayload(raw) {
+function parsePayload(raw: string): { id: string; itemId: string } {
   const trimmed = String(raw || '').trim();
   if (!trimmed) return { id: '', itemId: '' };
   if (trimmed.startsWith('{')) {
@@ -89,7 +89,7 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
     return () => { stopScanner(); };
   }, []);
 
-  async function startScanner(cameraId) {
+  async function startScanner(cameraId: string | null) {
     setScanError(null);
     try {
       const s = new Html5Qrcode(containerId);
@@ -101,12 +101,12 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
         ? { deviceId: { exact: cameraId } }
         : { facingMode: 'environment' };
       await s.start(
-        camConfig,
+        camConfig as any,
         { fps: 10, qrbox: { width: 240, height: 240 } },
         onScanSuccess,
         _onScanFailure,
       );
-    } catch (e) {
+    } catch (e: any) {
       setScanError(`Failed to start camera: ${e?.message || e}. Try manual entry.`);
       setPhase('idle');
     }
@@ -122,7 +122,7 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
     } catch { /* ignore */ }
   }
 
-  async function onScanSuccess(decodedText) {
+  async function onScanSuccess(decodedText: string) {
     await stopScanner();
     const { id, itemId } = parsePayload(decodedText);
     if (!id) {
@@ -134,9 +134,9 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
   }
 
   // onScanFailure fires on every frame that doesn't decode — keep it silent.
-  function _onScanFailure(_msg) { /* noop */ }
+  function _onScanFailure(_msg: string) { /* noop */ }
 
-  async function lookupAndPrompt({ payload, fallbackId, itemId }) {
+  async function lookupAndPrompt({ payload, fallbackId, itemId }: { payload: string; fallbackId: string; itemId: string }) {
     setBusy(true); setMsg(null);
     try {
       // The /api/scan endpoint accepts a raw payload (the JSON the QR
@@ -161,7 +161,7 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
     }
   }
 
-  async function submitMovement(e) {
+  async function submitMovement(e: React.FormEvent) {
     e.preventDefault();
     if (!matched) return;
     setBusy(true); setMsg(null);
@@ -177,7 +177,7 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
         : `Item recognised: ${r.case.itemType}` });
       onSuccess(r.case, !!r.movement);
       setTimeout(() => { reset(); onClose(); }, 1500);
-    } catch (e) {
+    } catch (e: any) {
       const err = e as ApiError;
       setMsg({ kind: 'error', text: (err.body && err.body.error) || err.message });
     } finally {

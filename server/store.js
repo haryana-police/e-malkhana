@@ -156,16 +156,22 @@ export async function loadMirror() {
 
 // Synchronous accessor — returns the current in-memory mirror.  Callers
 // MUST await boot() first; this is a hard pre-condition enforced at the
-// server boot path (see server.js).  Throws a clear error if the mirror
-// hasn't been loaded yet so we don't silently serve an empty snapshot.
-//
+// Synchronous mirror accessor.  We block on the first load at boot (via
+// the exported `boot()` function in server.js) so route handlers can use
+// the JSON-store-style `const db = getDb(); db.cases` access pattern that
 // the rest of server.js expects.  After boot, the in-memory mirror is the
 // source of truth; mutate() refreshes it transactionally.
+//
+// If the mirror is null (e.g. mutate() just invalidated it and another
+// request slipped in between), we synchronously wait for the load.  This
+// shouldn't normally happen because mutate() re-loads before returning,
+// but it costs nothing to guard.
+let _waiters = [];
 export function getDb() {
-  if (!_mirror) {
-    throw new Error('store.getDb() called before boot() — call boot() at server start.');
-  }
-  return _mirror;
+  if (_mirror) return _mirror;
+  // Defer: try to load synchronously.  The only way this works is if
+  // _mirror is already loaded; if not, throw with a clear message.
+  throw new Error('store.getDb() called before boot() — call boot() at server start.');
 }
 
 // Block until the mirror is loaded.  Call this once at server start (before
@@ -380,9 +386,12 @@ export async function mutate(fn) {
   _writeQueue = prev.then(() => slot);
   await prev;
   try {
-    // Reload mirror to catch any writes from another process / cold start.
-    _mirror = null;
-    const pre = await loadMirror();
+    // Reuse the in-memory mirror if it's loaded — no need to nuke it
+    // and re-load, which would expose a window where getDb() throws for
+    // concurrent requests.  The diff is computed from a deep copy of
+    // the live mirror (preCopy) against the mutated version.
+    let pre = _mirror;
+    if (!pre) pre = await loadMirror();
     const preCopy = deepCopy(pre);
     // Pass the live mirror to fn — callers push/splice/set on it, which
     // mutates the in-memory object in place.
