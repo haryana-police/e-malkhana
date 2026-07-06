@@ -14,6 +14,15 @@ import {
 } from './store.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
 
+// Defence-in-depth: surface unhandled rejections instead of silently killing
+// the process (which is what the live PATCH bug looked like from the client).
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason && (reason.stack || reason.message || reason));
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err && (err.stack || err.message || err));
+});
+
 // Detect Vercel serverless environment.  On Vercel the function is stateless
 // and persistent state lives in /tmp (per-instance, lost on cold start).
 const IS_VERCEL = !!process.env.VERCEL;
@@ -263,8 +272,10 @@ function scanAlerts() {
     });
   }
 
-  // Persist into alert_issues
-  mutate(d => { d.alertIssues = out; });
+  // Persist into alert_issues. Catch so an unhandled rejection can't crash
+  // the process if the alertIssues write fails after a PATCH.
+  mutate(d => { d.alertIssues = out; })
+    .catch(e => console.error('[alerts] failed to persist alertIssues:', e.message));
   return out;
 }
 function getAlertIssues() {
@@ -655,22 +666,50 @@ app.get('/api/alerts/config', (_req, res) => {
 app.patch('/api/alerts/config', async (req, res, next) => {
   try {
     const b = req.body || {};
+
+    // ---- Validate BEFORE persisting (don't corrupt db on bad input) ----
+    const fields = {};
+    const dayKeys = ['fslDays', 'expertDays', 'courtDays', 'inspectionCycleDays'];
+    for (const k of dayKeys) {
+      if (b[k] === undefined) continue;                                 // partial PATCH is OK
+      const v = b[k];
+      if (!Number.isInteger(v) || v < 1 || v > 3650) {
+        fields[k] = 'must be a whole number between 1 and 3650 days';
+      }
+    }
+    if (b.lastInspection !== undefined) {
+      const li = b.lastInspection;
+      if (typeof li !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(li)) {
+        fields.lastInspection = 'must be a date in YYYY-MM-DD format';
+      } else if (Number.isNaN(new Date(li).getTime())) {
+        fields.lastInspection = 'must be a real calendar date';
+      }
+    }
+    if (Object.keys(fields).length > 0) {
+      return res.status(400).json({ error: 'validation failed', fields });
+    }
+
+    // ---- Persist ----
     const result = await mutate(d => {
       const c = d.alertConfig;
       const changes = [];
-      for (const k of ['fslDays', 'expertDays', 'courtDays', 'inspectionCycleDays']) {
-        if (Number.isFinite(b[k]) && c[k] !== b[k]) {
+      for (const k of dayKeys) {
+        if (b[k] !== undefined && c[k] !== b[k]) {
           changes.push(`${k}: ${c[k]} → ${b[k]}`);
           c[k] = b[k];
         }
       }
-      if (typeof b.lastInspection === 'string' && b.lastInspection && c.lastInspection !== b.lastInspection) {
+      if (b.lastInspection !== undefined && c.lastInspection !== b.lastInspection) {
         changes.push(`lastInspection: ${c.lastInspection} → ${b.lastInspection}`);
         c.lastInspection = b.lastInspection;
       }
       return { config: c, changes };
     });
-    scanAlerts();
+
+    // ---- Re-scan alerts but never let a scan failure poison the PATCH response ----
+    try { scanAlerts(); }
+    catch (e) { console.error('[alerts] scanAlerts failed (config saved, scan skipped):', e.message); }
+
     await auditMm(req, 'alerts.config', 'thresholds', result.changes.length ? result.changes.join('; ') : 'no changes');
     res.json(result.config);
   } catch (e) { next(e); }

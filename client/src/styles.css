@@ -527,6 +527,25 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 .settings-row .desc{ font-size:11px; color: var(--slate-soft); margin-top:2px; }
 .settings-row input{ font-family:'IBM Plex Mono', monospace; font-size:13px; color: var(--ink-navy); font-weight:600; }
 
+/* Inline field-level validation error (shown under the offending input). */
+.field-error{
+  grid-column: 1 / -1;
+  font-size: 11.5px;
+  color: var(--seal-red);
+  margin-top: 2px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.settings-row input[aria-invalid="true"]{
+  border-color: var(--seal-red);
+  outline-color: var(--seal-red);
+  background: #fff5f5;
+}
+.settings-row input[aria-invalid="true"]:focus{
+  outline: 2px solid var(--seal-red);
+  outline-offset: 1px;
+}
+
 /* ============================================================
    Hamburger menu button + drawer close affordance (mobile only).
    Base styles declared BEFORE the @media blocks so the media
