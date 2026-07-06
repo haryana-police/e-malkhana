@@ -26,8 +26,9 @@ const SAMPLE_IDS: Sample[] = [
 ];
 
 // MUST match the DEMO_PW in server/store.js.  Kept in sync by convention;
-// both ends of the demo depend on it.
-const DEMO_PASSWORD = 'malkhana2026';
+// both ends of the demo depend on it.  This is the password the user types
+// in the form, and the value the quick-login buttons send to /api/login.
+const DEMO_PASSWORD='malkhana2026';
 
 export function Login({ onLogin }: Props) {
   const [loginId, setLoginId]   = useState('MM-001');

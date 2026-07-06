@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { CaseRow, CaseStatus } from '../types';
 import { api } from '../api';
 
@@ -16,6 +17,8 @@ interface Props {
   onOpenRegister: () => void;
   onChangeStatus: (c: CaseRow) => void;
   active?: boolean;
+  onDownloadReport: (format: 'xlsx' | 'pdf') => void;
+  onGenerateRegister: (format: 'pdf' | 'print') => void;
 }
 
 function statusClass(s: CaseStatus): string {
@@ -34,6 +37,7 @@ export function CaseProperty({
   activeStatus, onClearStatus,
   excludeDisposed, onClearExcludeDisposed,
   onOpenTag, onOpenTimeline, onOpenScan, onOpenRegister, onChangeStatus, active,
+  onDownloadReport, onGenerateRegister,
 }: Props) {
   const [textFilter, setTextFilter] = useState('');
 
@@ -75,8 +79,10 @@ export function CaseProperty({
             {!activeSection && <> · filtered by: all sections</>}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn ghost" onClick={onOpenScan}>Open Scanner</button>
+          <button className="btn ghost" onClick={() => onDownloadReport('xlsx')} title="Download currently filtered cases as Excel">⬇ Download Report (Excel)</button>
+          <button className="btn ghost" onClick={() => onDownloadReport('pdf')}  title="Download currently filtered cases as PDF">⬇ Download Report (PDF)</button>
           <button className="btn" onClick={onOpenRegister}>+ Register New Case Property</button>
         </div>
       </div>
@@ -117,6 +123,15 @@ export function CaseProperty({
         <button className="btn small scan-btn" onClick={onOpenScan}>Scan QR</button>
       </div>
 
+      <div className="scan-bar" style={{ background: 'rgba(75,93,58,0.06)', borderColor: 'var(--olive)' }}>
+        <span className="scan-label" style={{ color: 'var(--olive)' }}>Register</span>
+        <span style={{ flex: 1, fontSize: 12.5, color: 'var(--slate)' }}>
+          Generate the official Malkhana Register (portrait, letterhead, signature lines) for {visible.length} currently-shown case(s).
+        </span>
+        <button className="btn small" onClick={() => onGenerateRegister('pdf')}  title="Download as PDF">⬇ PDF</button>
+        <button className="btn small ghost" onClick={() => onGenerateRegister('print')} title="Open browser print dialog">🖨 Print</button>
+      </div>
+
       <div className="panel">
         <div className="panel-head">
           <h2>All Case Property</h2>
@@ -143,7 +158,13 @@ export function CaseProperty({
             )}
             {visible.map(c => (
               <tr key={c.id}>
-                <td className="fir">{c.id}</td>
+                <td className="fir">
+                  <Link
+                    to={`/case-property/${encodeURIComponent(c.id)}`}
+                    className="case-link"
+                    title={`Open ${c.id} detail page`}
+                  >{c.id}</Link>
+                </td>
                 <td className="item-desc">
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                     {c.imageUrl && <img src={c.imageUrl} alt="" className="case-thumb" />}
@@ -173,8 +194,16 @@ export function CaseProperty({
                 <td>{c.seizedOn}</td>
                 <td>
                   <div className="row-actions">
-                    <div className="icon-btn" title="View evidence tag (real QR)" onClick={() => onOpenTag(c)}>▦</div>
-                    <div className="icon-btn" title="View movement log" onClick={() => onOpenTimeline(c.id)}>⏱</div>
+                    <Link
+                      to={`/case-property/${encodeURIComponent(c.id)}?tab=tag`}
+                      className="icon-btn"
+                      title="View evidence tag (real QR) on detail page"
+                    >▦</Link>
+                    <Link
+                      to={`/case-property/${encodeURIComponent(c.id)}?tab=timeline`}
+                      className="icon-btn"
+                      title="View movement log on detail page"
+                    >⏱</Link>
                     <div className="icon-btn" title="Change status (record a movement)" onClick={() => onChangeStatus(c)}>↻</div>
                   </div>
                 </td>

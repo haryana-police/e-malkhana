@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { api, setCurrentMm } from './api';
 import type {
   ViewName, CaseRow, CaseStatus, MovementEvent, AlertConfig, RackItem, User,
@@ -17,6 +18,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { ChangeStatusModal } from './components/ChangeStatusModal';
 import { Login } from './components/Login';
 import { SectionsManagerModal } from './components/SectionsManagerModal';
+import { Footer } from './components/Footer';
+import { CasePropertyDetail } from './components/CasePropertyDetail';
 
 interface BootData {
   officer: { initials: string; name: string; rank: string };
@@ -34,7 +37,26 @@ interface BootData {
 
 const STORAGE_KEY = 'emalkhana_user_v1';
 
+// Map ViewName <-> URL path.  Keeping this in one place means the sidebar
+// and the router can't disagree about what "/alerts" is called.
+function viewToPath(v: ViewName): string {
+  switch (v) {
+    case 'dashboard':    return '/dashboard';
+    case 'caseproperty': return '/caseproperty';
+    case 'movements':    return '/movements';
+    case 'alerts':       return '/alerts';
+  }
+}
+function pathToView(p: string): ViewName {
+  if (p.startsWith('/caseproperty') || p.startsWith('/case-property')) return 'caseproperty';
+  if (p.startsWith('/movements'))    return 'movements';
+  if (p.startsWith('/alerts'))       return 'alerts';
+  return 'dashboard';
+}
+
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
   // -------- auth state --------
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -58,7 +80,10 @@ export default function App() {
   }
 
   // -------- app state --------
-  const [view, setView] = useState<ViewName>('dashboard');
+  // `view` is derived from the URL pathname so a deep link to
+  // /caseproperty or /alerts lights up the right sidebar entry.
+  const [view, setView] = useState<ViewName>(() => pathToView(location.pathname));
+  useEffect(() => { setView(pathToView(location.pathname)); }, [location.pathname]);
   const [data, setData] = useState<BootData | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -102,11 +127,16 @@ export default function App() {
   }, [sidebarOpen]);
 
   function navWith(v: ViewName) {
-    setView(v);
     setActiveSection(null);
     setActiveStatus(null);
     setExcludeDisposed(false);
     setSidebarOpen(false);  // close drawer on any nav click
+    navigate(viewToPath(v));
+  }
+
+  // Click on the logo / title in the letterhead — go to the dashboard (home).
+  function goHome() {
+    navWith('dashboard');
   }
 
   async function reload() {
@@ -147,28 +177,54 @@ export default function App() {
     setUser(null);
     setCurrentMm('anonymous');
     localStorage.removeItem(STORAGE_KEY);
-    setView('dashboard');
     setActiveSection(null);
     setActiveStatus(null);
     setExcludeDisposed(false);
+    navigate('/');
   }
 
   // Click on a dashboard stat-tile — navigates and pre-filters the case list
   // (or jumps to the alerts page for inspection-due).
   function onStatClick(target: 'all' | 'pending' | 'expert' | 'fsl' | 'inspection') {
     if (target === 'inspection') {
-      setView('alerts');
       setActiveSection(null);
       setActiveStatus(null);
       setExcludeDisposed(false);
+      navigate('/alerts');
       return;
     }
-    setView('caseproperty');
+    navigate('/caseproperty');
     setActiveSection(null);
     if      (target === 'all')     { setActiveStatus(null);   setExcludeDisposed(false); }
     else if (target === 'pending') { setActiveStatus(null);   setExcludeDisposed(true);  }  // all non-disposed
     else if (target === 'expert')  { setActiveStatus('Expert Opinion Pending'); setExcludeDisposed(false); }
     else if (target === 'fsl')     { setActiveStatus('With FSL'); setExcludeDisposed(false); }
+  }
+
+  // Download handlers (used by Dashboard, CaseProperty, and Alerts).
+  // Filter values are the EXACT ones on screen, so the file rows == the
+  // visible rows.  For Dashboard / Alerts there's no filter, so we pass
+  // the unfiltered URL.  For the Malkhana Register we respect the active
+  // section filter from the sidebar.
+  function buildReportFilters() {
+    return {
+      section: activeSection || 'all',
+      status: activeStatus || (excludeDisposed ? 'all' : 'all'),
+      excludeDisposed,
+    };
+  }
+  function onDownloadReport(format: 'xlsx' | 'pdf') {
+    const url = api.casePropertyReportUrl(buildReportFilters(), format);
+    window.location.href = url;
+  }
+  function onGenerateRegister(format: 'pdf' | 'print') {
+    if (format === 'pdf') {
+      window.location.href = api.malkhanaRegisterUrl(activeSection || 'all');
+    } else {
+      // Browser print: open the API URL in a new window and let the
+      // browser's print dialog render the PDF as a preview-able page.
+      window.open(api.malkhanaRegisterUrl(activeSection || 'all'), '_blank');
+    }
   }
 
   // -------- gate: not authed -> show login --------
@@ -199,6 +255,7 @@ export default function App() {
         onLogout={handleLogout}
         onMenuToggle={() => setSidebarOpen(o => !o)}
         menuOpen={sidebarOpen}
+        onHome={goHome}
       />
       {sidebarOpen && (
         <div
@@ -223,45 +280,87 @@ export default function App() {
           onCloseMobile={() => setSidebarOpen(false)}
         />
         <div className="main">
-          {view === 'dashboard' && (
-            <Dashboard
-              stats={data.stats}
-              movements={data.recentMovements}
-              alerts={data.priorityAlerts}
-              totalCases={data.cases.length}
-              onStatClick={onStatClick}
-              onOpenTag={setTagCase}
-              onOpenTimeline={openTimeline}
-              onOpenRegister={() => setOpenRegister(true)}
-            />
-          )}
-          {view === 'caseproperty' && (
-            <CaseProperty
-              cases={data.cases}
-              activeSection={activeSection}
-              onClearSection={() => setActiveSection(null)}
-              activeStatus={activeStatus}
-              onClearStatus={() => setActiveStatus(null)}
-              excludeDisposed={excludeDisposed}
-              onClearExcludeDisposed={() => setExcludeDisposed(false)}
-              onOpenTag={setTagCase}
-              onOpenTimeline={openTimeline}
-              onOpenScan={() => setOpenScan(true)}
-              onOpenRegister={() => setOpenRegister(true)}
-              onChangeStatus={setChangeCase}
-            />
-          )}
-          {view === 'movements' && (
-            <Movements
-              cases={data.cases}
-              onOpenScan={() => setOpenScan(true)}
-              onOpenChangeStatus={setChangeCase}
-              onOpenTag={setTagCase}
-            />
-          )}
-          {view === 'alerts' && (
-            <Alerts alerts={data.alerts} onOpenSettings={() => setOpenSettings(true)} />
-          )}
+          <Routes>
+            <Route path="/" element={
+              <Dashboard
+                stats={data.stats}
+                movements={data.recentMovements}
+                alerts={data.priorityAlerts}
+                totalCases={data.cases.length}
+                onStatClick={onStatClick}
+                onOpenTag={setTagCase}
+                onOpenTimeline={openTimeline}
+                onOpenRegister={() => setOpenRegister(true)}
+                onDownloadReport={onDownloadReport}
+              />
+            } />
+            <Route path="/dashboard" element={
+              <Dashboard
+                stats={data.stats}
+                movements={data.recentMovements}
+                alerts={data.priorityAlerts}
+                totalCases={data.cases.length}
+                onStatClick={onStatClick}
+                onOpenTag={setTagCase}
+                onOpenTimeline={openTimeline}
+                onOpenRegister={() => setOpenRegister(true)}
+                onDownloadReport={onDownloadReport}
+              />
+            } />
+            <Route path="/caseproperty" element={
+              <CaseProperty
+                cases={data.cases}
+                activeSection={activeSection}
+                onClearSection={() => setActiveSection(null)}
+                activeStatus={activeStatus}
+                onClearStatus={() => setActiveStatus(null)}
+                excludeDisposed={excludeDisposed}
+                onClearExcludeDisposed={() => setExcludeDisposed(false)}
+                onOpenTag={setTagCase}
+                onOpenTimeline={openTimeline}
+                onOpenScan={() => setOpenScan(true)}
+                onOpenRegister={() => setOpenRegister(true)}
+                onChangeStatus={setChangeCase}
+                onDownloadReport={onDownloadReport}
+                onGenerateRegister={onGenerateRegister}
+              />
+            } />
+            <Route path="/case-property/:item_id" element={
+              <CasePropertyDetail
+                onOpenTag={setTagCase}
+                onRegisterMovement={setChangeCase}
+              />
+            } />
+            <Route path="/movements" element={
+              <Movements
+                cases={data.cases}
+                onOpenScan={() => setOpenScan(true)}
+                onOpenChangeStatus={setChangeCase}
+                onOpenTag={setTagCase}
+              />
+            } />
+            <Route path="/alerts" element={
+              <Alerts
+                alerts={data.alerts}
+                onOpenSettings={() => setOpenSettings(true)}
+                onDownloadReport={onDownloadReport}
+                onGenerateRegister={onGenerateRegister}
+              />
+            } />
+            <Route path="*" element={
+              <Dashboard
+                stats={data.stats}
+                movements={data.recentMovements}
+                alerts={data.priorityAlerts}
+                totalCases={data.cases.length}
+                onStatClick={onStatClick}
+                onOpenTag={setTagCase}
+                onOpenTimeline={openTimeline}
+                onOpenRegister={() => setOpenRegister(true)}
+                onDownloadReport={onDownloadReport}
+              />
+            } />
+          </Routes>
         </div>
       </div>
 
@@ -330,6 +429,8 @@ export default function App() {
           {scanFlash.text}
         </div>
       )}
+
+      <Footer onHome={goHome} />
     </>
   );
 }

@@ -28,8 +28,12 @@ function fmtTime(iso: string) {
 }
 
 export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager }: Props) {
-  const [tab, setTab] = useState<'thresholds' | 'log'>('thresholds');
+  const [tab, setTab] = useState<'thresholds' | 'log' | 'backup'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
+  const [backup, setBackup] = useState<any>(null);
+  const [backupLog, setBackupLog] = useState<any[]>([]);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMsg, setBackupMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   // Per-field validation errors shown inline beneath each input (key = AlertConfig field name).
@@ -45,6 +49,11 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager 
       api.alertConfig().then(setCfg).catch(e => setMsg({ kind: 'error', text: (e as Error).message }));
       // load log when tab opened
       api.audit({ limit: 200 }).then(setLog).catch(e => setLogError((e as Error).message));
+      // load backup status / log when backup tab opened
+      if (tab === 'backup') {
+        api.backupStatus().then(setBackup).catch(e => setBackupMsg({ kind: 'error', text: (e as Error).message }));
+        api.backupLog(20).then(setBackupLog).catch(() => {});
+      }
     }
   }, [open, tab]);
 
@@ -152,6 +161,10 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager 
             onClick={() => setTab('thresholds')}
           >⚙ Alert thresholds</button>
           <button
+            className={`audit-tab${tab === 'backup' ? ' active' : ''}`}
+            onClick={() => setTab('backup')}
+          >☁ Backup &amp; Restore</button>
+          <button
             className={`audit-tab${tab === 'log' ? ' active' : ''}`}
             onClick={() => setTab('log')}
           >📜 Activity log <span className="audit-tab-count">{(log ?? []).length}</span></button>
@@ -232,6 +245,31 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager 
           </>
         )}
 
+        {tab === 'backup' && (
+          <BackupTabContent
+            backup={backup}
+            backupLog={backupLog}
+            busy={backupBusy}
+            msg={backupMsg}
+            onRun={async () => {
+              setBackupBusy(true); setBackupMsg(null);
+              try {
+                const r = await api.backupRun();
+                setBackupMsg({
+                  kind: r.ok ? 'ok' : 'error',
+                  text: r.ok ? `Backup uploaded: ${r.fileName || 'success'}` : `Backup failed: ${r.error || 'unknown'}`,
+                });
+                // refresh status + log
+                api.backupStatus().then(setBackup).catch(() => {});
+                api.backupLog(20).then(setBackupLog).catch(() => {});
+              } catch (e) {
+                setBackupMsg({ kind: 'error', text: (e as Error).message });
+              } finally {
+                setBackupBusy(false);
+              }
+            }}
+          />
+        )}
         {tab === 'log' && (
           <>
             {Object.keys(userSummary).length > 0 && (
@@ -304,6 +342,119 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager 
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// =============================================================
+// Backup tab — shows the latest backup status, the configured
+// schedule, and a "Run backup now" button.  On the server the
+// backup is performed by `server/scripts/backup-to-drive.js`,
+// which expects a Google service account key + Drive folder id.
+// =============================================================
+function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
+  backup: any;
+  backupLog: any[];
+  busy: boolean;
+  msg: { kind: 'ok' | 'error'; text: string } | null;
+  onRun: () => void;
+}) {
+  const last = backup?.last;
+  const lastClass = !last ? ''
+    : last.status === 'success' ? 'backup-status-ok'
+    : last.status === 'failed'  ? 'backup-status-fail'
+    : 'backup-status-run';
+  const fmtTime = (iso: string) => iso
+    ? new Date(iso).toLocaleString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: true,
+      })
+    : '—';
+  return (
+    <div>
+      <div className="sub" style={{ marginBottom: 12 }}>
+        Daily Google Drive backup of the full case register.  Backups older
+        than <b>{backup?.retentionDays ?? 30} days</b> are auto-pruned from
+        the Drive folder.  Configure the cron / retention via the
+        <code> BACKUP_CRON </code> and <code> BACKUP_RETENTION_DAYS </code>
+        env vars.  See <code>docs/BACKUP_DAILY.md</code> for one-time setup.
+      </div>
+
+      <div className="backup-card">
+        <div className="row">
+          <div>
+            <div className="k">Last backup</div>
+            <div className={`v ${lastClass}`} style={{ fontSize: 14 }}>
+              {last ? `${fmtTime(last.timestamp)} — ${
+                last.status === 'success' ? 'Success' :
+                last.status === 'failed'  ? 'Failed'  :
+                last.status === 'running' ? 'Running…' : 'Unknown'
+              }` : 'No backups yet'}
+            </div>
+            {last?.fileName && <div className="v" style={{ fontSize: 11, color: 'var(--slate-soft)' }}>📄 {last.fileName}</div>}
+            {last?.error && <div className="v" style={{ fontSize: 11, color: 'var(--seal-red)' }}>{last.error}</div>}
+          </div>
+          <div style={{ flex: '0 0 auto' }}>
+            <button className="btn" onClick={onRun} disabled={busy}>
+              {busy ? 'Running…' : '▶ Run backup now'}
+            </button>
+          </div>
+        </div>
+        <div className="row">
+          <div>
+            <div className="k">Schedule</div>
+            <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace' }}>{backup?.cron || '—'}</div>
+          </div>
+          <div>
+            <div className="k">Retention</div>
+            <div className="v">{backup?.retentionDays ?? 30} days</div>
+          </div>
+          <div>
+            <div className="k">Total runs</div>
+            <div className="v">{backup?.totalRuns ?? 0}</div>
+          </div>
+        </div>
+        {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 8 }}>{msg.text}</div>}
+      </div>
+
+      <h3 style={{ fontFamily: 'Rajdhani, sans-serif', color: 'var(--ink-navy)', fontSize: 14, margin: '12px 0 8px' }}>
+        Recent runs <span className="audit-tab-count">{backupLog.length}</span>
+      </h3>
+      {backupLog.length === 0 ? (
+        <div className="sub">No backup attempts recorded yet.</div>
+      ) : (
+        <table className="audit-log-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Status</th>
+              <th>Reason</th>
+              <th>File</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {backupLog.map((e: any) => (
+              <tr key={e.id}>
+                <td className="fir">{fmtTime(e.timestamp)}</td>
+                <td>
+                  <span className={`stamp ${
+                    e.status === 'success' ? 'malkhana' :
+                    e.status === 'failed'  ? 'disposed' :
+                    'expert'
+                  }`}>{e.status}</span>
+                </td>
+                <td>{e.reason || '—'}</td>
+                <td style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }}>{e.fileName || '—'}</td>
+                <td style={{ fontSize: 11.5, color: 'var(--slate-soft)' }}>
+                  {e.error ? <span style={{ color: 'var(--seal-red)' }}>{e.error}</span> :
+                   e.durationMs ? `${(e.durationMs / 1000).toFixed(1)}s` : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

@@ -3,6 +3,8 @@ import type { AlertRow } from '../types';
 interface Props {
   alerts: AlertRow[];
   onOpenSettings: () => void;
+  onDownloadReport: (format: 'xlsx' | 'pdf') => void;
+  onGenerateRegister: (format: 'pdf' | 'print') => void;
   active?: boolean;
 }
 
@@ -12,7 +14,7 @@ interface Group {
   rows: AlertRow[];
 }
 
-export function Alerts({ alerts, onOpenSettings, active }: Props) {
+export function Alerts({ alerts, onOpenSettings, onDownloadReport, onGenerateRegister, active }: Props) {
   // Group alerts by category, mirroring the original layout exactly.
   const groups: Group[] = [
     {
@@ -48,7 +50,13 @@ export function Alerts({ alerts, onOpenSettings, active }: Props) {
             Auto-generated daily · thresholds configurable per category
           </div>
         </div>
-        <button className="btn ghost" onClick={onOpenSettings}>Configure thresholds</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn ghost" onClick={() => onDownloadReport('xlsx')} title="Download full register as Excel">⬇ Download Report (Excel)</button>
+          <button className="btn ghost" onClick={() => onDownloadReport('pdf')}  title="Download full register as PDF">⬇ Download Report (PDF)</button>
+          <button className="btn ghost" onClick={() => onGenerateRegister('pdf')}    title="Generate Malkhana Register (PDF)">📄 Malkhana Register (PDF)</button>
+          <button className="btn ghost" onClick={() => onGenerateRegister('print')}  title="Open browser print dialog">🖨 Print Register</button>
+          <button className="btn ghost" onClick={onOpenSettings}>Configure thresholds</button>
+        </div>
       </div>
 
       {groups.map((g, gi) => (

@@ -70,9 +70,10 @@ export interface DashboardStats {
 }
 
 export interface RackItem {
-  letter: string;              // "A"
+  letter: string;              // "A" or "AA"
   name: string;                // "Narcotics Rack"
   count: number;               // 18
+  active?: boolean;            // false = hidden from "Register New" dropdown
 }
 
 export interface Officer {

@@ -13,6 +13,8 @@ interface Props {
   onSectionFilter: (letter: string | null) => void;
   user?: { id: string; name: string } | null;
   onLogout?: () => void;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 const navItems: { view: ViewName; label: string }[] = [
@@ -22,7 +24,7 @@ const navItems: { view: ViewName; label: string }[] = [
   { view: 'alerts',        label: 'Alerts & Compliance' },
 ];
 
-export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, onOpenSectionsManager, activeSection, onSectionFilter, user, onLogout }: Props) {
+export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, onOpenSectionsManager, activeSection, onSectionFilter, user, onLogout, mobileOpen, onCloseMobile }: Props) {
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries(racks.map(r => [r.letter, r.name]))
   );
@@ -49,9 +51,20 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
   }
 
   return (
-    <div className="sidebar">
+    <div className={`sidebar${mobileOpen ? ' mobile-open' : ''}`}>
       <div>
-        <div className="side-section-label">Navigate</div>
+        <div className="side-section-label">
+          <span>Navigate</span>
+          {onCloseMobile && (
+            <button
+              type="button"
+              className="sidebar-close-btn"
+              onClick={onCloseMobile}
+              aria-label="Close navigation"
+              title="Close"
+            >×</button>
+          )}
+        </div>
         <div className="nav-list">
           {navItems.map(item => (
             <div

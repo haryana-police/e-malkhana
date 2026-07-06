@@ -70,7 +70,8 @@ export const api = {
   case:        (id: string) => get<CaseRow>(`/cases/${encodeURIComponent(id)}`),
   alerts:      () => get<AlertRow[]>('/alerts'),
   alertConfig: () => get<AlertConfig>('/alerts/config'),
-  sections:    () => get<{ letter: string; name: string; count: number }[]>('/sections'),
+  sections:    (active: 'true' | 'false' | 'all' = 'true') =>
+    get<{ letter: string; name: string; count: number; active?: boolean }[]>(`/sections?active=${active}`),
   users:       () => get<User[]>('/users'),
   qr:          (id: string) => get<{ dataUrl: string; payload: string }>(`/cases/${encodeURIComponent(id)}/qr`),
   movements:   (id: string) => get<MovementLogRow[]>(`/cases/${encodeURIComponent(id)}/movements`),
@@ -88,8 +89,39 @@ export const api = {
   login:         (loginId: string, password?: string) => send<{ user: User; station: string; asOf: string }>('POST', '/login', { loginId, password }),
   createCase:    (input: NewCaseInput)   => send<CaseRow>('POST',  '/cases', input),
   updateStatus:  (id: string, status: string) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}/status`, { status }),
-  renameSection: (letter: string, name: string) => send<{ letter: string; name: string; count: number }>('PATCH', `/sections/${encodeURIComponent(letter)}`, { name }),
-  createSection: (name: string)                => send<{ letter: string; name: string; count: number }>('POST',  '/sections', { name }),
+
+  // downloads — the browser does the navigation; we just return the URL.
+  // Filters match the API exactly so the rows on screen == the rows in
+  // the file.
+  casePropertyReportUrl: (filters: {
+    section?: string; status?: string | null; excludeDisposed?: boolean;
+    from?: string; to?: string; q?: string;
+  }, format: 'xlsx' | 'pdf') => {
+    const p = new URLSearchParams();
+    p.set('format', format);
+    if (filters.section && filters.section !== 'all') p.set('section', filters.section);
+    if (filters.status  && filters.status  !== 'all') p.set('status',  filters.status);
+    if (filters.excludeDisposed) p.set('excludeDisposed', '1');
+    if (filters.from) p.set('from', filters.from);
+    if (filters.to)   p.set('to',   filters.to);
+    if (filters.q)    p.set('q',    filters.q);
+    return `${base}/reports/case-property?${p.toString()}`;
+  },
+  malkhanaRegisterUrl: (section: string = 'all') =>
+    `${base}/reports/malkhana-register?section=${encodeURIComponent(section)}&format=pdf`,
+
+  // backups (admin)
+  backupStatus: () => get<{
+    cron: string; retentionDays: number; scriptPath: string;
+    last: any; lastSuccess: any; lastFailed: any; totalRuns: number; summary: string;
+  }>('/backups/status'),
+  backupLog:    (limit = 20) => get<any[]>(`/backups/log?limit=${limit}`),
+  backupRun:    () => send<{ ok: boolean; code?: number; fileName?: string; error?: string }>('POST', '/backups/run', {}),
+
+  // other
+  renameSection: (letter: string, name: string) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}`, { name }),
+  setSectionActive: (letter: string, active: boolean) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}/active`, { active }),
+  createSection: (name: string)                => send<{ letter: string; name: string; count: number; active?: boolean }>('POST',  '/sections', { name }),
   deleteSection: (letter: string)               => send<{ letter: string; name: string; count: number; deleted: boolean }>('DELETE', `/sections/${encodeURIComponent(letter)}`, {}),
   updateAlerts:  (cfg: Partial<AlertConfig>) => send<AlertConfig>('PATCH', '/alerts/config', cfg),
   createMovement: (input: ScanInput) => send<{ case: CaseRow; movement?: MovementLogRow }>('POST', '/movements', input),
