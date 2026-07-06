@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "E-Malkhana — Haryana Police digital evidence / case property register",
+  "description": "E-Malkhana \u2014 Haryana Police digital evidence / case property register",
   "scripts": {
     "dev": "concurrently -n server,client -c yellow,cyan \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "cd server && node server.js",
@@ -14,5 +14,16 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "googleapis": "^173.0.0",
+    "node-cron": "^4.6.0",
+    "pdfkit": "^0.19.1",
+    "qrcode": "^1.5.4"
   }
 }
