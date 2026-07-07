@@ -74,10 +74,26 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
 
     Html5Qrcode.getCameras()
       .then(list => {
-        setCameras(list);
         if (list.length === 0) {
+          setCameras(list);
           setScanError('No camera detected on this device. Use the manual tag-ID entry below.');
+          return;
         }
+        // Sort rear cameras first so the default selection is the one the
+        // user wants for scanning a QR tag (front cameras on most phones
+        // return first from getUserMedia, which produced the wrong default).
+        const isRear = (c: { id: string; label: string }) =>
+          /back|rear|environment/i.test(c.label) ||
+          // deviceId strings from Chromium often encode the facing: a token
+          // containing "back" or the absence of "front" is a strong signal.
+          (/back/i.test(c.id) || !/front/i.test(c.id));
+        const sorted = [...list].sort((a, b) =>
+          (isRear(b) ? 1 : 0) - (isRear(a) ? 1 : 0),
+        );
+        setCameras(sorted);
+        // Default the active selection to the first rear camera (or the
+        // first camera in the list if none labelled as rear).
+        setActiveCamId(sorted.find(isRear)?.id ?? sorted[0].id);
       })
       .catch(e => {
         setScanError(`Camera unavailable: ${e?.message || e}. Use the manual entry below.`);
@@ -230,7 +246,7 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
                   value={activeCamId || ''}
                   onChange={e => { setActiveCamId(e.target.value || null); }}
                 >
-                  <option value="">Auto · rear camera</option>
+                  <option value="">Auto · rear camera (facingMode)</option>
                   {cameras.map(c => <option key={c.id} value={c.id}>{c.label || c.id}</option>)}
                 </select>
               </label>
