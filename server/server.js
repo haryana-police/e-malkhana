@@ -412,6 +412,21 @@ app.post('/api/cases', async (req, res, next) => {
     const itemId = body.itemId || makeItemId(id);
     const createdAt = nowISO();
 
+    // Look up the BNS legal section (OPTIONAL).  The user picks a section
+    // from the typeahead on Register New Case Property; we accept either
+    // a bare section number ("101") or a "BNS 101" prefix.  We validate
+    // it against the bns_sections table and persist BOTH the section_no
+    // and the denormalised title so the case row can render without a
+    // re-join (e.g. for the table view, evidence tag PDF, etc.).
+    let legalSection = null, legalSectionTitle = null;
+    if (body.legalSection) {
+      const secNo = String(body.legalSection).replace(/^BNS\s+/i, '').trim();
+      const hit = db_bnsSectionByNo(secNo);
+      if (!hit) { const e = new Error(`unknown BNS section: ${body.legalSection}`); e.status = 400; throw e; }
+      legalSection = hit.sectionNo;
+      legalSectionTitle = hit.title;
+    }
+
     // NOTE: sectionName is NOT stored on the case record. It's always
     // resolved from the live sections table at read time (see
     // withFreshSectionName). This way section renames propagate to every
@@ -432,10 +447,12 @@ app.post('/api/cases', async (req, res, next) => {
       imageUrl:   body.photo || undefined,
       skipAutoImage: !body.photo,                              // protect newly-registered cases from auto-dummy
       docRef:     body.supportingDoc || undefined,             // optional — seizure memo URL
+      legalSection,
+      legalSectionTitle,
       createdAt,
     };
     await mutate(d => { d.cases.push(newCase); rebuildSectionCountsIn(d); });
-    await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer} on ${body.seizedOn}`);
+    await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer} on ${body.seizedOn}${legalSection ? ` — BNS ${legalSection} (${legalSectionTitle})` : ''}`);
     res.status(201).json(withFreshSectionName(newCase, getDb()));
   } catch (e) { next(e); }
 });
@@ -481,10 +498,142 @@ app.patch('/api/cases/:id/status', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// PATCH /api/cases/:id
+//
+// Edit the editable fields of a case from the Case Property Detail page.
+// The case id itself is immutable (it's the FIR/DD number — renaming that
+// would break every movement / alert / QR link that points at it).  All
+// other fields the user can see in the detail view are editable.
+//
+// Body (all fields OPTIONAL — only present keys are touched):
+//   {
+//     itemType?:        string,
+//     itemSub?:         string,
+//     section?:         string  (section letter "A".."E"),
+//     seizingOfficer?:  string,
+//     seizedOn?:        string  (ISO date "2026-03-11" or display "11 Mar 2026"),
+//     itemId?:          string,
+//     legalSection?:    string  (BNS section no., bare "101" or "BNS 101"; null/"" to clear)
+//   }
+//
+// Returns the updated CaseRow (with fresh sectionName joined from the
+// sections table, same as GET /api/cases/:id).
+//
+// Audit log entry is written for every successful update, summarising
+// ONLY the fields that actually changed (so a no-op PATCH doesn't pollute
+// the audit log).
+app.patch('/api/cases/:id', async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const body = req.body || {};
+
+    // Allow-list of editable keys.  Anything outside this list is silently
+    // dropped (avoids callers sneaking in `status` or `id` changes through
+    // a different endpoint).
+    const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'seizedOn', 'itemId', 'legalSection'];
+    const patch = {};
+    for (const k of ALLOWED) {
+      if (Object.prototype.hasOwnProperty.call(body, k)) patch[k] = body[k];
+    }
+    if (Object.keys(patch).length === 0) { const e = new Error('no editable fields supplied'); e.status = 400; throw e; }
+
+    // Normalise / validate section letter if provided.
+    let newSectionLetter = null;
+    if (patch.section != null) {
+      const sec = db_sectionByLetter(patch.section);
+      if (!sec) { const e = new Error(`unknown section: ${patch.section}`); e.status = 400; throw e; }
+      newSectionLetter = sec.letter;
+    }
+
+    // Normalise / validate BNS section.  "" or null clears it; a real
+    // value must resolve against the bns_sections table.
+    let newLegalSection = undefined;
+    let newLegalSectionTitle = undefined;
+    if (Object.prototype.hasOwnProperty.call(patch, 'legalSection')) {
+      const raw = patch.legalSection;
+      if (raw == null || String(raw).trim() === '') {
+        newLegalSection = null;
+        newLegalSectionTitle = null;
+      } else {
+        const secNo = String(raw).replace(/^BNS\s+/i, '').trim();
+        const hit = db_bnsSectionByNo(secNo);
+        if (!hit) { const e = new Error(`unknown BNS section: ${raw}`); e.status = 400; throw e; }
+        newLegalSection = hit.sectionNo;
+        newLegalSectionTitle = hit.title;
+      }
+    }
+
+    let updated = null;
+    const changes = [];
+    await mutate(d => {
+      const c = d.cases.find(x => x.id === id);
+      if (!c) { const e = new Error('case not found'); e.status = 404; throw e; }
+
+      // Apply each field + record a change line for the audit log.
+      if ('itemType' in patch) {
+        const v = String(patch.itemType || '').trim();
+        if (!v) { const e = new Error('itemType cannot be empty'); e.status = 400; throw e; }
+        if (c.itemType !== v) { changes.push(`item: "${c.itemType}" → "${v}"`); c.itemType = v; }
+      }
+      if ('itemSub' in patch) {
+        const v = String(patch.itemSub || '').trim();
+        if (c.itemSub !== v) { changes.push(`detail: "${c.itemSub || ''}" → "${v}"`); c.itemSub = v; }
+      }
+      if ('section' in patch) {
+        if (c.section !== `PART ${newSectionLetter}`) {
+          changes.push(`section: ${c.section} → PART ${newSectionLetter}`);
+          c.section = `PART ${newSectionLetter}`;
+        }
+      }
+      if ('seizingOfficer' in patch) {
+        const v = String(patch.seizingOfficer || '').trim();
+        if (!v) { const e = new Error('seizingOfficer cannot be empty'); e.status = 400; throw e; }
+        if (c.seizingOfficer !== v) { changes.push(`officer: "${c.seizingOfficer}" → "${v}"`); c.seizingOfficer = v; }
+      }
+      if ('seizedOn' in patch) {
+        const v = String(patch.seizedOn || '').trim();
+        if (!v) { const e = new Error('seizedOn cannot be empty'); e.status = 400; throw e; }
+        if (c.seizedOn !== v) { changes.push(`seized on: ${c.seizedOn} → ${v}`); c.seizedOn = v; }
+      }
+      if ('itemId' in patch) {
+        const v = String(patch.itemId || '').trim();
+        if (c.itemId !== v) { changes.push(`item id: ${c.itemId || ''} → ${v}`); c.itemId = v; }
+      }
+      if (newLegalSection !== undefined) {
+        const oldSec = c.legalSection || '';
+        const oldTit = c.legalSectionTitle || '';
+        if (oldSec !== (newLegalSection || '')) {
+          if (newLegalSection) {
+            changes.push(`BNS section: ${oldSec || '—'} → ${newLegalSection} (${newLegalSectionTitle})`);
+          } else {
+            changes.push(`BNS section: ${oldSec || '—'} → (cleared)`);
+          }
+          c.legalSection = newLegalSection || undefined;
+          c.legalSectionTitle = newLegalSectionTitle || undefined;
+        }
+      }
+
+      // section counts are derived from the cases table; recompute so the
+      // sidebar/dashboard counters stay accurate after a move.
+      rebuildSectionCountsIn(d);
+      updated = c;
+    });
+
+    const summary = changes.length > 0 ? changes.join('; ') : '(no-op)';
+    await auditMm(req, 'case.update', id, `Edited ${id}: ${summary}`);
+    res.json(withFreshSectionName(updated, getDb()));
+  } catch (e) { next(e); }
+});
+
 function db_sectionByLetter(letter) {
   const db = getDb();
   const l = String(letter).toUpperCase();
   return db.sections.find(s => s.letter === l);
+}
+function db_bnsSectionByNo(no) {
+  const db = getDb();
+  const n = String(no || '').replace(/^BNS\s+/i, '').trim();
+  return (db.bnsSections || []).find(s => s.sectionNo === n);
 }
 function rebuildSectionCountsIn(d) {
   for (const s of d.sections) s.count = 0;
@@ -497,6 +646,43 @@ function rebuildSectionCountsIn(d) {
     }
   }
 }
+
+// =================== API: BNS sections (typeahead reference) ===================
+//
+// GET /api/bns-sections?q=<text>&limit=<n>
+//   - returns matching BNS sections ordered by section number
+//   - `q` is matched (case-insensitive) against sectionNo, title, and category
+//   - `limit` defaults to 15, capped at 100
+//   - when `q` is empty/missing, returns the first 15 (so the dropdown has
+//     content the moment the field is focused)
+//
+// Idempotent: a single boot-time seed populates exactly 100 rows
+// (see server/db.js `BNS_SECTIONS`).  The endpoint never writes; it
+// just reads from the in-memory mirror.
+app.get('/api/bns-sections', (req, res) => {
+  const db = getDb();
+  const q = String(req.query.q || '').trim().toLowerCase();
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 15, 1), 100);
+  const all = db.bnsSections || [];
+  let hits;
+  if (!q) {
+    hits = all.slice(0, limit);
+  } else {
+    // "starts with" beats "contains" for short numeric queries like "30"
+    // so the user typing "30" sees BNS 30 first, not BNS 130/230/300.
+    const exact = [], starts = [], contains = [];
+    for (const s of all) {
+      const no = s.sectionNo.toLowerCase();
+      const title = s.title.toLowerCase();
+      const cat = (s.category || '').toLowerCase();
+      if (no === q) exact.push(s);
+      else if (no.startsWith(q) || title.startsWith(q)) starts.push(s);
+      else if (title.includes(q) || cat.includes(q) || no.includes(q)) contains.push(s);
+    }
+    hits = [...exact, ...starts, ...contains].slice(0, limit);
+  }
+  res.json(hits);
+});
 
 // =================== API: QR codes ===================
 

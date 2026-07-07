@@ -315,6 +315,28 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
   padding: 2px 7px; border-radius:3px;
 }
 
+/* BNS (Bharatiya Nyaya Sanhita) section chip — shown in the "Section"
+   column on the case-property table.  Two-line layout: monospace
+   "BNS 101" on top, short title underneath.  When only the number is
+   present (no denormalised title), the chip collapses to a single line. */
+.bns-chip{
+  display: inline-flex; flex-direction: column; gap: 1px;
+  font-family:'IBM Plex Sans', sans-serif; font-size: 11px; line-height: 1.25;
+  background: rgba(140, 32, 40, 0.07); color: var(--ink-navy);
+  border: 1px solid rgba(140, 32, 40, 0.18);
+  padding: 3px 7px; border-radius: 3px;
+  max-width: 220px;
+}
+.bns-chip-no{
+  font-family:'IBM Plex Mono', monospace; font-weight: 600;
+  color: var(--seal-red); font-size: 10.5px; letter-spacing: 0.04em;
+}
+.bns-chip-title{
+  font-size: 10.5px; color: var(--slate); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  max-width: 200px;
+}
+
 .row-actions{ display:flex; gap:6px; }
 /* Whole row is clickable (PRD #7) — show pointer + soft hover.  Cursor
    on .icon-btn overrides to pointer naturally; we only restyle the row
@@ -1152,6 +1174,59 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 }
 .file-remove:hover{ background: var(--white-paper); color: var(--seal-red); }
 
+/* ---- BNS (Bharatiya Nyaya Sanhita) section typeahead ----
+   Lives inside .form-grid > label.full so it inherits the form grid
+   placement.  The visible "input" is wrapped in .bns-typeahead along
+   with a clear (×) button and the absolute-positioned dropdown
+   (.bns-hits).  Picked-section summary appears below the input as
+   a small green confirmation line.  */
+.bns-typeahead{ position: relative; }
+.bns-typeahead > input{
+  width: 100%; padding-right: 30px;  /* leave room for × clear button */
+  background: var(--white-paper); border: 1px solid var(--line);
+  border-radius: 3px; padding: 9px 11px;
+  font-family:'IBM Plex Sans', sans-serif; font-size: 13px; color: var(--ink-navy);
+  text-transform: none; letter-spacing: 0;
+}
+.bns-typeahead > input:focus{ border-color: var(--ink-navy); background: #fff; outline: none; }
+.bns-clear{
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: 0; color: var(--slate-soft);
+  font-size: 16px; line-height: 1; padding: 4px 8px; cursor: pointer; border-radius: 3px;
+}
+.bns-clear:hover{ background: var(--white-paper); color: var(--seal-red); }
+.bns-hits{
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 50;
+  max-height: 280px; overflow-y: auto;
+  background: #fff; border: 1px solid var(--line); border-radius: 3px;
+  box-shadow: 0 6px 24px rgba(15, 32, 68, 0.12);
+}
+.bns-hit{
+  padding: 7px 11px; cursor: pointer; display: flex; align-items: baseline; gap: 10px;
+  border-bottom: 1px solid var(--line);
+  font-family:'IBM Plex Sans', sans-serif; font-size: 12.5px; color: var(--ink-navy);
+}
+.bns-hit:last-child{ border-bottom: 0; }
+.bns-hit.active, .bns-hit:hover{ background: rgba(15, 32, 68, 0.05); }
+.bns-hit .bns-no{
+  font-family:'IBM Plex Mono', monospace; font-weight: 600; color: var(--seal-red);
+  font-size: 11.5px; min-width: 64px; flex-shrink: 0;
+}
+.bns-hit .bns-title{ flex: 1; }
+.bns-hit .bns-cat{ font-size: 10.5px; color: var(--slate-soft); text-transform: uppercase; letter-spacing: 0.06em; }
+.bns-empty{
+  padding: 12px 14px; text-align: center;
+  font-family:'IBM Plex Sans', sans-serif; font-size: 12px; color: var(--slate-soft);
+  font-style: italic;
+}
+.bns-picked{
+  margin-top: 5px; font-family:'IBM Plex Sans', sans-serif; font-size: 12px;
+  color: var(--olive, #4b5d3a);
+}
+.bns-picked b{ color: var(--ink-navy); font-family:'IBM Plex Mono', monospace; }
+.bns-picked .muted{ color: var(--slate-soft); font-size: 11px; }
+
+
 /* ============================================================
    SettingsModal — tabs + audit log
    ============================================================ */
@@ -1343,6 +1418,116 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .empty-state { padding: 60px 20px; text-align: center; color: var(--slate-soft); }
 .link-back { color: var(--ink-navy); text-decoration: none; font-size: 12.5px; }
 .link-back:hover { color: var(--khaki); text-decoration: underline; }
+
+/* ---------- Case detail: inline edit form ---------- */
+
+.case-detail-saved-flash {
+  display: inline-block; margin-left: 12px;
+  background: #D6F0DC; color: #1A5A33; border: 1px solid #6BB088;
+  padding: 2px 10px; border-radius: 3px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  animation: case-detail-saved-fade 3s ease-out forwards;
+}
+@keyframes case-detail-saved-fade {
+  0%   { opacity: 0; transform: translateY(-2px); }
+  10%  { opacity: 1; transform: translateY(0); }
+  85%  { opacity: 1; }
+  100% { opacity: 0.4; }
+}
+
+.case-detail-edit {
+  background: var(--white-paper);
+  border: 1px solid var(--khaki-light);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 0 rgba(140, 122, 84, 0.06);
+}
+.case-detail-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px 16px;
+}
+.case-detail-edit-grid label,
+.case-detail-edit-bns {
+  display: flex; flex-direction: column;
+  font-size: 10.5px; text-transform: uppercase; color: var(--khaki);
+  letter-spacing: 0.06em;
+  position: relative;
+}
+.case-detail-edit-grid input,
+.case-detail-edit-grid select,
+.case-detail-edit-bns input {
+  margin-top: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink-navy);
+  text-transform: none;
+  letter-spacing: 0;
+  background: #FFFEF9;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-weight: 500;
+}
+.case-detail-edit-grid input:focus,
+.case-detail-edit-grid select:focus,
+.case-detail-edit-bns input:focus {
+  outline: none;
+  border-color: var(--khaki);
+  box-shadow: 0 0 0 2px rgba(140, 122, 84, 0.18);
+  background: #fff;
+}
+
+.case-detail-edit-bns-clear {
+  position: absolute;
+  right: 6px; bottom: 6px;
+  font-size: 10px;
+  background: transparent; border: 1px solid var(--line);
+  color: var(--slate-soft);
+  padding: 1px 6px; border-radius: 3px; cursor: pointer;
+  text-transform: none; letter-spacing: 0;
+}
+.case-detail-edit-bns-clear:hover { color: var(--ink-navy); border-color: var(--khaki); }
+
+.case-detail-edit-bns-pop {
+  position: absolute; top: 100%; left: 0; right: 0;
+  margin-top: 2px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  max-height: 240px; overflow-y: auto;
+  z-index: 20;
+  box-shadow: 0 4px 12px rgba(20, 36, 61, 0.12);
+}
+.case-detail-edit-bns-empty { padding: 8px 10px; font-size: 11.5px; color: var(--slate-soft); text-transform: none; letter-spacing: 0; }
+.case-detail-edit-bns-row {
+  display: flex; gap: 8px; align-items: baseline;
+  width: 100%; text-align: left;
+  background: transparent; border: 0;
+  padding: 6px 10px; cursor: pointer;
+  font-size: 12px; color: var(--ink-navy);
+  text-transform: none; letter-spacing: 0;
+  border-bottom: 1px solid #F1ECDC;
+}
+.case-detail-edit-bns-row:last-child { border-bottom: 0; }
+.case-detail-edit-bns-row:hover,
+.case-detail-edit-bns-row.is-active { background: #F8F2E2; }
+.case-detail-edit-bns-no { font-family: 'IBM Plex Mono', monospace; color: var(--khaki); font-weight: 600; }
+.case-detail-edit-bns-title { color: var(--slate); }
+
+.case-detail-edit-err {
+  margin-top: 10px;
+  background: #FBE4E4; color: #8A1F1F;
+  border: 1px solid #D99595;
+  padding: 6px 10px; border-radius: 4px;
+  font-size: 12px;
+}
+.case-detail-edit-actions {
+  display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;
+}
+.case-detail-edit-actions .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+
 
 /* Backup status card on the settings page */
 .backup-card {

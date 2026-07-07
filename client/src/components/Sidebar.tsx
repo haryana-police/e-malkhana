@@ -81,7 +81,7 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
 
       <div>
         <div className="side-section-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>Malkhana Sections</span>
+          <span>Malkhana Locations</span>
           <span
             onClick={onOpenSettings}
             style={{ cursor: 'pointer', color: 'var(--paper-dark)' }}

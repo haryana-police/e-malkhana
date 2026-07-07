@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import type { CaseRow, MovementEvent, MovementLogRow } from '../types';
+import type { CaseRow, MovementLogRow, RackItem, BnsSection } from '../types';
 
 interface Props {
   onOpenTag: (c: CaseRow) => void;        // legacy: kept for global fallback
@@ -13,6 +13,43 @@ const STATUS_TONE: Record<string, string> = {
   'With FSL': 'tone-warn', 'Expert Opinion Pending': 'tone-warn',
   'In Court': 'tone-info', 'Disposed': 'tone-good',
 };
+
+// Editable copy of the case row used by the inline-edit form.  Every key
+// the user can change is on this shape.  Keep it in sync with what
+// server.js's PATCH /api/cases/:id actually persists.
+interface EditableCase {
+  itemType: string;
+  itemSub: string;
+  sectionLetter: string;       // "A".."E" (we send just the letter; server re-derives "PART A")
+  seizingOfficer: string;
+  seizedOn: string;             // "YYYY-MM-DD" for the date input
+  itemId: string;
+  legalSectionNo: string;      // bare "101" or ""
+  legalSectionTitle: string;
+}
+
+function caseToEditable(c: CaseRow): EditableCase {
+  // seizedOn is rendered on the card as e.g. "11 Mar 2026".  For the
+  // <input type="date"> we need YYYY-MM-DD.  We try ISO first, then
+  // fall back to a Date parse on the display string.
+  const seizedIso = (() => {
+    const s = c.seizedOn || '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return s;
+  })();
+  return {
+    itemType: c.itemType || '',
+    itemSub: c.itemSub || '',
+    sectionLetter: (c.section || '').match(/PART ([A-Z]{1,2})/i)?.[1]?.toUpperCase() || 'A',
+    seizingOfficer: c.seizingOfficer || '',
+    seizedOn: seizedIso,
+    itemId: c.itemId || '',
+    legalSectionNo: c.legalSection || '',
+    legalSectionTitle: c.legalSectionTitle || '',
+  };
+}
 
 export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
   const { item_id: itemIdParam } = useParams<{ item_id: string }>();
@@ -30,6 +67,23 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Racks for the section picker (loaded once per case change).
+  const [racks, setRacks] = useState<RackItem[]>([]);
+  // Edit-mode state.  `null` = read-only (default).  An object = the
+  // form's working copy (dirty, unsaved).
+  const [editDraft, setEditDraft] = useState<EditableCase | null>(null);
+  const [editErr, setEditErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  // BNS typeahead inside the edit form.
+  const [bnsQuery, setBnsQuery] = useState('');
+  const [bnsHits, setBnsHits] = useState<BnsSection[]>([]);
+  const [bnsOpen, setBnsOpen] = useState(false);
+  const [bnsLoading, setBnsLoading] = useState(false);
+  const [bnsActive, setBnsActive] = useState<number>(-1);
+  const bnsBoxRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!itemIdParam) return;
     setErr(null); setBusy(true);
@@ -37,12 +91,16 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
       try {
         const c = await api.case(itemIdParam);
         setCaseRow(c);
-        const [mv, qr] = await Promise.all([
+        const [mv, qr, sec] = await Promise.all([
           api.movements(c.id),
           api.qr(c.id).catch(() => ({ dataUrl: '', payload: '' })),
+          // load racks for the section picker; ignore failure (the form
+          // is hidden until the user clicks Edit anyway).
+          api.sections('all').catch(() => [] as RackItem[]),
         ]);
         setMovements(mv);
         setQrUrl(qr.dataUrl);
+        setRacks(sec);
       } catch (e) {
         setErr((e as Error).message);
       } finally {
@@ -51,10 +109,36 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
     })();
   }, [itemIdParam]);
 
+  // Debounced BNS typeahead, only active while the form is open.
+  useEffect(() => {
+    if (!editDraft) return;
+    let cancelled = false;
+    setBnsLoading(true);
+    const timer = setTimeout(() => {
+      api.bnsSections(bnsQuery, 15)
+        .then(rows => { if (!cancelled) { setBnsHits(rows); setBnsActive(rows.length ? 0 : -1); } })
+        .catch(() => { if (!cancelled) setBnsHits([]); })
+        .finally(() => { if (!cancelled) setBnsLoading(false); });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [bnsQuery, editDraft]);
+
+  // Click-outside closes the BNS dropdown.
+  useEffect(() => {
+    if (!bnsOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (bnsBoxRef.current && !bnsBoxRef.current.contains(e.target as Node)) {
+        setBnsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [bnsOpen]);
+
   // Honour ?tab=tag / ?tab=timeline from the case-property row icons.
   // After a short delay (so the DOM is rendered) we scroll the matching
   // section into view + briefly highlight it, then strip the param so
-  // a refresh of the same URL doesn't keep jumping.
+  // a refresh of the same URL doesn't loop.
   useEffect(() => {
     if (!highlightTab || busy || !caseRow) return;
     const id = highlightTab === 'tag' ? 'detail-section-tag' : 'detail-section-timeline';
@@ -75,6 +159,76 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
   }
+  function fmtDisplayDate(s: string) {
+    if (!s) return '—';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+    return s;
+  }
+
+  // ---- Edit-mode handlers ----
+
+  function startEdit() {
+    if (!caseRow) return;
+    const draft = caseToEditable(caseRow);
+    setEditDraft(draft);
+    setEditErr(null);
+    setBnsQuery(draft.legalSectionTitle ? `${draft.legalSectionNo} — ${draft.legalSectionTitle}` : (draft.legalSectionNo || ''));
+    setBnsOpen(false);
+  }
+  function cancelEdit() {
+    setEditDraft(null);
+    setEditErr(null);
+    setBnsHits([]);
+    setBnsQuery('');
+  }
+  function pickBns(s: BnsSection) {
+    if (!editDraft) return;
+    setEditDraft({ ...editDraft, legalSectionNo: s.sectionNo, legalSectionTitle: s.title });
+    setBnsQuery(`${s.sectionNo} — ${s.title}`);
+    setBnsOpen(false);
+  }
+  function clearBns() {
+    if (!editDraft) return;
+    setEditDraft({ ...editDraft, legalSectionNo: '', legalSectionTitle: '' });
+    setBnsQuery('');
+    setBnsHits([]);
+  }
+  async function saveEdit() {
+    if (!editDraft || !caseRow) return;
+    setEditErr(null); setSaving(true);
+    try {
+      // Build the PATCH body.  We only send the legalSection key (even
+      // when empty) so the server clears it; for the other fields we
+      // send them all — the server's diff logic will skip no-ops.
+      const patch: any = {
+        itemType:       editDraft.itemType.trim(),
+        itemSub:        editDraft.itemSub.trim(),
+        section:        editDraft.sectionLetter,
+        seizingOfficer: editDraft.seizingOfficer.trim(),
+        seizedOn:       editDraft.seizedOn,
+        itemId:         editDraft.itemId.trim(),
+      };
+      if (editDraft.legalSectionNo) {
+        patch.legalSection = editDraft.legalSectionNo;
+      } else {
+        patch.legalSection = null;
+      }
+      const updated = await api.updateCase(caseRow.id, patch);
+      setCaseRow(updated);
+      setEditDraft(null);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 3000);
+    } catch (e) {
+      setEditErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ---- Print ----
 
   function printTag() {
     if (!qrUrl || !caseRow) return;
@@ -89,15 +243,106 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         @media print { .no-print{ display:none } }
       </style></head><body>
         <img src="${qrUrl}" />
-        <h2 style="margin: 12px 0 4px">${caseRow.itemType}</h2>
-        <div class="id">${caseRow.id}</div>
-        <div class="meta">Item ID: ${caseRow.itemId}</div>
-        <div class="meta">Section: ${caseRow.sectionName} (Part ${caseRow.section?.replace('PART ', '')})</div>
-        <div class="meta">Status: ${caseRow.status}</div>
-        <div class="meta">Seized: ${caseRow.seizedOn} · by ${caseRow.seizingOfficer}</div>
+        <h2 style="margin: 12px 0 4px">${escapeHtml(caseRow.itemType)}</h2>
+        <div class="id">${escapeHtml(caseRow.id)}</div>
+        <div class="meta">Item ID: ${escapeHtml(caseRow.itemId)}</div>
+        <div class="meta">Section: ${escapeHtml(caseRow.sectionName)} (Part ${escapeHtml(caseRow.section?.replace('PART ', ''))})</div>
+        <div class="meta">Status: ${escapeHtml(caseRow.status)}</div>
+        <div class="meta">Seized: ${escapeHtml(caseRow.seizedOn)} · by ${escapeHtml(caseRow.seizingOfficer)}</div>
         <hr/>
         <button class="no-print" onclick="window.print()">Print</button>
       </body></html>`);
+    w.document.close();
+  }
+
+  function printDetail() {
+    if (!caseRow) return;
+    // Use a tiny inline stylesheet for the print window so we don't
+    // need to ship a separate print.css through the bundler.  Mirrors
+    // the on-screen layout minus the action bar.
+    const html = `<!doctype html><html><head><title>Case Detail · ${caseRow.id}</title>
+      <style>
+        @page { size: A4; margin: 14mm; }
+        body  { font-family: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif; color: #14243D; margin: 0; }
+        h1, h2, h3 { font-family: 'Rajdhani', 'Segoe UI', Arial, sans-serif; color: #14243D; margin: 0; }
+        .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #8C7A54; padding-bottom: 8px; margin-bottom: 12px; }
+        .id   { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8C7A54; }
+        .title{ font-size: 22px; margin: 4px 0; }
+        .sub  { color: #4F6079; font-size: 12px; }
+        .stamp{ display: inline-block; padding: 4px 10px; border-radius: 3px; background: #E6ECF2; color: #14243D; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .stamp.tone-warn { background: #FFEED1; color: #8A4B00; }
+        .stamp.tone-good { background: #D6F0DC; color: #1A5A33; }
+        .meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 16px; margin: 12px 0 18px; padding: 10px 12px; border: 1px solid #D9D2C2; border-radius: 4px; }
+        .meta .k { font-size: 9.5px; text-transform: uppercase; color: #8C7A54; display: block; letter-spacing: 0.06em; }
+        .meta .v { font-size: 12px; color: #14243D; font-weight: 500; }
+        .row  { display: flex; gap: 16px; margin-bottom: 18px; }
+        .card { flex: 1; border: 1px solid #D9D2C2; border-radius: 4px; padding: 12px; }
+        .card h3 { font-size: 13px; margin-bottom: 8px; }
+        .qr   { width: 180px; height: 180px; display: block; margin: 0 auto; border: 4px solid #14243D; border-radius: 3px; }
+        .photo{ max-width: 100%; max-height: 220px; display: block; margin: 0 auto; border: 1px solid #D9D2C2; border-radius: 3px; }
+        .timeline { list-style: none; padding: 0; margin: 0; }
+        .timeline li { position: relative; padding: 6px 0 6px 20px; border-left: 2px solid #D9D2C2; margin-left: 4px; }
+        .timeline li:last-child { border-left-color: transparent; }
+        .timeline li::before { content: ''; position: absolute; left: -5px; top: 12px; width: 8px; height: 8px; border-radius: 50%; background: #14243D; border: 2px solid #fff; }
+        .t-route { font-size: 12px; }
+        .t-arrow { color: #8C7A54; margin: 0 4px; }
+        .t-meta  { font-size: 10.5px; color: #4F6079; margin-top: 2px; }
+        .empty   { color: #4F6079; font-size: 11px; font-style: italic; }
+        .footer  { margin-top: 18px; padding-top: 8px; border-top: 1px solid #D9D2C2; font-size: 10px; color: #4F6079; display: flex; justify-content: space-between; }
+        .noprint { display: block; text-align: right; margin: 12px 0; }
+        .noprint button { padding: 6px 14px; border: 1px solid #14243D; background: #14243D; color: #fff; border-radius: 3px; cursor: pointer; }
+        @media print { .noprint { display: none; } }
+      </style></head><body>
+        <div class="noprint"><button onclick="window.print()">🖨 Print this page</button></div>
+        <div class="head">
+          <div>
+            <div class="id">${escapeHtml(caseRow.id)}</div>
+            <h1 class="title">${escapeHtml(caseRow.itemType)}</h1>
+            ${caseRow.itemSub ? `<div class="sub">${escapeHtml(caseRow.itemSub)}</div>` : ''}
+          </div>
+          <span class="stamp ${STATUS_TONE[caseRow.status] || ''}">${escapeHtml(caseRow.status)}</span>
+        </div>
+        <div class="meta">
+          <div><span class="k">Section</span><span class="v">Part ${escapeHtml((caseRow.section || '').replace('PART ', ''))} · ${escapeHtml(caseRow.sectionName || '')}</span></div>
+          <div><span class="k">Item ID</span><span class="v">${escapeHtml(caseRow.itemId || '—')}</span></div>
+          <div><span class="k">Seized</span><span class="v">${escapeHtml(caseRow.seizedOn || '—')} · by ${escapeHtml(caseRow.seizingOfficer || '—')}</span></div>
+          <div><span class="k">BNS Section</span><span class="v">${caseRow.legalSection ? `BNS ${escapeHtml(caseRow.legalSection)}${caseRow.legalSectionTitle ? ' — ' + escapeHtml(caseRow.legalSectionTitle) : ''}` : '—'}</span></div>
+          <div><span class="k">Created</span><span class="v">${escapeHtml(fmtTime(caseRow.createdAt))}</span></div>
+        </div>
+        <div class="row">
+          <div class="card">
+            <h3>Evidence Tag (QR)</h3>
+            ${qrUrl ? `<img class="qr" src="${qrUrl}" alt="QR code" />` : '<div class="empty">No QR available</div>'}
+          </div>
+          <div class="card">
+            <h3>Photo</h3>
+            ${caseRow.imageUrl ? `<img class="photo" src="${caseRow.imageUrl}" alt="${escapeHtml(caseRow.itemType)}" />` : '<div class="empty">No photo on file</div>'}
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:18px;">
+          <h3>Movement Timeline (${movements.length})</h3>
+          ${movements.length === 0
+            ? '<div class="empty">No movements recorded yet.</div>'
+            : `<ol class="timeline">${movements.map(m => `
+                <li>
+                  <div class="t-route">
+                    <span>${escapeHtml(m.fromLocation === '—' ? 'New' : m.fromLocation)}</span>
+                    <span class="t-arrow">→</span>
+                    <span><b>${escapeHtml(m.toLocation)}</b></span>
+                  </div>
+                  <div class="t-meta">
+                    by ${escapeHtml(m.movedBy || '—')} · ${escapeHtml(fmtTime(m.timestamp))}${m.purpose ? ' · ' + escapeHtml(m.purpose) : ''}${m.docRef ? ' · ' + escapeHtml(m.docRef) : ''}
+                  </div>
+                </li>`).join('')}</ol>`}
+        </div>
+        <div class="footer">
+          <span>e-Malkhana · Case Detail</span>
+          <span>Printed: ${escapeHtml(new Date().toLocaleString('en-IN'))}</span>
+        </div>
+      </body></html>`;
+    const w = window.open('', '_blank', 'width=900,height=1100');
+    if (!w) return;
+    w.document.write(html);
     w.document.close();
   }
 
@@ -110,11 +355,14 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
   );
   if (!caseRow) return null;
 
+  const isEditing = !!editDraft;
+
   return (
     <div className="case-detail">
       {/* breadcrumb + back */}
       <div className="case-detail-bar">
         <Link to="/caseproperty" className="link-back">← All Case Property</Link>
+        {savedFlash && <span className="case-detail-saved-flash">✓ Saved</span>}
       </div>
 
       {/* header */}
@@ -127,18 +375,130 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         <span className={`stamp ${STATUS_TONE[caseRow.status] || ''}`}>{caseRow.status}</span>
       </header>
 
-      {/* meta strip */}
-      <div className="case-detail-meta">
-        <div><span className="k">Section</span><span className="v">Part {caseRow.section?.replace('PART ', '')} · {caseRow.sectionName}</span></div>
-        <div><span className="k">Item ID</span><span className="v">{caseRow.itemId}</span></div>
-        <div><span className="k">Seized</span><span className="v">{caseRow.seizedOn} · by {caseRow.seizingOfficer}</span></div>
-        <div><span className="k">Created</span><span className="v">{fmtTime(caseRow.createdAt)}</span></div>
-      </div>
+      {/* edit form OR read-only meta strip */}
+      {isEditing && editDraft ? (
+        <div className="case-detail-edit">
+          <div className="case-detail-edit-grid">
+            <label>
+              <span>Item</span>
+              <input
+                type="text"
+                value={editDraft.itemType}
+                onChange={e => setEditDraft({ ...editDraft, itemType: e.target.value })}
+                placeholder="Item description"
+              />
+            </label>
+            <label>
+              <span>Detail / sub</span>
+              <input
+                type="text"
+                value={editDraft.itemSub}
+                onChange={e => setEditDraft({ ...editDraft, itemSub: e.target.value })}
+                placeholder="Quantity, marks, serial no."
+              />
+            </label>
+            <label>
+              <span>Section (Rack)</span>
+              <select
+                value={editDraft.sectionLetter}
+                onChange={e => setEditDraft({ ...editDraft, sectionLetter: e.target.value })}
+              >
+                {racks.length === 0 && <option value={editDraft.sectionLetter}>Part {editDraft.sectionLetter}</option>}
+                {racks.map(r => (
+                  <option key={r.letter} value={r.letter}>
+                    Part {r.letter} · {r.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Seizing officer</span>
+              <input
+                type="text"
+                value={editDraft.seizingOfficer}
+                onChange={e => setEditDraft({ ...editDraft, seizingOfficer: e.target.value })}
+                placeholder="Officer name & rank"
+              />
+            </label>
+            <label>
+              <span>Seized on</span>
+              <input
+                type="date"
+                value={editDraft.seizedOn}
+                onChange={e => setEditDraft({ ...editDraft, seizedOn: e.target.value })}
+              />
+            </label>
+            <label>
+              <span>Item ID</span>
+              <input
+                type="text"
+                value={editDraft.itemId}
+                onChange={e => setEditDraft({ ...editDraft, itemId: e.target.value })}
+                placeholder="MK-YYYY-NNNNNN"
+              />
+            </label>
+            <div className="case-detail-edit-bns" ref={bnsBoxRef}>
+              <span>BNS section</span>
+              <input
+                type="text"
+                value={bnsQuery}
+                onChange={e => {
+                  setBnsQuery(e.target.value);
+                  setEditDraft({ ...editDraft, legalSectionNo: '', legalSectionTitle: '' });
+                  setBnsOpen(true);
+                }}
+                onFocus={() => setBnsOpen(true)}
+                placeholder="Type to search — e.g. 101, murder, theft"
+              />
+              {editDraft.legalSectionNo && (
+                <button type="button" className="case-detail-edit-bns-clear" onClick={clearBns}>× clear</button>
+              )}
+              {bnsOpen && (
+                <div className="case-detail-edit-bns-pop">
+                  {bnsLoading && <div className="case-detail-edit-bns-empty">Searching…</div>}
+                  {!bnsLoading && bnsHits.length === 0 && (
+                    <div className="case-detail-edit-bns-empty">No matching BNS section</div>
+                  )}
+                  {!bnsLoading && bnsHits.map((s, i) => (
+                    <button
+                      type="button"
+                      key={s.sectionNo}
+                      className={`case-detail-edit-bns-row${i === bnsActive ? ' is-active' : ''}`}
+                      onMouseEnter={() => setBnsActive(i)}
+                      onClick={() => pickBns(s)}
+                    >
+                      <span className="case-detail-edit-bns-no">BNS&nbsp;{s.sectionNo}</span>
+                      <span className="case-detail-edit-bns-title">{s.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          {editErr && <div className="case-detail-edit-err">❌ {editErr}</div>}
+          <div className="case-detail-edit-actions">
+            <button className="btn primary" disabled={saving} onClick={saveEdit}>
+              {saving ? 'Saving…' : '💾 Save changes'}
+            </button>
+            <button className="btn ghost" disabled={saving} onClick={cancelEdit}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div className="case-detail-meta">
+          <div><span className="k">Section</span><span className="v">Part {caseRow.section?.replace('PART ', '')} · {caseRow.sectionName}</span></div>
+          <div><span className="k">Item ID</span><span className="v">{caseRow.itemId}</span></div>
+          <div><span className="k">Seized</span><span className="v">{caseRow.seizedOn} · by {caseRow.seizingOfficer}</span></div>
+          <div><span className="k">BNS section</span><span className="v">{caseRow.legalSection ? `BNS ${caseRow.legalSection}${caseRow.legalSectionTitle ? ' — ' + caseRow.legalSectionTitle : ''}` : '—'}</span></div>
+          <div><span className="k">Created</span><span className="v">{fmtTime(caseRow.createdAt)}</span></div>
+        </div>
+      )}
 
       {/* actions */}
       <div className="case-detail-actions">
-        <button className="btn" onClick={() => onRegisterMovement(caseRow)}>＋ Log New Movement</button>
-        {qrUrl && <button className="btn ghost" onClick={printTag}>🖨 Print Tag</button>}
+        {!isEditing && <button className="btn primary" onClick={startEdit}>✏️ Edit details</button>}
+        <button className="btn" onClick={() => onRegisterMovement(caseRow)} disabled={isEditing}>＋ Log New Movement</button>
+        {qrUrl && <button className="btn ghost" onClick={printTag} disabled={isEditing}>🏷 Print Tag</button>}
+        <button className="btn ghost" onClick={printDetail} disabled={isEditing}>🖨 Print full detail</button>
         {caseRow.imageUrl && <a className="btn ghost" href={caseRow.imageUrl} target="_blank" rel="noreferrer">📷 Evidence Photo</a>}
       </div>
 
@@ -189,4 +549,16 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
       </div>
     </div>
   );
+}
+
+// Lightweight HTML escaper for the print window so a malicious item name
+// can't break out of the print template.  We use this instead of pulling
+// in a dependency for one print function.
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

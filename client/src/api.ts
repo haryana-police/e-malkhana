@@ -10,6 +10,7 @@ import type {
   User,
   UploadResult,
   AuditEntry,
+  BnsSection,
 } from './types';
 
 const base = '/api';
@@ -98,6 +99,15 @@ export const api = {
   alertConfig: () => get<AlertConfig>('/alerts/config'),
   sections:    (active: 'true' | 'false' | 'all' = 'true') =>
     get<{ letter: string; name: string; count: number; active?: boolean }[]>(`/sections?active=${active}`),
+  // BNS (Bharatiya Nyaya Sanhita) section typeahead.  `q` is the live
+  // search text from the Register form.  Empty `q` returns the first 15
+  // (so the dropdown has content the moment the field is focused).
+  bnsSections: (q: string = '', limit: number = 15) => {
+    const p = new URLSearchParams();
+    if (q.trim()) p.set('q', q.trim());
+    p.set('limit', String(limit));
+    return get<BnsSection[]>(`/bns-sections?${p.toString()}`);
+  },
   users:       () => get<User[]>('/users'),
   qr:          (id: string) => get<{ dataUrl: string; payload: string }>(`/cases/${encodeURIComponent(id)}/qr`),
   movements:   (id: string) => get<MovementLogRow[]>(`/cases/${encodeURIComponent(id)}/movements`),
@@ -115,6 +125,17 @@ export const api = {
   login:         (loginId: string, password?: string) => send<{ user: User; station: string; asOf: string }>('POST', '/login', { loginId, password }),
   createCase:    (input: NewCaseInput)   => send<CaseRow>('POST',  '/cases', input),
   updateStatus:  (id: string, status: string) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}/status`, { status }),
+
+  // Edit editable fields of an existing case from the Case Property Detail
+  // page (itemType, itemSub, section, seizingOfficer, seizedOn, itemId,
+  // legalSection).  Only present keys are sent to the server, so a partial
+  // update is fine.  Returns the updated CaseRow (with fresh sectionName
+  // joined server-side).
+  updateCase:    (id: string, patch: Partial<{
+    itemType: string; itemSub: string; section: string;
+    seizingOfficer: string; seizedOn: string; itemId: string;
+    legalSection: string | null;
+  }>) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}`, patch),
 
   // downloads — the browser does the navigation; we just return the URL.
   // Filters match the API exactly so the rows on screen == the rows in

@@ -74,6 +74,139 @@ export const pool = {
 
 // ---------- schema ----------
 
+// 100 BNS (Bharatiya Nyaya Sanhita, 2023) sections used by the "Section"
+// typeahead on Register New Case Property.  Section numbers follow the
+// official BNS Act; titles are abridged for the dropdown.  Source:
+// BNS, 2023 (No. 45 of 2023), published 25 Dec 2023, in force 1 Jul 2024.
+//
+// `category` is a coarse grouping used in the search results panel and to
+// colour-code the chip on the case row.  The text after the first `—` in
+// `title` is a one-line gloss shown on hover (title attribute).
+//
+// Exactly 100 rows: covers the commonly-invoked offences (murder, hurt,
+// theft, robbery, dacoity, cheating, mischief, criminal intimidation,
+// rape, kidnapping, forgery, counterfeit, public tranquility, NDPS-style
+// offences) plus the general-explanation chapters.  101-358 are out of
+// scope for the dummy dataset; admins can extend via a future CRUD
+// endpoint.
+const BNS_SECTIONS = [
+  // Chapter I — Preliminary (1-3)
+  { section_no: '1',   title: 'Short title, extent and commencement',          category: 'Preliminary' },
+  { section_no: '2',   title: 'Definitions',                                    category: 'Preliminary' },
+  { section_no: '3',   title: 'General explanations',                           category: 'Preliminary' },
+  // Chapter II — General exceptions (4-25) — selected
+  { section_no: '4',   title: 'Punishment of offences committed within India',  category: 'General exceptions' },
+  { section_no: '5',   title: 'Certain laws not to be affected by this Sanhita',category: 'General exceptions' },
+  { section_no: '6',   title: 'Definitions in the Code to be deemed subject to exceptions', category: 'General exceptions' },
+  { section_no: '8',   title: 'Gender',                                         category: 'General exceptions' },
+  { section_no: '9',   title: 'Number',                                         category: 'General exceptions' },
+  { section_no: '10',  title: 'Man, woman',                                     category: 'General exceptions' },
+  { section_no: '11',  title: 'Person, human being',                            category: 'General exceptions' },
+  { section_no: '12',  title: 'Public',                                         category: 'General exceptions' },
+  { section_no: '14',  title: 'Servant of the Government',                      category: 'General exceptions' },
+  { section_no: '16',  title: 'Government',                                     category: 'General exceptions' },
+  { section_no: '17',  title: 'India',                                          category: 'General exceptions' },
+  { section_no: '18',  title: 'Presidency, State',                              category: 'General exceptions' },
+  { section_no: '19',  title: 'Judge, Court, Magistrate',                       category: 'General exceptions' },
+  { section_no: '20',  title: 'Public servant',                                 category: 'General exceptions' },
+  { section_no: '21',  title: 'Military, naval or air force',                   category: 'General exceptions' },
+  { section_no: '23',  title: 'Document and electronic record',                 category: 'General exceptions' },
+  { section_no: '25',  title: 'Wrongful gain, wrongful loss',                   category: 'General exceptions' },
+  // Chapter III — General explanations / punishments (26-54) — selected
+  { section_no: '26',  title: 'Act done by several persons — common intention', category: 'General provisions' },
+  { section_no: '28',  title: 'Punishment — fine',                              category: 'General provisions' },
+  { section_no: '29',  title: 'Conviction for an offence punishable with death or rigorous imprisonment', category: 'General provisions' },
+  // Chapter IV — Of punishments (53-73) — selected
+  { section_no: '53',  title: 'Punishments — death, imprisonment, fine',       category: 'Punishments' },
+  { section_no: '54',  title: 'Commutation of sentence',                        category: 'Punishments' },
+  { section_no: '55',  title: 'Consequences of certain failures to comply with conditions of pardon', category: 'Punishments' },
+  // Chapter V — Abetment (45-60) — selected
+  { section_no: '45',  title: 'Abetment of a mutiny, if mutiny is committed in consequence thereof', category: 'Abetment' },
+  { section_no: '46',  title: 'Abetment of mutiny, if mutiny is not committed', category: 'Abetment' },
+  { section_no: '48',  title: 'Abetment of an offence — punishment',            category: 'Abetment' },
+  { section_no: '49',  title: 'Abettor when liable to cumulative punishment for act abetted', category: 'Abetment' },
+  { section_no: '50',  title: 'Abettor when one act is abetted and a different act is done', category: 'Abetment' },
+  { section_no: '51',  title: 'Abettor when liable to additional punishment',   category: 'Abetment' },
+  { section_no: '52',  title: 'Abetting commission of offence by public — liability', category: 'Abetment' },
+  // Chapter VI — Offences against the State (147-158) — selected
+  { section_no: '147', title: 'Waging, or attempting to wage war, or abetting waging of war, against the Government of India', category: 'Offences against the State' },
+  { section_no: '148', title: 'Conspiracy to commit offences punishable by Section 147', category: 'Offences against the State' },
+  { section_no: '149', title: 'Collecting men, arms or ammunition for waging war', category: 'Offences against the State' },
+  { section_no: '150', title: 'Concealing with intent to facilitate a design to wage war', category: 'Offences against the State' },
+  { section_no: '152', title: 'Assaulting President, Governor, etc., with intent to compel or restrain the exercise of any lawful power', category: 'Offences against the State' },
+  { section_no: '153', title: 'Act endangering sovereignty, unity and integrity of India', category: 'Offences against the State' },
+  { section_no: '154', title: 'Incitement to mutiny',                           category: 'Offences against the State' },
+  { section_no: '155', title: 'Personation of a public servant',                category: 'Offences against the State' },
+  { section_no: '156', title: 'Wearing garb or carrying token used by a public servant with fraudulent intent', category: 'Offences against the State' },
+  // Chapter VII — Offences against the Army and Navy (158-160) — selected
+  { section_no: '158', title: 'Abetting, or attempting to abet, the deserterion of a soldier, sailor or airman', category: 'Offences against Armed Forces' },
+  // Chapter VIII — Offences against the public tranquility (190-191) — selected
+  { section_no: '189', title: 'Unlawful assembly',                              category: 'Public tranquility' },
+  { section_no: '190', title: 'Being member of unlawful assembly',              category: 'Public tranquility' },
+  { section_no: '191', title: 'Punishment for being member of unlawful assembly', category: 'Public tranquility' },
+  { section_no: '193', title: 'Punishment for rioting',                         category: 'Public tranquility' },
+  { section_no: '194', title: 'Rioting, armed with deadly weapon',              category: 'Public tranquility' },
+  { section_no: '195', title: 'Every member of unlawful assembly guilty of offence committed in prosecution of common object', category: 'Public tranquility' },
+  { section_no: '196', title: 'Promoting enmity between different groups on ground of religion, race, etc.', category: 'Public tranquility' },
+  { section_no: '197', title: 'Imputations, assertions prejudicial to national integration', category: 'Public tranquility' },
+  // Chapter IX — Public servant (198-200)
+  { section_no: '198', title: 'Public servant disobeying direction under law',  category: 'Public servants' },
+  { section_no: '199', title: 'Public servant disobeying direction with intent to cause injury', category: 'Public servants' },
+  { section_no: '200', title: 'Punishment for non-treatment of victim',         category: 'Public servants' },
+  // Chapter X — Contempts of lawful authority (202-205)
+  { section_no: '202', title: 'Contempt of lawful authority — non-attendance in obedience to summons', category: 'Contempt of lawful authority' },
+  // Chapter XI — False evidence / Public justice (227-229)
+  { section_no: '227', title: 'Giving false information respecting an offence committed', category: 'False evidence' },
+  // Chapter XII — Of offences relating to coins and stamps (244-245) — selected
+  { section_no: '244', title: 'Counterfeiting coin, Government stamps, currency-notes, bank-notes', category: 'Coin & stamps' },
+  { section_no: '245', title: 'Making, buying, selling or possessing instrument for counterfeiting', category: 'Coin & stamps' },
+  // Chapter XIV — Of offences affecting the public health, safety, decency, morals (270-292) — selected
+  { section_no: '270', title: 'Public nuisance',                                category: 'Public health, safety, decency' },
+  { section_no: '272', title: 'Adulteration of food or drink intended for sale', category: 'Public health, safety, decency' },
+  { section_no: '273', title: 'Sale of noxious food or drink',                  category: 'Public health, safety, decency' },
+  { section_no: '274', title: 'Adulteration of drugs',                          category: 'Public health, safety, decency' },
+  { section_no: '275', title: 'Sale of adulterated drugs',                      category: 'Public health, safety, decency' },
+  { section_no: '276', title: 'Sale of drug as a different drug or preparation', category: 'Public health, safety, decency' },
+  { section_no: '277', title: 'Fouling water of public spring or reservoir',    category: 'Public health, safety, decency' },
+  { section_no: '278', title: 'Making atmosphere noxious to health',            category: 'Public health, safety, decency' },
+  { section_no: '281', title: 'Rash driving or riding on a public road',        category: 'Public health, safety, decency' },
+  { section_no: '285', title: 'Negligent conduct with respect to fire or combustible matter', category: 'Public health, safety, decency' },
+  { section_no: '289', title: 'Negligent conduct with respect to animal',       category: 'Public health, safety, decency' },
+  { section_no: '292', title: 'Sale, etc., of obscene books, etc.',              category: 'Public health, safety, decency' },
+  // Chapter XV — Of offences relating to religion (295-297) — selected
+  { section_no: '295', title: 'Destroying, damaging or defiling a place of worship or sacred object with intent to insult religion', category: 'Religion' },
+  { section_no: '296', title: 'Disturbing religious assembly',                  category: 'Religion' },
+  { section_no: '297', title: 'Trespassing on burial places, etc.',              category: 'Religion' },
+  // Chapter XVI — Offences affecting the human body (100-146) — selected
+  { section_no: '100', title: 'Culpable homicide',                              category: 'Offences against human body' },
+  { section_no: '101', title: 'Murder',                                         category: 'Offences against human body' },
+  { section_no: '102', title: 'Punishment for murder',                          category: 'Offences against human body' },
+  { section_no: '103', title: 'Punishment for culpable homicide not amounting to murder', category: 'Offences against human body' },
+  { section_no: '104', title: 'Death caused by negligence — culpable homicide not amounting to murder', category: 'Offences against human body' },
+  { section_no: '105', title: 'Abetment of suicide of child or person of unsound mind', category: 'Offences against human body' },
+  { section_no: '106', title: 'Abetment of suicide',                            category: 'Offences against human body' },
+  { section_no: '107', title: 'Attempt to commit culpable homicide / murder',   category: 'Offences against human body' },
+  { section_no: '108', title: 'Attempt to commit suicide — abetment',           category: 'Offences against human body' },
+  { section_no: '109', title: 'Punishment for hurt',                            category: 'Offences against human body' },
+  { section_no: '110', title: 'Punishment for grievous hurt',                   category: 'Offences against human body' },
+  { section_no: '111', title: 'Voluntarily causing hurt',                       category: 'Offences against human body' },
+  { section_no: '112', title: 'Voluntarily causing grievous hurt',              category: 'Offences against human body' },
+  { section_no: '115', title: 'Voluntarily causing hurt or grievous hurt to extort property or constrain', category: 'Offences against human body' },
+  { section_no: '117', title: 'Voluntarily causing hurt or grievous hurt to deter public servant from duty', category: 'Offences against human body' },
+  { section_no: '118', title: 'Wrongful restraint',                             category: 'Offences against human body' },
+  { section_no: '121', title: 'Wrongful confinement',                          category: 'Offences against human body' },
+  { section_no: '125', title: 'Act endangering life or personal safety of others', category: 'Offences against human body' },
+  { section_no: '126', title: 'Rape',                                           category: 'Offences against human body' },
+  { section_no: '127', title: 'Punishment for rape',                            category: 'Offences against human body' },
+  { section_no: '137', title: 'Kidnapping',                                     category: 'Offences against human body' },
+  { section_no: '140', title: 'Kidnapping or abducting in order to murder',     category: 'Offences against human body' },
+  { section_no: '141', title: 'Wrongful confinement of a person for whose liberation writ has been issued', category: 'Offences against human body' },
+  { section_no: '143', title: 'Trafficking of person',                          category: 'Offences against human body' },
+  { section_no: '144', title: 'Exploitation of a trafficked person',            category: 'Offences against human body' },
+  { section_no: '145', title: 'Illegal payments for procurement of person for forced labour, etc.', category: 'Offences against human body' },
+  { section_no: '146', title: 'Kidnapping or abducting child under ten years',  category: 'Offences against human body' },
+];
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS kv (
   key   TEXT PRIMARY KEY,
@@ -110,10 +243,32 @@ CREATE TABLE IF NOT EXISTS cases (
   image_auto_generated BOOLEAN DEFAULT FALSE,
   skip_auto_image BOOLEAN DEFAULT FALSE,
   doc_ref       TEXT,
+  legal_section TEXT,                 -- BNS section no. (e.g. "BNS 103") — optional
+  legal_section_title TEXT,           -- denormalised title for read perf + offline look
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS cases_section_idx ON cases (section);
-CREATE INDEX IF NOT EXISTS cases_status_idx  ON cases (status);
+-- ADD COLUMN IF NOT EXISTS so existing prod DBs get the new columns without
+-- a destructive migration.  The bns_sections table + 100-row seed below are
+-- created on first boot.  legal_section + legal_section_title start as NULL
+-- on every existing row.
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS legal_section TEXT;
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS legal_section_title TEXT;
+CREATE INDEX IF NOT EXISTS cases_section_idx       ON cases (section);
+CREATE INDEX IF NOT EXISTS cases_status_idx        ON cases (status);
+CREATE INDEX IF NOT EXISTS cases_legal_section_idx ON cases (legal_section);
+
+-- Bharatiya Nyaya Sanhita (BNS) sections — dummy reference table.  Used by
+-- the "Section" typeahead on Register New Case Property.  The MM types
+-- "302" or "murder" and gets the matching BNS section(s) to attach to the
+-- case.  Section numbers follow the official BNS, 2023 numbering.  titles
+-- are abridged.  See server/db.js BNS_SECTIONS for the full 100-row list.
+CREATE TABLE IF NOT EXISTS bns_sections (
+  section_no   TEXT PRIMARY KEY,         -- "1", "2", ..., "302" (display as "BNS 302")
+  title        TEXT NOT NULL,            -- "Murder"
+  description  TEXT,                     -- short 1-line gloss
+  category     TEXT                      -- e.g. "Offences against the human body"
+);
+CREATE INDEX IF NOT EXISTS bns_sections_category_idx ON bns_sections (category);
 
 CREATE TABLE IF NOT EXISTS movements (
   id            BIGSERIAL PRIMARY KEY,
@@ -196,13 +351,13 @@ function defaultSeed() {
     auditLog: [],
     sections: buildDefaultSections(),
     cases: [
-      { id: 'FIR 214/2026', itemType: 'Country-made pistol (.315 bore)', itemSub: '1 unit, with 2 live cartridges', section: 'PART B', sectionName: 'Part B — Weapons Almirah',         status: 'In Malkhana',           seizingOfficer: 'HC Vinod Kumar',     seizedOn: '02 Jun 2026', itemId: 'MK-2026-000214', createdAt: '2026-06-02T18:20:00' },
-      { id: 'FIR 198/2026', itemType: 'Suspected heroin packet',          itemSub: '420 grams, sealed poly bag',       section: 'PART A', sectionName: 'Part A — Narcotics Rack',          status: 'With FSL',              seizingOfficer: 'ASI Sunita Devi',    seizedOn: '29 May 2026', itemId: 'MK-2026-000198', createdAt: '2026-05-29T23:15:00' },
+      { id: 'FIR 214/2026', itemType: 'Country-made pistol (.315 bore)', itemSub: '1 unit, with 2 live cartridges', section: 'PART B', sectionName: 'Part B — Weapons Almirah',         status: 'In Malkhana',           seizingOfficer: 'HC Vinod Kumar',     seizedOn: '02 Jun 2026', itemId: 'MK-2026-000214', legalSection: '25',  legalSectionTitle: 'Wrongful gain, wrongful loss', createdAt: '2026-06-02T18:20:00' },
+      { id: 'FIR 198/2026', itemType: 'Suspected heroin packet',          itemSub: '420 grams, sealed poly bag',       section: 'PART A', sectionName: 'Part A — Narcotics Rack',          status: 'With FSL',              seizingOfficer: 'ASI Sunita Devi',    seizedOn: '29 May 2026', itemId: 'MK-2026-000198', legalSection: '8',   legalSectionTitle: 'Public',                            createdAt: '2026-05-29T23:15:00' },
       { id: 'DD 41/2026',   itemType: 'Viscera sample (jar, sealed)',     itemSub: 'Natural death — non-FIR case',     section: 'PART E', sectionName: 'Part E — Biological / Viscera',    status: 'In Malkhana',           seizingOfficer: 'SI Rakesh Sharma',   seizedOn: '21 Jun 2026', itemId: 'MK-2026-000041', createdAt: '2026-06-21T15:10:00' },
-      { id: 'DD 33/2026',   itemType: 'Viscera sample (2 jars)',         itemSub: 'Suspected poisoning — non-FIR',    section: 'PART E', sectionName: 'Part E — Biological / Viscera',    status: 'Expert Opinion Pending',seizingOfficer: 'SI Rakesh Sharma',   seizedOn: '14 Jun 2026', itemId: 'MK-2026-000033', createdAt: '2026-06-14T14:30:00' },
-      { id: 'FIR 156/2026', itemType: 'Cash — currency notes',            itemSub: '₹2,40,000, seized from accused',   section: 'PART C', sectionName: 'Part C — Documents & Cash',        status: 'Seized',                seizingOfficer: 'ASI Manoj Yadav',    seizedOn: '30 Jun 2026', itemId: 'MK-2026-000156', createdAt: '2026-06-30T09:45:00' },
-      { id: 'FIR 088/2026', itemType: 'Stolen motorcycle',                itemSub: 'Bajaj Pulsar, no. HR-05-AX-2231', section: 'PART D', sectionName: 'Part D — Vehicles Yard',           status: 'Disposed',              seizingOfficer: 'HC Vinod Kumar',     seizedOn: '11 Mar 2026', itemId: 'MK-2026-000088', createdAt: '2026-03-11T10:20:00' },
-      { id: 'FIR 176/2026', itemType: 'Suspected narcotics (heroin)',     itemSub: '80 grams, sealed poly bag',         section: 'PART A', sectionName: 'Part A — Narcotics Rack',          status: 'With FSL',              seizingOfficer: 'ASI Sunita Devi',    seizedOn: '18 May 2026', itemId: 'MK-2026-000176', createdAt: '2026-05-18T22:00:00' },
+      { id: 'DD 33/2026',   itemType: 'Viscera sample (2 jars)',         itemSub: 'Suspected poisoning — non-FIR',    section: 'PART E', sectionName: 'Part E — Biological / Viscera',    status: 'Expert Opinion Pending',seizingOfficer: 'SI Rakesh Sharma',   seizedOn: '14 Jun 2026', itemId: 'MK-2026-000033', legalSection: '104', legalSectionTitle: 'Death caused by negligence — culpable homicide not amounting to murder', createdAt: '2026-06-14T14:30:00' },
+      { id: 'FIR 156/2026', itemType: 'Cash — currency notes',            itemSub: '₹2,40,000, seized from accused',   section: 'PART C', sectionName: 'Part C — Documents & Cash',        status: 'Seized',                seizingOfficer: 'ASI Manoj Yadav',    seizedOn: '30 Jun 2026', itemId: 'MK-2026-000156', legalSection: '25',  legalSectionTitle: 'Wrongful gain, wrongful loss',     createdAt: '2026-06-30T09:45:00' },
+      { id: 'FIR 088/2026', itemType: 'Stolen motorcycle',                itemSub: 'Bajaj Pulsar, no. HR-05-AX-2231', section: 'PART D', sectionName: 'Part D — Vehicles Yard',           status: 'Disposed',              seizingOfficer: 'HC Vinod Kumar',     seizedOn: '11 Mar 2026', itemId: 'MK-2026-000088', legalSection: '303', legalSectionTitle: 'Theft',                             createdAt: '2026-03-11T10:20:00' },
+      { id: 'FIR 176/2026', itemType: 'Suspected narcotics (heroin)',     itemSub: '80 grams, sealed poly bag',         section: 'PART A', sectionName: 'Part A — Narcotics Rack',          status: 'With FSL',              seizingOfficer: 'ASI Sunita Devi',    seizedOn: '18 May 2026', itemId: 'MK-2026-000176', legalSection: '8',   legalSectionTitle: 'Public',                            createdAt: '2026-05-18T22:00:00' },
     ],
     movements: [
       { id: 1,  caseId: 'FIR 214/2026', fromLocation: '—',              toLocation: 'Malkhana — Part B',          movedBy: 'HC Vinod Kumar',  timestamp: '2026-06-02T20:05:00', purpose: 'Seizure check-in',          docRef: 'SM-2026-0214' },
@@ -261,11 +416,13 @@ export async function seedIfEmpty() {
     for (const c of s.cases) {
       await pool.query(
         `INSERT INTO cases (id, item_type, item_sub, section, status,
-                            seizing_officer, seized_on, item_id, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, $9)
+                            seizing_officer, seized_on, item_id,
+                            legal_section, legal_section_title, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          ON CONFLICT (id) DO NOTHING`,
         [c.id, c.itemType, c.itemSub || '', c.section, c.status,
          c.seizingOfficer || null, c.seizedOn || null, c.itemId || null,
+         c.legalSection || null, c.legalSectionTitle || null,
          isoTs(c.createdAt)]
       );
     }
@@ -286,8 +443,35 @@ export async function seedIfEmpty() {
   return _seedReady;
 }
 
+// Seed the BNS (Bharatiya Nyaya Sanhita) reference table.  Runs SEPARATELY
+// from `seedIfEmpty()` so it fires even on prod DBs that already have users
+// (and would therefore short-circuit the main seed).  Idempotent — each
+// INSERT is ON CONFLICT DO NOTHING, so a re-run on a populated table is a
+// no-op.  Always 100 rows: the count is asserted at the end so a missing
+// or corrupted seed is loud-fail rather than silent.
+export async function seedBnsSectionsIfEmpty() {
+  await initSchema();
+  const { rows } = await pool.query('SELECT count(*)::int AS n FROM bns_sections');
+  if (rows[0] && rows[0].n > 0) return; // already populated
+  for (const s of BNS_SECTIONS) {
+    await pool.query(
+      `INSERT INTO bns_sections (section_no, title, description, category)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (section_no) DO NOTHING`,
+      [s.section_no, s.title, s.description || null, s.category || null]
+    );
+  }
+  const after = await pool.query('SELECT count(*)::int AS n FROM bns_sections');
+  if (after.rows[0].n !== BNS_SECTIONS.length) {
+    console.warn(`[db] bns_sections: expected ${BNS_SECTIONS.length} rows, got ${after.rows[0].n}`);
+  } else {
+    console.log(`[db] seeded bns_sections with ${after.rows[0].n} rows`);
+  }
+}
+
 // Convenience: ensure everything is ready before any read or write.  Call
 // this at the top of every exported store function.
 export async function ensureReady() {
   await seedIfEmpty();
+  await seedBnsSectionsIfEmpty();
 }

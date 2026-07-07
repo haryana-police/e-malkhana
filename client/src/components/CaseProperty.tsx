@@ -81,8 +81,8 @@ export function CaseProperty({
           <h1>Case Property Register</h1>
           <div className="sub">
             {visible.length} of {cases.length} items
-            {activeSection && <> · filtered by section: <b>Part {activeSection}</b></>}
-            {!activeSection && <> · filtered by: all sections</>}
+            {activeSection && <> · filtered by location: <b>Part {activeSection}</b></>}
+            {!activeSection && <> · filtered by: all locations</>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -148,6 +148,7 @@ export function CaseProperty({
             <tr>
               <th>FIR / DD No.</th>
               <th>Item</th>
+              <th>Location</th>
               <th>Section</th>
               <th>Status</th>
               <th>Seizing Officer</th>
@@ -157,8 +158,8 @@ export function CaseProperty({
           </thead>
           <tbody>
             {visible.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--slate-soft)' }}>
-                No matching cases. {activeSection && <a href="#" onClick={e => { e.preventDefault(); onClearSection(); }}>Clear section filter</a>}
+              <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--slate-soft)' }}>
+                No matching cases. {activeSection && <a href="#" onClick={e => { e.preventDefault(); onClearSection(); }}>Clear location filter</a>}
                 {textFilter && <a href="#" onClick={e => { e.preventDefault(); setTextFilter(''); }}>Clear text filter</a>}
               </td></tr>
             )}
@@ -205,6 +206,19 @@ export function CaseProperty({
                     <small style={{ opacity: 0.7, fontWeight: 500 }}>{c.section?.replace('PART ', '')}</small>
                     <span>{c.sectionName}</span>
                   </span>
+                </td>
+                <td>
+                  {c.legalSection ? (
+                    <span
+                      className="bns-chip"
+                      title={c.legalSectionTitle ? `BNS ${c.legalSection} — ${c.legalSectionTitle}` : `BNS ${c.legalSection}`}
+                    >
+                      <span className="bns-chip-no">BNS&nbsp;{c.legalSection}</span>
+                      {c.legalSectionTitle && <span className="bns-chip-title">{c.legalSectionTitle}</span>}
+                    </span>
+                  ) : (
+                    <span className="muted" style={{ fontSize: 11 }}>—</span>
+                  )}
                 </td>
                 <td>
                   <span className={`stamp ${statusClass(c.status)}`}>

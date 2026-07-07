@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import type { RackItem } from '../types';
+import { useEffect, useRef, useState } from 'react';
+import type { RackItem, BnsSection } from '../types';
 import { api } from '../api';
 
 interface Props {
@@ -26,13 +26,26 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+// Selected BNS section the user picked from the typeahead.  We keep the
+// section number + title in a single object so the form's submit handler
+// can send the canonical number without re-fetching.
+interface BnsPick {
+  sectionNo: string;
+  title: string;
+  category?: string;
+}
+
 export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const [firOrDd, setFirOrDd]        = useState('FIR ');
   const [itemType, setItemType]      = useState('');
   const [itemSub, setItemSub]        = useState('');
   const [quantity, setQuantity]      = useState('1');
-  const [section, setSection]        = useState(racks[0]?.letter ?? 'A');
+  // "Location (Rack)" — the physical storage rack the item is being
+  // placed in.  Was called "Section (Rack)" in the previous UI; renamed
+  // because "Section" is now reserved for the BNS legal-section field
+  // (see legalSection state below).
+  const [location, setLocation]      = useState(racks[0]?.letter ?? 'A');
   const [seizingOfficer, setOfficer] = useState('SI Rakesh Sharma');
   const [seizedOn, setSeizedOn]      = useState(today);
   const [photo, setPhoto]            = useState<PendingFile | null>(null);
@@ -40,13 +53,88 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
   const [busy, setBusy]              = useState(false);
   const [msg, setMsg]                = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
+  // BNS (Bharatiya Nyaya Sanhita, 2023) legal-section typeahead.  The
+  // user types "302" or "murder" and picks one of the 100 BNS sections
+  // from the bns_sections table on the server.  We debounce 200ms to
+  // avoid hammering the API; store both the picked object and the
+  // visible query text so the user can edit the query to change the
+  // pick (which then resets the pick).
+  const [bnsQuery, setBnsQuery]      = useState('');
+  const [bnsPick, setBnsPick]        = useState<BnsPick | null>(null);
+  const [bnsHits, setBnsHits]        = useState<BnsSection[]>([]);
+  const [bnsOpen, setBnsOpen]        = useState(false);
+  const [bnsLoading, setBnsLoading]  = useState(false);
+  const [bnsActive, setBnsActive]    = useState<number>(-1);  // keyboard nav
+  const bnsBoxRef                    = useRef<HTMLLabelElement>(null);
+
   const photoRef = useRef<HTMLInputElement>(null);
   const docRef   = useRef<HTMLInputElement>(null);
 
+  // Debounced BNS typeahead.  Empty query returns the first 15 (so the
+  // dropdown has content the moment the field is focused).  Cancellable
+  // via a token so a fast-typing user doesn't see stale results land.
+  useEffect(() => {
+    if (!bnsOpen) return;
+    let cancelled = false;
+    setBnsLoading(true);
+    const timer = setTimeout(() => {
+      api.bnsSections(bnsQuery, 15)
+        .then(rows => { if (!cancelled) { setBnsHits(rows); setBnsActive(rows.length ? 0 : -1); } })
+        .catch(() => { if (!cancelled) setBnsHits([]); })
+        .finally(() => { if (!cancelled) setBnsLoading(false); });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [bnsQuery, bnsOpen]);
+
+  // Click-outside closes the typeahead dropdown.
+  useEffect(() => {
+    if (!bnsOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (bnsBoxRef.current && !bnsBoxRef.current.contains(e.target as Node)) {
+        setBnsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [bnsOpen]);
+
   function reset() {
     setFirOrDd('FIR '); setItemType(''); setItemSub(''); setQuantity('1');
-    setSection(racks[0]?.letter ?? 'A'); setOfficer('SI Rakesh Sharma');
+    setLocation(racks[0]?.letter ?? 'A'); setOfficer('SI Rakesh Sharma');
     setSeizedOn(today); setPhoto(null); setDoc(null); setMsg(null);
+    setBnsQuery(''); setBnsPick(null); setBnsHits([]); setBnsOpen(false); setBnsActive(-1);
+  }
+
+  function pickBns(s: BnsSection) {
+    setBnsPick({ sectionNo: s.sectionNo, title: s.title, category: s.category });
+    setBnsQuery(`BNS ${s.sectionNo} — ${s.title}`);
+    setBnsOpen(false);
+    setBnsActive(-1);
+  }
+
+  function clearBns() {
+    setBnsPick(null);
+    setBnsQuery('');
+    setBnsOpen(true);
+    setBnsActive(-1);
+  }
+
+  function onBnsKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setBnsOpen(true);
+      setBnsActive(i => Math.min(i + 1, bnsHits.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setBnsActive(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      if (bnsOpen && bnsActive >= 0 && bnsHits[bnsActive]) {
+        e.preventDefault();
+        pickBns(bnsHits[bnsActive]);
+      }
+    } else if (e.key === 'Escape') {
+      setBnsOpen(false);
+    }
   }
 
   async function onPickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
@@ -104,13 +192,15 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
         firOrDd: firOrDd.trim(),
         itemType: itemType.trim(),
         itemSub:  itemSubFinal,
-        section,
+        section:  location,                              // rack letter — was `section`
         seizingOfficer: seizingOfficer.trim(),
         seizedOn,
         photo: photoUrl,
         supportingDoc: docUrl,
+        legalSection: bnsPick?.sectionNo,                // optional — validated server-side
       });
-      setMsg({ kind: 'ok', text: `Registered ${firOrDd} — evidence tag generated. Status: Seized.` });
+      const bnsPart = bnsPick ? ` — BNS ${bnsPick.sectionNo} (${bnsPick.title})` : '';
+      setMsg({ kind: 'ok', text: `Registered ${firOrDd} — evidence tag generated. Status: Seized.${bnsPart}` });
       onCreated();
       setTimeout(() => { reset(); onClose(); }, 1100);
     } catch (e) {
@@ -146,11 +236,81 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
             <input type="number" min={1} value={quantity} onChange={e => setQuantity(e.target.value)} required />
           </label>
           <label>
-            Section (Rack)
-            <select value={section} onChange={e => setSection(e.target.value)}>
+            {/* Renamed from "Section (Rack)" — the rack letter is the
+                physical LOCATION the item is being stored in.  "Section"
+                is now reserved for the BNS legal section below. */}
+            Location
+            <select value={location} onChange={e => setLocation(e.target.value)} title="Physical storage rack in the Malkhana room">
               {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
             </select>
           </label>
+
+          {/* BNS (Bharatiya Nyaya Sanhita, 2023) legal-section field.  The
+              user types a number ("101") or a word ("murder") and picks
+              from the typeahead dropdown that searches the bns_sections
+              table on the server.  OPTIONAL — cases can be registered
+              without a BNS section, and the dropdown can be reopened to
+              change the pick.  The clear (×) button appears only after
+              a section has been picked. */}
+          <label className="full" ref={bnsBoxRef}>
+            Section
+            <div className="bns-typeahead">
+              <input
+                value={bnsQuery}
+                placeholder={bnsPick ? '' : 'Type 101, "murder", or "kidnapping"… (BNS, 2023)'}
+                onChange={e => { setBnsQuery(e.target.value); setBnsPick(null); setBnsOpen(true); }}
+                onFocus={() => { setBnsOpen(true); }}
+                onKeyDown={onBnsKeyDown}
+                autoComplete="off"
+                spellCheck={false}
+                role="combobox"
+                aria-expanded={bnsOpen}
+                aria-autocomplete="list"
+                aria-controls="bns-hits"
+              />
+              {bnsPick && (
+                <button
+                  type="button"
+                  className="bns-clear"
+                  onClick={clearBns}
+                  title="Clear the BNS section"
+                  aria-label="Clear BNS section"
+                >×</button>
+              )}
+              {bnsOpen && (
+                <div className="bns-hits" id="bns-hits" role="listbox">
+                  {bnsLoading && bnsHits.length === 0 && (
+                    <div className="bns-empty">searching…</div>
+                  )}
+                  {!bnsLoading && bnsHits.length === 0 && (
+                    <div className="bns-empty">No BNS section matches “{bnsQuery || '…'}”.</div>
+                  )}
+                  {bnsHits.map((s, i) => (
+                    <div
+                      key={s.sectionNo}
+                      role="option"
+                      aria-selected={i === bnsActive}
+                      className={`bns-hit${i === bnsActive ? ' active' : ''}`}
+                      onMouseDown={(e) => { e.preventDefault(); pickBns(s); }}
+                      onMouseEnter={() => setBnsActive(i)}
+                      title={s.description || s.title}
+                    >
+                      <span className="bns-no">BNS&nbsp;{s.sectionNo}</span>
+                      <span className="bns-title">{s.title}</span>
+                      {s.category && <span className="bns-cat">{s.category}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {bnsPick && (
+              <div className="bns-picked">
+                ✓ <b>BNS {bnsPick.sectionNo}</b> — {bnsPick.title}
+                {bnsPick.category && <> · <span className="muted">{bnsPick.category}</span></>}
+              </div>
+            )}
+          </label>
+
           <label className="full">
             Description
             <textarea value={itemSub} onChange={e => setItemSub(e.target.value)} placeholder="e.g. 1 unit, with 2 live cartridges (auto-prefixed with quantity)" />

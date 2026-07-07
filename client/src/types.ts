@@ -23,7 +23,19 @@ export interface CaseRow {
   itemId: string;             // "MK-2026-000214"
   imageUrl?: string;          // "/uploads/case-FIR-214-2026.svg"
   docRef?: string;            // "/uploads/doc-FIR-214-2026.pdf" (seizure memo)
+  legalSection?: string;      // "101" — BNS section no. (without "BNS " prefix)
+  legalSectionTitle?: string; // "Murder" — denormalised title for offline render
   createdAt: string;
+}
+
+// One BNS (Bharatiya Nyaya Sanhita, 2023) section row.  Sourced from the
+// bns_sections table on the server; the client uses the typeahead on
+// "Register New Case Property" to pick a section.
+export interface BnsSection {
+  sectionNo: string;          // "101"
+  title: string;              // "Murder"
+  description?: string;
+  category?: string;          // "Offences against human body"
 }
 
 export interface MovementEvent {
@@ -109,6 +121,7 @@ export interface NewCaseInput {
   itemId?: string;
   photo?: string;            // OPTIONAL — URL of the uploaded photo of the seized object
   supportingDoc?: string;   // OPTIONAL — URL of the seizure memo / supporting document
+  legalSection?: string;    // OPTIONAL — BNS section no. (e.g. "101" or "BNS 101"); server validates
 }
 
 export interface ScanInput {
