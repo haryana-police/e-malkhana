@@ -127,8 +127,6 @@ export function CaseProperty({
         <button className="btn small scan-btn" onClick={onOpenScan}>Scan QR</button>
       </div>
 
-
-
       <div className="panel">
         <div className="panel-head">
           <h2>All Case Property</h2>
