@@ -92,11 +92,15 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
   async function startScanner(cameraId: string | null) {
     setScanError(null);
     try {
+      // The scanner div only mounts when phase === 'scanning', so we have
+      // to flip the phase first, wait for React to commit the DOM, and
+      // only THEN construct Html5Qrcode — its constructor looks up the
+      // element by id synchronously and throws if it isn't there yet.
+      setPhase('scanning');
+      // Two rAFs: one for the React state update, one for the layout commit.
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       const s = new Html5Qrcode(containerId);
       setScanner(s);
-      setPhase('scanning');
-      // Slight delay so the container is in the DOM
-      await new Promise(r => requestAnimationFrame(r));
       const camConfig = cameraId
         ? { deviceId: { exact: cameraId } }
         : { facingMode: 'environment' };
@@ -109,6 +113,7 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
     } catch (e: any) {
       setScanError(`Failed to start camera: ${e?.message || e}. Try manual entry.`);
       setPhase('idle');
+      setScanner(null);
     }
   }
 
