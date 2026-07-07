@@ -14,7 +14,6 @@ interface Props {
   onOpenTag: (c: CaseRow) => void;
   onOpenTimeline: (fir: string) => void;
   onOpenRegister: () => void;
-  onDownloadReport: (format: 'xlsx' | 'pdf') => void;
 }
 
 type TileId = 'all' | 'pending' | 'expert' | 'fsl' | 'inspection';
@@ -30,7 +29,6 @@ interface TileSpec {
 
 export function Dashboard({
   stats, movements, alerts, totalCases, onStatClick, onOpenTag, onOpenTimeline, onOpenRegister,
-  onDownloadReport,
 }: Props) {
   const tiles: TileSpec[] = [
     { id: 'all',        label: 'Total Case Property',     value: String(stats.totalProperty), foot: 'Across all sections', hint: 'Open the full Case Property register' },
@@ -50,8 +48,6 @@ export function Dashboard({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn ghost" onClick={() => onDownloadReport('xlsx')} title="Download full register as Excel">⬇ Download Report (Excel)</button>
-          <button className="btn ghost" onClick={() => onDownloadReport('pdf')}  title="Download full register as PDF">⬇ Download Report (PDF)</button>
           <button className="btn" onClick={onOpenRegister}>
             + Register New Case Property
           </button>

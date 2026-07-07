@@ -291,7 +291,6 @@ export default function App() {
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
                 onOpenRegister={() => setOpenRegister(true)}
-                onDownloadReport={onDownloadReport}
               />
             } />
             <Route path="/dashboard" element={
@@ -304,7 +303,6 @@ export default function App() {
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
                 onOpenRegister={() => setOpenRegister(true)}
-                onDownloadReport={onDownloadReport}
               />
             } />
             <Route path="/caseproperty" element={
@@ -357,7 +355,6 @@ export default function App() {
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
                 onOpenRegister={() => setOpenRegister(true)}
-                onDownloadReport={onDownloadReport}
               />
             } />
           </Routes>
