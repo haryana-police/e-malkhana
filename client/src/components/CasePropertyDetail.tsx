@@ -91,16 +91,22 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
       try {
         const c = await api.case(itemIdParam);
         setCaseRow(c);
+        // Defensive: some server endpoints can return non-array shapes
+        // (e.g. an un-awaited Promise that serialises as {}).  The movements
+        // and sections endpoints are typed as arrays; coerce anything that
+        // isn't an array to [] so the rest of the component can rely on
+        // .length / .map without crashing.
+        const safeArray = <T,>(x: unknown): T[] => Array.isArray(x) ? (x as T[]) : [];
         const [mv, qr, sec] = await Promise.all([
-          api.movements(c.id),
+          api.movements(c.id).catch(() => [] as MovementLogRow[]),
           api.qr(c.id).catch(() => ({ dataUrl: '', payload: '' })),
           // load racks for the section picker; ignore failure (the form
           // is hidden until the user clicks Edit anyway).
           api.sections('all').catch(() => [] as RackItem[]),
         ]);
-        setMovements(mv);
+        setMovements(safeArray<MovementLogRow>(mv));
         setQrUrl(qr.dataUrl);
-        setRacks(sec);
+        setRacks(safeArray<RackItem>(sec));
       } catch (e) {
         setErr((e as Error).message);
       } finally {

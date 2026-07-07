@@ -710,8 +710,15 @@ app.get('/api/cases/:id/qr', async (req, res, next) => {
 
 // =================== API: movements (append-only) ===================
 
-app.get('/api/cases/:id/movements', (req, res) => {
-  res.json(getMovements(req.params.id));
+app.get('/api/cases/:id/movements', async (req, res, next) => {
+  try {
+    // getMovements is async (queries the mirror or PG).  We MUST await it
+    // before res.json — otherwise the Promise serialises as `{}` and the
+    // client gets an empty object instead of an array, which crashes
+    // .map/.length on the case-detail page.
+    const rows = await getMovements(req.params.id);
+    res.json(rows);
+  } catch (e) { next(e); }
 });
 
 app.post('/api/movements', async (req, res, next) => {
