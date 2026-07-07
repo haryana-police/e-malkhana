@@ -17,7 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import {
   getDb, mutate, getCase, getMovements, nextMovementId, rebuildSectionCounts,
-  appendAudit, boot as bootStore,
+  appendAudit, boot as bootStore, ensureBoot,
 } from './store.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
 
@@ -47,14 +47,27 @@ app.use(express.json({ limit: '256kb' }));
 // the X-MM-Id header (set by the client).  Falls back to 'anonymous' for
 // un-authenticated requests (e.g. login itself).  All write endpoints use
 // `auditMm(req, action, target, details)` to record a log entry.
-app.use((req, _res, next) => {
-  const id = String(req.header('x-mm-id') || '').trim().toUpperCase();
-  const name = String(req.header('x-mm-name') || '').trim();
-  const db = getDb();
-  let u = null;
-  if (id) u = (db.users || []).find(x => x.id.toUpperCase() === id) || null;
-  req.mm = { id: u?.id || 'anonymous', name: u?.name || (id ? name : '—') };
-  next();
+//
+// On Vercel the boot IIFE in this file can call mutate() AFTER boot()
+// resolves (backfillImages / rebuildSectionCountsIn / scanAlerts).  If
+// any of those fail, mutate()'s rollback path does `_mirror = null`,
+// which would make a request that just awaited bootOnce() in api/index.js
+// throw "before boot()" when the middleware hits getDb() below.  We
+// await ensureBoot() here as defence-in-depth: every request is safe
+// regardless of what the IIFE does to the mirror after initial boot.
+app.use(async (req, _res, next) => {
+  try {
+    await ensureBoot();
+    const id = String(req.header('x-mm-id') || '').trim().toUpperCase();
+    const name = String(req.header('x-mm-name') || '').trim();
+    const db = getDb();
+    let u = null;
+    if (id) u = (db.users || []).find(x => x.id.toUpperCase() === id) || null;
+    req.mm = { id: u?.id || 'anonymous', name: u?.name || (id ? name : '—') };
+    next();
+  } catch (e) {
+    next(e);
+  }
 });
 
 function auditMm(req, action, target, details) {

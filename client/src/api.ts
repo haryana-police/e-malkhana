@@ -21,17 +21,43 @@ let currentMmId: string = 'anonymous';
 export function setCurrentMm(id: string) { currentMmId = (id || 'anonymous').toUpperCase(); }
 export function getCurrentMm() { return currentMmId; }
 
+// Cold-start retry: a fresh Vercel function instance can take 1-3s to
+// load the Postgres mirror (boot IIFE + Neon HTTP roundtrip).  During that
+// window the audit middleware in server.js may throw "before boot()" and
+// the API returns 500.  We retry GETs on that specific error a few times
+// with a small backoff so the user sees the page load, not a flash of
+// red text.  Writes are NOT retried — those should be idempotent on the
+// server, not retried from the client (would risk double-PATCH / double-
+// POST / double-DELETE).
+function isColdStartError(status: number, body: any): boolean {
+  if (status !== 500) return false;
+  const msg = (body && body.error) || (typeof body === 'string' ? body : '');
+  return typeof msg === 'string' && (
+    msg.includes('before boot()') ||
+    msg.includes('boot still in progress') ||
+    msg.includes('cold start')
+  );
+}
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${base}${path}`, {
-    headers: { 'X-MM-Id': currentMmId, 'X-MM-Name': currentMmId },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    let parsed: any = null; try { parsed = JSON.parse(text); } catch { parsed = text; }
-    const detail = (parsed && parsed.error) || (typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
-    throw new ApiError('GET', path, res.status, parsed, detail);
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${base}${path}`, {
+      headers: { 'X-MM-Id': currentMmId, 'X-MM-Name': currentMmId },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let parsed: any = null; try { parsed = JSON.parse(text); } catch { parsed = text; }
+      if (attempt < MAX_RETRIES - 1 && isColdStartError(res.status, parsed)) {
+        // 1.2s, 2.4s, 4.8s — small backoff so the boot can finish.
+        await new Promise(r => setTimeout(r, 1200 * Math.pow(2, attempt)));
+        continue;
+      }
+      const detail = (parsed && parsed.error) || (typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
+      throw new ApiError('GET', path, res.status, parsed, detail);
+    }
+    return res.json() as Promise<T>;
   }
-  return res.json() as Promise<T>;
 }
 
 export class ApiError extends Error {

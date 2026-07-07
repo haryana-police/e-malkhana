@@ -195,6 +195,20 @@ export async function boot() {
   }
 }
 
+// Defence-in-depth for Express middleware that runs SYNCHRONOUSLY before
+// any await point.  On Vercel serverless, the boot IIFE in server.js can
+// call `mutate()` AFTER boot() resolves (backfillImages /
+// rebuildSectionCountsIn / scanAlerts); if any of those fail, mutate()'s
+// rollback path does `_mirror = null` (store.js:422).  The request that
+// just awaited bootOnce() in api/index.js then calls getDb() and gets a
+// fresh null.  `ensureBoot()` re-runs loadMirror() if the mirror was
+// nuked, so every route handler is safe regardless of IIFE side effects.
+export async function ensureBoot() {
+  if (_mirror) return _mirror;
+  // Cold start (or post-rollback): wait for the next load to finish.
+  return await boot();
+}
+
 // ---------- mutate() with snapshot diff + transactional write ----------
 
 function rowsById(arr) {
