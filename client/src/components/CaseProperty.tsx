@@ -18,7 +18,6 @@ interface Props {
   onChangeStatus: (c: CaseRow) => void;
   active?: boolean;
   onDownloadReport: (format: 'xlsx' | 'pdf') => void;
-  onGenerateRegister: (format: 'pdf' | 'print') => void;
 }
 
 function statusClass(s: CaseStatus): string {
@@ -37,7 +36,7 @@ export function CaseProperty({
   activeStatus, onClearStatus,
   excludeDisposed, onClearExcludeDisposed,
   onOpenTag, onOpenTimeline, onOpenScan, onOpenRegister, onChangeStatus, active,
-  onDownloadReport, onGenerateRegister,
+  onDownloadReport,
 }: Props) {
   const [textFilter, setTextFilter] = useState('');
   // Used to make the whole <tr> clickable (per PRD #7).  We can't just
@@ -128,14 +127,7 @@ export function CaseProperty({
         <button className="btn small scan-btn" onClick={onOpenScan}>Scan QR</button>
       </div>
 
-      <div className="scan-bar">
-        <span className="scan-label">Register</span>
-        <span style={{ flex: 1, fontSize: 12.5, color: 'var(--slate)' }}>
-          Generate the official Malkhana Register (portrait, letterhead, signature lines) for {visible.length} currently-shown case(s).
-        </span>
-        <button className="btn small" onClick={() => onGenerateRegister('pdf')}  title="Download as PDF">⬇ PDF</button>
-        <button className="btn small ghost" onClick={() => onGenerateRegister('print')} title="Open browser print dialog">🖨 Print</button>
-      </div>
+
 
       <div className="panel">
         <div className="panel-head">

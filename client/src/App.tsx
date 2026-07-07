@@ -320,7 +320,6 @@ export default function App() {
                 onOpenRegister={() => setOpenRegister(true)}
                 onChangeStatus={setChangeCase}
                 onDownloadReport={onDownloadReport}
-                onGenerateRegister={onGenerateRegister}
               />
             } />
             <Route path="/case-property/:item_id" element={
