@@ -128,8 +128,8 @@ export function CaseProperty({
         <button className="btn small scan-btn" onClick={onOpenScan}>Scan QR</button>
       </div>
 
-      <div className="scan-bar" style={{ background: 'rgba(75,93,58,0.06)', borderColor: 'var(--olive)' }}>
-        <span className="scan-label" style={{ color: 'var(--olive)' }}>Register</span>
+      <div className="scan-bar">
+        <span className="scan-label">Register</span>
         <span style={{ flex: 1, fontSize: 12.5, color: 'var(--slate)' }}>
           Generate the official Malkhana Register (portrait, letterhead, signature lines) for {visible.length} currently-shown case(s).
         </span>
