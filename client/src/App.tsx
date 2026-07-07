@@ -170,6 +170,11 @@ export default function App() {
   }
 
   function onAlertsUpdated(_cfg: AlertConfig) {
+    // Re-fetch the dashboard stats so the new "Police Station name" and
+    // any updated threshold (inspection-due text etc.) show immediately.
+    api.dashboard().then(dash => {
+      setData(d => d ? { ...d, stats: dash.stats } : d);
+    }).catch(() => { /* keep prior stats on transient error */ });
     api.alerts().then(alerts => setData(d => d ? { ...d, alerts } : d));
   }
 
@@ -290,7 +295,6 @@ export default function App() {
                 onStatClick={onStatClick}
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
-                onOpenRegister={() => setOpenRegister(true)}
               />
             } />
             <Route path="/dashboard" element={
@@ -302,7 +306,6 @@ export default function App() {
                 onStatClick={onStatClick}
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
-                onOpenRegister={() => setOpenRegister(true)}
               />
             } />
             <Route path="/caseproperty" element={
@@ -340,8 +343,6 @@ export default function App() {
               <Alerts
                 alerts={data.alerts}
                 onOpenSettings={() => setOpenSettings(true)}
-                onDownloadReport={onDownloadReport}
-                onGenerateRegister={onGenerateRegister}
               />
             } />
             <Route path="*" element={
@@ -353,7 +354,6 @@ export default function App() {
                 onStatClick={onStatClick}
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
-                onOpenRegister={() => setOpenRegister(true)}
               />
             } />
           </Routes>

@@ -108,6 +108,9 @@ export interface AlertConfig {
   courtDays: number;
   inspectionCycleDays: number;
   lastInspection: string;
+  // Editable police-station name (was hardcoded). The dashboard subheader,
+  // report letterhead, and login response all read from this single field.
+  station: string;
 }
 
 export interface NewCaseInput {

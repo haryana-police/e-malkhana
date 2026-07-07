@@ -76,6 +76,11 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager 
         errs.lastInspection = 'Pick a valid date';
       }
     }
+    // Police station name — same 3–80 char rule the server enforces.
+    const s = (c.station || '').trim();
+    if (s.length < 3 || s.length > 80) {
+      errs.station = 'Station name must be 3–80 characters';
+    }
     return errs;
   }
 
@@ -181,6 +186,28 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager 
         {tab === 'thresholds' && cfg && (
           <>
             <div className="settings-list">
+              <div className="settings-row">
+                <label>
+                  Police Station name
+                  <div className="help">
+                    Shown in the dashboard subheader and on every report letterhead
+                    (e.g.&nbsp;<i>PS Sector-5, Panchkula</i>).  3–80 characters.
+                  </div>
+                </label>
+                <input
+                  type="text"
+                  maxLength={80}
+                  value={cfg.station || ''}
+                  placeholder="PS Sector-5, Panchkula"
+                  aria-invalid={!!fieldErrors.station}
+                  aria-describedby={fieldErrors.station ? 'err-station' : undefined}
+                  onChange={e => set('station', e.target.value)}
+                  style={{ minWidth: 240 }}
+                />
+                {fieldErrors.station && (
+                  <div id="err-station" className="field-error" role="alert">{fieldErrors.station}</div>
+                )}
+              </div>
               <div className="settings-row">
                 <label>
                   FSL report overdue

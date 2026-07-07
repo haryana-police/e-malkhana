@@ -13,7 +13,6 @@ interface Props {
   onStatClick: (target: 'all' | 'pending' | 'expert' | 'fsl' | 'inspection') => void;
   onOpenTag: (c: CaseRow) => void;
   onOpenTimeline: (fir: string) => void;
-  onOpenRegister: () => void;
 }
 
 type TileId = 'all' | 'pending' | 'expert' | 'fsl' | 'inspection';
@@ -28,7 +27,7 @@ interface TileSpec {
 }
 
 export function Dashboard({
-  stats, movements, alerts, totalCases, onStatClick, onOpenTag, onOpenTimeline, onOpenRegister,
+  stats, movements, alerts, totalCases, onStatClick, onOpenTag, onOpenTimeline,
 }: Props) {
   const tiles: TileSpec[] = [
     { id: 'all',        label: 'Total Case Property',     value: String(stats.totalProperty), foot: 'Across all sections', hint: 'Open the full Case Property register' },
@@ -47,11 +46,8 @@ export function Dashboard({
             {stats.station} &nbsp;·&nbsp; As of {stats.asOf}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn" onClick={onOpenRegister}>
-            + Register New Case Property
-          </button>
-        </div>
+        {/* "+ Register New Case Property" button removed —
+            registration now lives in the Case Property view. */}
       </div>
 
       <div className="stat-row">

@@ -216,8 +216,19 @@ function dashboardStats() {
     withFSL:         withFsl,
     inspectionDue:   inspectionDueText(),
     station:         db.meta.station,
-    asOf:            db.meta.asOf,
+    // Always show the current server time — never a stale seeded value
+    // (the dashboard "As of …" should reflect whenever it was loaded).
+    asOf:            formatAsOf(new Date()),
   };
+}
+
+// Matches the visual format the dashboard was designed around:
+//   "05 Jul 2026, 10:42 AM"
+function formatAsOf(d) {
+  return d.toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  });
 }
 function inspectionDueText() {
   const db = getDb();
@@ -365,7 +376,7 @@ app.post('/api/login', async (req, res) => {
   // strip the password before returning
   const { password: _pw, ...safe } = u;
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  res.json({ user: safe, station: db.meta.station, asOf: db.meta.asOf });
+  res.json({ user: safe, station: db.meta.station, asOf: formatAsOf(new Date()) });
   // Audit the login (using the same request that we now know is authenticated)
   await auditMm({ mm: { id: u.id, name: u.name } }, 'login', u.id, `Malkhana Moharrir signed in`);
 });
@@ -952,7 +963,10 @@ app.get('/api/alerts', (_req, res) => {
 });
 
 app.get('/api/alerts/config', (_req, res) => {
-  res.json(getDb().alertConfig);
+  // Return alertConfig + the editable station name so the Settings UI
+  // can show and update it in a single Save action.
+  const db = getDb();
+  res.json({ ...db.alertConfig, station: db.meta.station });
 });
 
 app.patch('/api/alerts/config', async (req, res, next) => {
@@ -977,6 +991,14 @@ app.patch('/api/alerts/config', async (req, res, next) => {
         fields.lastInspection = 'must be a real calendar date';
       }
     }
+    // Police station name — free text but bounded so it fits in the
+    // dashboard subheader and the report letterhead.  3–80 chars, trimmed.
+    if (b.station !== undefined) {
+      const s = String(b.station).trim();
+      if (s.length < 3 || s.length > 80) {
+        fields.station = 'station name must be 3–80 characters';
+      }
+    }
     if (Object.keys(fields).length > 0) {
       return res.status(400).json({ error: 'validation failed', fields });
     }
@@ -984,6 +1006,7 @@ app.patch('/api/alerts/config', async (req, res, next) => {
     // ---- Persist ----
     const result = await mutate(d => {
       const c = d.alertConfig;
+      const m = d.meta;
       const changes = [];
       for (const k of dayKeys) {
         if (b[k] !== undefined && c[k] !== b[k]) {
@@ -994,6 +1017,13 @@ app.patch('/api/alerts/config', async (req, res, next) => {
       if (b.lastInspection !== undefined && c.lastInspection !== b.lastInspection) {
         changes.push(`lastInspection: ${c.lastInspection} → ${b.lastInspection}`);
         c.lastInspection = b.lastInspection;
+      }
+      if (b.station !== undefined) {
+        const newStation = String(b.station).trim();
+        if (m.station !== newStation) {
+          changes.push(`station: ${m.station} → ${newStation}`);
+          m.station = newStation;
+        }
       }
       return { config: c, changes };
     });
