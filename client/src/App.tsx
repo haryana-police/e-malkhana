@@ -77,6 +77,10 @@ export default function App() {
     setUser(u);
     setCurrentMm(u.id);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+    // Force the [user, reloadKey] effect to re-run even when `u` is the
+    // same object reference as the previously stored user (logout → login
+    // with the same MM, or page refresh that re-hydrates the same user).
+    setReloadKey(k => k + 1);
   }
 
   // -------- app state --------
@@ -139,20 +143,50 @@ export default function App() {
     navWith('dashboard');
   }
 
+  // Reload = re-fetch dashboard/cases/alerts from the API and replace `data`
+  // in one render.  Each call is wrapped in its own try/catch so a single
+  // 500 (e.g. dashboard endpoint cold-starting slower than the others) does
+  // NOT cause the whole reload to fail and fall through to the red
+  // "Could not reach API" box.  The previous Promise.all() did exactly that:
+  // dashboard.coldStart → reject → caught → err set → UI shows red screen
+  // even though cases() and alerts() would have succeeded individually.
   async function reload() {
-    try {
-      const [dash, cases, alerts] = await Promise.all([
-        api.dashboard(), api.cases(), api.alerts(),
-      ]);
-      setData({
-        officer: dash.officer, racks: dash.racks, stats: dash.stats,
-        recentMovements: dash.recentMovements, priorityAlerts: dash.priorityAlerts,
-        cases, alerts,
-      });
-      setErr(null);
-    } catch (e) { setErr((e as Error).message); }
+    const [dashR, casesR, alertsR] = [
+      api.dashboard().catch(e => ({ __err: (e as Error).message })),
+      api.cases().catch(e => ({ __err: (e as Error).message })),
+      api.alerts().catch(e => ({ __err: (e as Error).message })),
+    ];
+    const [dash, cases, alerts] = await Promise.all([dashR, casesR, alertsR]);
+    const dashErr  = (dash  as any).__err as string | undefined;
+    const casesErr = (cases as any).__err as string | undefined;
+    const alErr    = (alerts as any).__err as string | undefined;
+    if (casesErr) { setErr(casesErr); return; }
+    const dashOk = !dashErr && dash ? (dash as any) : null;
+    const casesOk = Array.isArray(cases) ? (cases as CaseRow[]) : null;
+    const alOk = Array.isArray(alerts) ? (alerts as any) : null;
+    setData(d => {
+      const next = d ? { ...d } : ({} as BootData);
+      if (dashOk) {
+        next.officer         = dashOk.officer;
+        next.racks           = dashOk.racks;
+        next.stats           = dashOk.stats;
+        next.recentMovements = dashOk.recentMovements;
+        next.priorityAlerts  = dashOk.priorityAlerts;
+      }
+      if (casesOk) next.cases = casesOk;
+      if (alOk)    next.alerts = alOk;
+      return next as BootData;
+    });
+    setErr(null);
   }
-  useEffect(() => { if (user) reload(); }, [user]);
+  // Run reload() on every (re)login.  Two trigger paths:
+  //   1. `user` identity actually changes (different MM signs in)
+  //   2. `reloadKey` bumps (same MM re-signs in after a logout).  Without
+  //      (2), React's [user] dep sees the same object reference, the effect
+  //      doesn't fire, and the visible list keeps showing yesterday's cases
+  //      even though new writes have landed in Postgres.
+  const [reloadKey, setReloadKey] = useState(0);
+  useEffect(() => { if (user) reload(); }, [user, reloadKey]);
 
   async function openTimeline(fir: string) {
     setTlFir(fir); setTlEvents([]);
@@ -182,6 +216,10 @@ export default function App() {
     setUser(null);
     setCurrentMm('anonymous');
     localStorage.removeItem(STORAGE_KEY);
+    // Reset the in-memory snapshot so a re-login as the SAME user still
+    // gets fresh data (the [user, reloadKey] effect would otherwise see the
+    // same reference and skip the reload).
+    setData(null);
     setActiveSection(null);
     setActiveStatus(null);
     setExcludeDisposed(false);
