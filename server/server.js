@@ -1253,7 +1253,7 @@ app.get('/api/reports/case-property', async (req, res, next) => {
       const doc = new PDFDocument({
         size: 'A4',
         layout: 'landscape',
-        margins: { top: 110, bottom: 70, left: 36, right: 36 },
+        margins: { top: 110, bottom: 0, left: 36, right: 36 },
         info: { Title: 'Case Property Register', Author: officer, Subject: 'e-Malkhana export' },
       });
       const filename = reportFileName('case-property', 'pdf', filters);
@@ -1279,17 +1279,30 @@ app.get('/api/reports/case-property', async (req, res, next) => {
                  36, 70, { width: doc.page.width - 72, align: 'center' });
         doc.restore();
       }
-      function drawFooter() {
-        const y = doc.page.height - 50;
+      // Prepared-by / Prepared-on / signature block, pinned to the bottom
+      // of the single page (replaces the old "Page N" footer).  The officer
+      // signs here — there is no electronic signature, just a signature line.
+      function drawPreparedBy() {
+        const blockH = 72;
+        const y = doc.page.height - blockH;
         doc.save();
         doc.lineWidth(0.5).strokeColor('#C9BFA0').moveTo(36, y).lineTo(doc.page.width - 36, y).stroke();
-        doc.fillColor('#5C5A4E').font('Helvetica').fontSize(8)
-           .text(`Page ${doc.pageNumber}`, 36, y + 8, { width: doc.page.width - 72, align: 'center' });
+        doc.font('Helvetica').fontSize(9).fillColor('#2B2B28');
+        doc.text(`Prepared by: ${officer}`, 36, y + 10, { width: 260 });
+        doc.text(`Prepared on: ${generatedAt}`, 36, y + 26, { width: 260 });
+        // signature line (right side)
+        const sx = doc.page.width - 250;
+        doc.lineWidth(0.4).strokeColor('#2B2B28')
+           .moveTo(sx, y + 30).lineTo(doc.page.width - 36, y + 30).stroke();
+        doc.font('Helvetica-Oblique').fontSize(8).fillColor('#5C5A4E')
+           .text('Signature of Malkhana Moharrir', sx, y + 34, { width: doc.page.width - 36 - sx });
         doc.restore();
       }
-      // Draw initial page header/footer
+      // Single-page layout: letterhead at top, ONE table header, all rows
+      // beneath, and a "Prepared by / Prepared on / Signature" block pinned
+      // to the bottom.  No pagination — if there are many rows the row
+      // height auto-compresses so everything still fits on one page.
       drawHeader();
-      drawFooter();
 
       // Column widths (proportional).  Total = page width minus margins.
       const colWidths = REPORT_COLUMNS.map((_, i) => {
@@ -1300,58 +1313,58 @@ app.get('/api/reports/case-property', async (req, res, next) => {
       const pageWidth = doc.page.width - 72;
       const scale = pageWidth / colTotal;
       const w = colWidths.map(x => x * scale);
-      const rowH = 18;
+
+      // Reserve space for the prepared-by block, then share the rest among
+      // the rows (capped at 18pt; never overflows the single page).
+      const topY = 100;
+      const signBlockH = 72;
+      const usableH = doc.page.height - topY - signBlockH;
+      const headerH = 18;
+      const rowH = rows.length > 0
+        ? Math.min(18, (usableH - headerH) / rows.length)
+        : 18;
+      const rowFont = Math.min(7.5, Math.max(5, rowH - 2));
 
       function drawTableHeader(y) {
         let x = 36;
         doc.save();
-        doc.rect(36, y, pageWidth, rowH).fillAndStroke('#14243D', '#14243D');
-        doc.fillColor('#FAF7EE').font('Helvetica-Bold').fontSize(8);
+        doc.rect(36, y, pageWidth, headerH).fillAndStroke('#14243D', '#14243D');
+        doc.fillColor('#FAF7EE').font('Helvetica-Bold').fontSize(Math.min(8, Math.max(5, headerH - 3)));
         REPORT_COLUMNS.forEach((c, i) => {
           doc.text(c.label, x + 4, y + 5, { width: w[i] - 6, align: 'left' });
           x += w[i];
         });
         doc.restore();
-        return y + rowH;
+        return y + headerH;
       }
 
       function drawRow(r, y) {
         let x = 36;
         doc.save();
         doc.rect(36, y, pageWidth, rowH).fillAndStroke('#FAF7EE', '#C9BFA0');
-        doc.fillColor('#2B2B28').font('Helvetica').fontSize(7.5);
+        doc.fillColor('#2B2B28').font('Helvetica').fontSize(rowFont);
         const values = REPORT_COLUMNS.map(c => String(r[c.key] ?? ''));
         values.forEach((v, i) => {
-          doc.text(v, x + 4, y + 4, { width: w[i] - 6, align: 'left', height: rowH - 6, ellipsis: true });
+          doc.text(v, x + 4, y + 3, { width: w[i] - 6, align: 'left', ellipsis: true });
           x += w[i];
         });
         doc.restore();
         return y + rowH;
       }
 
-      let y = 100;
+      let y = topY;
       y = drawTableHeader(y);
       if (rows.length === 0) {
         doc.font('Helvetica-Oblique').fontSize(10).fillColor('#5C5A4E')
            .text('No cases match the applied filters.', 36, y + 8);
       } else {
         for (const r of rows) {
-          if (y + rowH > doc.page.height - 60) {
-            doc.addPage();
-            drawHeader();
-            drawFooter();
-            y = 100;
-          }
-          y = drawTableHeader(y);
-          if (y + rowH > doc.page.height - 60) {
-            doc.addPage();
-            drawHeader();
-            drawFooter();
-            y = 100;
-          }
           y = drawRow(r, y);
         }
       }
+
+      // Prepared-by / prepared-on / signature block on the same page.
+      drawPreparedBy();
       try { doc.end(); }
       catch (e) { console.error('[pdf] end failed:', e && (e.stack || e.message)); throw e; }
       auditMm(req, 'report.export', 'case-property', `Exported pdf: ${rows.length} row(s), filters=${JSON.stringify(filters)}`)
