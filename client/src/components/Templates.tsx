@@ -197,7 +197,9 @@ export function Templates() {
       // A4 portrait printable height = 297mm − 12mm top − 12mm bottom margins.
       // px @96dpi => 1mm = 96/25.4 = 3.7795px.
       const pageH = (297 - 12 - 12) * 3.7795;
-      const scale = natural > pageH ? Math.max(0.5, pageH / natural) : 1;
+      // Never spill to a 2nd page: scale down as far as needed (no floor) and
+      // leave a 3% safety margin so rounding can't push it over.
+      const scale = natural > pageH ? Math.min(1, (pageH / natural) * 0.97) : 1;
       sheet.style.setProperty('--sheet-zoom', String(scale));
       sheet.style.zoom = String(scale);
     }
