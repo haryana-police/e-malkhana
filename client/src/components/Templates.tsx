@@ -208,6 +208,49 @@ export function Templates() {
     setShowBuilder(false);
   }
 
+  // Export the sheet as a real PDF (single A4 page, chrome-free).  Unlike
+  // window.print(), a generated PDF has NO browser header/footer and cannot
+  // spill to a 2nd page — we rasterize only `.tmpl-sheet` and fit it to one
+  // A4 page.  This is the canonical "only the application on one page" output.
+  const [pdfBusy, setPdfBusy] = useState(false);
+  async function exportPdf() {
+    const sheet = document.querySelector<HTMLElement>('.tmpl-sheet');
+    if (!sheet || pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      sheet.style.zoom = '1';
+      sheet.style.removeProperty('--sheet-zoom');
+      const canvas = await html2canvas(sheet, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        windowWidth: sheet.scrollWidth,
+      });
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = pdf.internal.pageSize.getHeight();
+      const margin = 8; // mm
+      const availW = pw - margin * 2;
+      const ratio = canvas.height / canvas.width;
+      let w = availW;
+      let h = w * ratio;
+      // If it would exceed one page, scale down to fit (single page, no clip).
+      if (h > ph - margin * 2) {
+        h = ph - margin * 2;
+        w = h / ratio;
+      }
+      const x = (pw - w) / 2;
+      const y = (ph - h) / 2;
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, w, h);
+      pdf.save(`${(active?.name || 'template').replace(/[^\w\-]+/g, '_')}.pdf`);
+    } catch (e) {
+      console.error('PDF export failed', e);
+      alert('PDF export failed — try the Print button instead.');
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
   // Fit the printable sheet onto ONE A4 page.  Measured from the sheet's
   // natural (unzoomed) height against the page's printable height; if it
   // overflows we scale it down via the `--sheet-zoom` CSS var so it never
@@ -275,10 +318,18 @@ export function Templates() {
         <div className="tmpl-preview">
           <div className="tmpl-preview-bar">
             <button className="btn ghost small" onClick={() => setActive(null)}>← All templates</button>
-            <button
-              className="btn small"
-              onClick={() => window.print()}
-            >🖨 Print blank form</button>
+            <div className="btn-row">
+              <button
+                className="btn small"
+                onClick={() => window.print()}
+              >🖨 Print blank form</button>
+              <button
+                className="btn small"
+                onClick={exportPdf}
+                disabled={pdfBusy}
+                title="Download a clean single-page PDF (no browser header/footer)"
+              >{pdfBusy ? 'Generating…' : '⬇ Save PDF'}</button>
+            </div>
           </div>
 
           {/* Two-column: Fill details (left) | Template preview (right). */}
