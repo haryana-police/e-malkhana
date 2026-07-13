@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import {
   formTemplates,
   blankTemplate,
