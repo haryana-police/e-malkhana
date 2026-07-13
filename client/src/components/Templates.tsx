@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import {
   formTemplates,
   blankTemplate,
@@ -318,9 +320,10 @@ export function Templates() {
             <button className="btn ghost small" onClick={() => setActive(null)}>← All templates</button>
             <div className="btn-row">
               <button
-                className="btn small"
+                className="btn small ghost"
                 onClick={() => window.print()}
-              >🖨 Print blank form</button>
+                title="Physical print — in the dialog, uncheck Headers & Footers for a clean sheet"
+              >🖨 Print</button>
               <button
                 className="btn small"
                 onClick={exportPdf}
