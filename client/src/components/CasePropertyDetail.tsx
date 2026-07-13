@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import type { CaseRow, MovementLogRow, RackItem, BnsSection } from '../types';
+import type { CaseRow, MovementLogRow, RackItem, BnsSection, ItemType } from '../types';
 
 interface Props {
   onOpenTag: (c: CaseRow) => void;        // legacy: kept for global fallback
@@ -18,8 +18,8 @@ const STATUS_TONE: Record<string, string> = {
 // the user can change is on this shape.  Keep it in sync with what
 // server.js's PATCH /api/cases/:id actually persists.
 interface EditableCase {
-  itemType: string;
-  itemSub: string;
+  itemTypeId: number | null;
+  description: string;
   sectionLetter: string;       // "A".."E" (we send just the letter; server re-derives "PART A")
   seizingOfficer: string;
   seizedOn: string;             // "YYYY-MM-DD" for the date input
@@ -40,8 +40,8 @@ function caseToEditable(c: CaseRow): EditableCase {
     return s;
   })();
   return {
-    itemType: c.itemType || '',
-    itemSub: c.itemSub || '',
+    itemTypeId: c.itemTypeId != null ? c.itemTypeId : null,
+    description: c.description || '',
     sectionLetter: (c.section || '').match(/PART ([A-Z]{1,2})/i)?.[1]?.toUpperCase() || 'A',
     seizingOfficer: c.seizingOfficer || '',
     seizedOn: seizedIso,
@@ -69,6 +69,10 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
 
   // Racks for the section picker (loaded once per case change).
   const [racks, setRacks] = useState<RackItem[]>([]);
+  // Item Types for THIS case's section (loaded for the edit dropdown).
+  const [typeOptions, setTypeOptions] = useState<ItemTypeOption[]>([]);
+  interface ItemTypeOption { id: number; name: string; }
+
   // Edit-mode state.  `null` = read-only (default).  An object = the
   // form's working copy (dirty, unsaved).
   const [editDraft, setEditDraft] = useState<EditableCase | null>(null);
@@ -97,16 +101,21 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         // isn't an array to [] so the rest of the component can rely on
         // .length / .map without crashing.
         const safeArray = <T,>(x: unknown): T[] => Array.isArray(x) ? (x as T[]) : [];
-        const [mv, qr, sec] = await Promise.all([
+        const [mv, qr, sec, types] = await Promise.all([
           api.movements(c.id).catch(() => [] as MovementLogRow[]),
           api.qr(c.id).catch(() => ({ dataUrl: '', payload: '' })),
           // load racks for the section picker; ignore failure (the form
           // is hidden until the user clicks Edit anyway).
           api.sections('all').catch(() => [] as RackItem[]),
+          // Load the item-type list for THIS case's section so the
+          // edit dropdown only shows valid options.  The letter comes
+          // from the loaded case; fall back to 'A' if unresolved.
+          api.itemTypes(c.section?.replace('PART ', '') || 'A').catch(() => [] as ItemType[]),
         ]);
         setMovements(safeArray<MovementLogRow>(mv));
         setQrUrl(qr.dataUrl);
         setRacks(safeArray<RackItem>(sec));
+        setTypeOptions(safeArray<ItemType>(types).map(t => ({ id: t.id, name: t.name })));
       } catch (e) {
         setErr((e as Error).message);
       } finally {
@@ -210,8 +219,8 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
       // when empty) so the server clears it; for the other fields we
       // send them all — the server's diff logic will skip no-ops.
       const patch: any = {
-        itemType:       editDraft.itemType.trim(),
-        itemSub:        editDraft.itemSub.trim(),
+        itemTypeId:     editDraft.itemTypeId,
+        description:    editDraft.description.trim(),
         section:        editDraft.sectionLetter,
         seizingOfficer: editDraft.seizingOfficer.trim(),
         seizedOn:       editDraft.seizedOn,
@@ -376,7 +385,7 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         <div>
           <div className="case-detail-id">{caseRow.id}</div>
           <h1 className="case-detail-title">{caseRow.itemType}</h1>
-          {caseRow.itemSub && <div className="case-detail-sub">{caseRow.itemSub}</div>}
+          {caseRow.description && <div className="case-detail-sub">{caseRow.description}</div>}
         </div>
         <span className={`stamp ${STATUS_TONE[caseRow.status] || ''}`}>{caseRow.status}</span>
       </header>
@@ -386,21 +395,27 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         <div className="case-detail-edit">
           <div className="case-detail-edit-grid">
             <label>
-              <span>Item</span>
-              <input
-                type="text"
-                value={editDraft.itemType}
-                onChange={e => setEditDraft({ ...editDraft, itemType: e.target.value })}
-                placeholder="Item description"
-              />
+              <span>Item type</span>
+              <select
+                value={editDraft.itemTypeId != null ? String(editDraft.itemTypeId) : ''}
+                onChange={e => {
+                  const v = e.target.value;
+                  setEditDraft({ ...editDraft, itemTypeId: v ? Number(v) : null });
+                }}
+              >
+                <option value="">— none —</option>
+                {typeOptions.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
             </label>
             <label>
-              <span>Detail / sub</span>
+              <span>Description (specifics)</span>
               <input
                 type="text"
-                value={editDraft.itemSub}
-                onChange={e => setEditDraft({ ...editDraft, itemSub: e.target.value })}
-                placeholder="Quantity, marks, serial no."
+                value={editDraft.description}
+                onChange={e => setEditDraft({ ...editDraft, description: e.target.value })}
+                placeholder="e.g. 80 grams, sealed poly bag"
               />
             </label>
             <label>

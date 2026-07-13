@@ -179,7 +179,37 @@ function allCases() {
   // Always resolve section name at read time so renames propagate.
   // The case record stores ONLY the letter reference ("PART A"); the
   // display name is joined from db.sections on every read.
-  return [...db.cases, ...(db.extraCasesForAlerts || [])].map(c => withFreshSectionName(c, db));
+  return [...db.cases, ...(db.extraCasesForAlerts || [])]
+    .map(c => withFreshSectionName(c, db))
+    .map(c => decorateCaseRow(c, db));
+}
+
+// Attach the two derived columns the Case Property Register (and the
+// downloadable reports) need: a parsed `quantity` and the
+// `lastMovement` date.  Computed synchronously from the in-memory
+// mirror so /api/cases can return them alongside every case.  Mirrors
+// the logic in toReportRow()/lastMovementDate() used by the report
+// endpoints, so the on-screen table and the PDF/XLSX stay in lock-step.
+function decorateCaseRow(c, db) {
+  if (!c) return c;
+  // Quantity is parsed out of the leading "<n> unit(s) · …" pattern that
+  // RegisterCaseModal prefixes into itemSub.  Falls back to "1" when
+  // nothing is parseable (legacy seed rows).
+  let quantity = '1';
+  if (c.itemSub) {
+    const m = c.itemSub.match(/^(\d+)\s*unit/i);
+    if (m) quantity = m[1];
+  }
+  c.quantity = quantity;
+  // Last-movement date: most recent movements-log entry for this case,
+  // else the case's createdAt / seizedOn as a fallback.
+  const ms = (db.movements || [])
+    .filter(m => m.caseId === c.id)
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  c.lastMovement = ms.length
+    ? ms[ms.length - 1].timestamp.slice(0, 10)
+    : (c.createdAt ? c.createdAt.slice(0, 10) : (c.seizedOn || ''));
+  return c;
 }
 
 // Resolve the current section name for a case. Replaces any stale
@@ -423,6 +453,23 @@ app.post('/api/cases', async (req, res, next) => {
     const itemId = body.itemId || makeItemId(id);
     const createdAt = nowISO();
 
+    // Item Type: optional controlled-vocabulary link.  The MM picks
+    // from the /api/item-types dropdown (per section).  If supplied we
+    // validate it exists + belongs to the chosen section; the free-text
+    // `description` (e.g. "80 grams, sealed poly bag") carries the
+    // case-specific specifics instead of overloading itemType.
+    let itemTypeId = null, itemTypeName = null;
+    if (body.itemTypeId != null && body.itemTypeId !== '' && body.itemTypeId !== 0) {
+      const it = db_itemTypeById(Number(body.itemTypeId));
+      if (!it) { const e = new Error(`unknown item type id: ${body.itemTypeId}`); e.status = 400; throw e; }
+      if (it.sectionLetter !== section.letter) {
+        const e = new Error(`item type "${it.name}" belongs to Part ${it.sectionLetter}, not Part ${section.letter}`);
+        e.status = 400; throw e;
+      }
+      itemTypeId = it.id;
+      itemTypeName = it.name;
+    }
+
     // Look up the BNS legal section (OPTIONAL).  The user picks a section
     // from the typeahead on Register New Case Property; we accept either
     // a bare section number ("101") or a "BNS 101" prefix.  We validate
@@ -443,23 +490,28 @@ app.post('/api/cases', async (req, res, next) => {
     // withFreshSectionName). This way section renames propagate to every
     // existing case without a migration. Only the letter reference is
     // persisted: c.section = "PART A".
+    //
+    // Likewise itemType / itemSub are the *free-text fallbacks* for
+    // legacy / unknown-type cases.  When itemTypeId is set we
+    // mirror the type name into itemType so the register table keeps
+    // rendering a readable label even before the JOIN; the canonical
+    // value is the foreign key.
     const newCase = {
       id,
-      itemType:   body.itemType,
+      itemType:   itemTypeName || body.itemType,
       itemSub:    body.itemSub || '',
       section:    `PART ${section.letter}`,
       status:     body.status || 'Seized',
       seizingOfficer: body.seizingOfficer,
       seizedOn:   body.seizedOn,
       itemId,
-      // Photo is OPTIONAL. If the MM did not upload one, imageUrl stays
-      // undefined and skipAutoImage=true so the boot-time backfill never
-      // synthesises a dummy image for a newly-registered case.
       imageUrl:   body.photo || undefined,
       skipAutoImage: !body.photo,                              // protect newly-registered cases from auto-dummy
       docRef:     body.supportingDoc || undefined,             // optional — seizure memo URL
       legalSection,
       legalSectionTitle,
+      itemTypeId: itemTypeId != null ? itemTypeId : undefined,
+      description: body.description || undefined,
       createdAt,
     };
     await mutate(d => { d.cases.push(newCase); rebuildSectionCountsIn(d); });
@@ -541,7 +593,8 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     // Allow-list of editable keys.  Anything outside this list is silently
     // dropped (avoids callers sneaking in `status` or `id` changes through
     // a different endpoint).
-    const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'seizedOn', 'itemId', 'legalSection'];
+    const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'seizedOn', 'itemId', 'legalSection',
+                      'itemTypeId', 'description'];
     const patch = {};
     for (const k of ALLOWED) {
       if (Object.prototype.hasOwnProperty.call(body, k)) patch[k] = body[k];
@@ -556,9 +609,25 @@ app.patch('/api/cases/:id', async (req, res, next) => {
       newSectionLetter = sec.letter;
     }
 
-    // Normalise / validate BNS section.  "" or null clears it; a real
-    // value must resolve against the bns_sections table.
-    let newLegalSection = undefined;
+    // Validate + normalise itemTypeId if provided.
+    let newItemTypeId = undefined;        // undefined = no change requested
+    let newItemTypeName = undefined;
+    if (Object.prototype.hasOwnProperty.call(patch, 'itemTypeId')) {
+      const raw = patch.itemTypeId;
+      if (raw == null || raw === '' || raw === 0) {
+        newItemTypeId = null;                    // clear the link
+        newItemTypeName = null;
+      } else {
+        const it = db_itemTypeById(Number(raw));
+        if (!it) { const e = new Error(`unknown item type: ${raw}`); e.status = 400; throw e; }
+        if (newSectionLetter && it.sectionLetter !== newSectionLetter) {
+          const e = new Error(`item type "${it.name}" belongs to Part ${it.sectionLetter}, not Part ${newSectionLetter}`);
+          e.status = 400; throw e;
+        }
+        newItemTypeId = it.id;
+        newItemTypeName = it.name;
+      }
+    }
     let newLegalSectionTitle = undefined;
     if (Object.prototype.hasOwnProperty.call(patch, 'legalSection')) {
       const raw = patch.legalSection;
@@ -621,6 +690,28 @@ app.patch('/api/cases/:id', async (req, res, next) => {
           }
           c.legalSection = newLegalSection || undefined;
           c.legalSectionTitle = newLegalSectionTitle || undefined;
+        }
+      }
+      if (newItemTypeId !== undefined) {
+        const oldId = c.itemTypeId || null;
+        if (oldId !== newItemTypeId) {
+          if (newItemTypeId) {
+            changes.push(`item type: ${c.itemType || '—'} → ${newItemTypeName}`);
+            // Mirror the canonical type name into itemType so the
+            // register table keeps rendering a readable label.
+            c.itemType = newItemTypeName || c.itemType;
+          } else {
+            changes.push(`item type: ${c.itemType || '—'} → (cleared)`);
+          }
+          c.itemTypeId = newItemTypeId || undefined;
+        }
+      }
+      if ('description' in patch) {
+        const v = patch.description == null ? '' : String(patch.description);
+        if (c.description !== v) {
+          const short = (s) => (s && s.length > 40 ? s.slice(0, 37) + '…' : (s || '—'));
+          changes.push(`description: ${short(c.description)} → ${short(v)}`);
+          c.description = v || undefined;
         }
       }
 
@@ -816,6 +907,161 @@ app.post('/api/scan', async (req, res, next) => {
       return;
     }
     res.json({ case: c });
+  } catch (e) { next(e); }
+});
+
+// Helper: resolve an item type by id from the mirror (or null).
+function db_itemTypeById(id) {
+  const db = getDb();
+  const n = Number(id);
+  if (!Number.isInteger(n)) return null;
+  return (db.itemTypes || []).find(t => t.id === n) || null;
+}
+
+// =================== API: Item Types (per-section controlled vocabulary) ===================
+// GET /api/item-types?section=A|all
+//   - section=A       → only Part A types
+//   - section=all     → every type, grouped by section client-side
+//   - active=true     → only active types (the register dropdown uses this;
+//                       default when no `active` param is supplied)
+//   - active=all     → active + deactivated (the manager uses this)
+// Returns ItemType[] = { id, sectionLetter, name, sortOrder, active, caseCount }
+app.get('/api/item-types', (req, res) => {
+  const db = getDb();
+  const section = String(req.query.section || 'all').toUpperCase();
+  const wantActive = String(req.query.active || 'true').toLowerCase();
+  let rows = db.itemTypes || [];
+  if (section !== 'ALL') rows = rows.filter(t => t.sectionLetter === section);
+  if (wantActive === 'all') {
+    // keep all
+  } else {
+    const want = wantActive === 'false' ? false : true;
+    rows = rows.filter(t => !!t.active === want);
+  }
+  rows = [...rows].sort((a, b) =>
+    a.sectionLetter === b.sectionLetter
+      ? (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name)
+      : a.sectionLetter.localeCompare(b.sectionLetter)
+  );
+  res.json(rows);
+});
+
+// POST /api/item-types  { sectionLetter, name, sortOrder? }
+//   - creates a new item type in the given section
+//   - name must be unique within the section (UNIQUE constraint + guard)
+app.post('/api/item-types', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const sectionLetter = String(body.sectionLetter || '').toUpperCase().trim();
+    const name = String(body.name || '').trim();
+    if (!/^[A-Z]{1,2}$/.test(sectionLetter)) {
+      const e = new Error('sectionLetter must be 1-2 letters A-Z'); e.status = 400; throw e;
+    }
+    if (!name) { const e = new Error('name is required'); e.status = 400; throw e; }
+    if (!db_sectionByLetter(sectionLetter)) {
+      const e = new Error(`unknown section: ${sectionLetter}`); e.status = 400; throw e;
+    }
+    const existing = (getDb().itemTypes || []).filter(t => t.sectionLetter === sectionLetter);
+    if (existing.some(t => t.name.toLowerCase() === name.toLowerCase())) {
+      const e = new Error(`"${name}" already exists in Part ${sectionLetter}`); e.status = 409; throw e;
+    }
+    // Auto-assign the next sort_order so a freshly-added type lands at the
+    // bottom of its section list.
+    const maxSort = existing.reduce((m, t) => Math.max(m, t.sortOrder || 0), 0);
+    const toInsert = {
+      sectionLetter,
+      name,
+      sortOrder: Number.isInteger(body.sortOrder) ? body.sortOrder : maxSort + 10,
+    };
+    let created;
+    await mutate(d => {
+      const nextId = (d.itemTypes || []).reduce((m, t) => Math.max(m, t.id || 0), 0) + 1;
+      created = { id: nextId, active: true, caseCount: 0, ...toInsert };
+      d.itemTypes = [...(d.itemTypes || []), created];
+    });
+    created = db_itemTypeById(created.id);
+    if (!created) { const e = new Error('item type not found after create'); e.status = 500; throw e; }
+    await auditMm(req, 'itemtype.create', `${sectionLetter}:${created.id}`, `Added item type "${name}" to Part ${sectionLetter}`);
+    res.status(201).json(created);
+  } catch (e) { next(e); }
+});
+
+// PATCH /api/item-types/:id  { name?, sortOrder?, active? }
+//   - rename, reorder, or (soft) de/activate an item type
+//   - refuses to deactivate (active=false) a type still used by >=1 case —
+//     that would orphan the register dropdown for those cases.  The
+//     manager instead surfaces the "N cases" count as a warning.
+app.patch('/api/item-types/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { const e = new Error('invalid id'); e.status = 400; throw e; }
+    const body = req.body || {};
+    const t = db_itemTypeById(id);
+    if (!t) { const e = new Error('item type not found'); e.status = 404; throw e; }
+    const patch = {};
+    if (body.name !== undefined) {
+      const name = String(body.name).trim();
+      if (!name) { const e = new Error('name cannot be empty'); e.status = 400; throw e; }
+      const clash = (getDb().itemTypes || []).some(x =>
+        x.id !== id && x.sectionLetter === t.sectionLetter && x.name.toLowerCase() === name.toLowerCase());
+      if (clash) { const e = new Error(`"${name}" already exists in Part ${t.sectionLetter}`); e.status = 409; throw e; }
+      patch.name = name;
+    }
+    if (body.sortOrder !== undefined) {
+      const so = Number(body.sortOrder);
+      if (!Number.isInteger(so) || so < 0) { const e = new Error('sortOrder must be a non-negative integer'); e.status = 400; throw e; }
+      patch.sortOrder = so;
+    }
+    if (body.active !== undefined) {
+      const active = !!body.active;
+      if (!active && (t.caseCount || 0) > 0) {
+        const e = new Error(`cannot deactivate — ${t.caseCount} case(s) still use "${t.name}". Move or reassign them first.`);
+        e.status = 409; e.payload = { caseCount: t.caseCount }; throw e;
+      }
+      patch.active = active;
+    }
+    if (Object.keys(patch).length === 0) {
+      const e = new Error('no editable fields supplied'); e.status = 400; throw e;
+    }
+    const changes = [];
+    await mutate(d => {
+      const x = d.itemTypes.find(y => y.id === id);
+      if (!x) { const e = new Error('item type not found'); e.status = 404; throw e; }
+      if (patch.name !== undefined && x.name !== patch.name) { changes.push(`name: "${x.name}" → "${patch.name}"`); x.name = patch.name; }
+      if (patch.sortOrder !== undefined) { x.sortOrder = patch.sortOrder; }
+      if (patch.active !== undefined) { x.active = patch.active; }
+    });
+    const updated = db_itemTypeById(id);
+    const summary = changes.length ? changes.join('; ') : (body.active !== undefined ? `active → ${updated.active}` : '(no-op)');
+    await auditMm(req, 'itemtype.update', `${t.sectionLetter}:${id}`, `Edited item type in Part ${t.sectionLetter}: ${summary}`);
+    res.json(updated);
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/item-types/:id
+//   - HARD delete, but guarded: refuses if any case still points at it
+//     (the manager also prevents deactivation of in-use types, and offers
+//     reassignment before delete).  On success, FK ON DELETE SET NULL
+//     semantics are emulated by nulling item_type_id on linked cases so
+//     historical rows never error on a missing FK.
+app.delete('/api/item-types/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { const e = new Error('invalid id'); e.status = 400; throw e; }
+    const t = db_itemTypeById(id);
+    if (!t) { const e = new Error('item type not found'); e.status = 404; throw e; }
+    if ((t.caseCount || 0) > 0) {
+      const e = new Error(`cannot delete — ${t.caseCount} case(s) still use "${t.name}". Reassign them first.`);
+      e.status = 409; e.payload = { caseCount: t.caseCount }; throw e;
+    }
+    // Null any case links BEFORE removing the row (defence-in-depth; the
+    // constraint is RESTRICT so this must happen first).
+    await mutate(d => {
+      for (const c of d.cases) if (c.itemTypeId === id) c.itemTypeId = undefined;
+      d.itemTypes = (d.itemTypes || []).filter(x => x.id !== id);
+    });
+    await auditMm(req, 'itemtype.delete', `${t.sectionLetter}:${id}`, `Removed item type "${t.name}" from Part ${t.sectionLetter}`);
+    res.json({ id, sectionLetter: t.sectionLetter, name: t.name, deleted: true });
   } catch (e) { next(e); }
 });
 
@@ -1101,8 +1347,11 @@ function lastMovementDate(caseId, fallback) {
   return ms[ms.length - 1].timestamp.slice(0, 10);
 }
 
-// Canonical 9-column row shape used by both xlsx and PDF outputs.
+// Canonical 10-column row shape used by both xlsx and PDF outputs.
+// Column order matches the issued Case Property Register format
+// (S.No. first, Quantity + Last Movement Date present).
 const REPORT_COLUMNS = [
+  { key: 'sno',             label: 'S.No.' },
   { key: 'id',              label: 'FIR / DD No.' },
   { key: 'itemType',        label: 'Item Type' },
   { key: 'description',     label: 'Description' },
@@ -1124,6 +1373,7 @@ function toReportRow(c) {
     if (m) qty = m[1];
   }
   return {
+    sno:             '', // filled in per-row by buildReportRows() so it reflects the filtered, sorted order
     id:              c.id,
     itemType:        c.itemType,
     description:     c.itemSub,

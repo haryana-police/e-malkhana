@@ -19,6 +19,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ChangeStatusModal } from './components/ChangeStatusModal';
 import { Login } from './components/Login';
 import { SectionsManagerModal } from './components/SectionsManagerModal';
+import { ItemTypeManagerModal } from './components/ItemTypeManagerModal';
 import { Footer } from './components/Footer';
 import { CasePropertyDetail } from './components/CasePropertyDetail';
 
@@ -102,6 +103,7 @@ export default function App() {
   const [openScan, setOpenScan]                 = useState(false);
   const [openSettings, setOpenSettings]         = useState(false);
   const [openSectionsManager, setOpenSectionsManager] = useState(false);
+  const [openItemTypeManager, setOpenItemTypeManager] = useState(false);
   const [changeCase, setChangeCase]             = useState<CaseRow | null>(null);
   const [scanFlash, setScanFlash]               = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -457,6 +459,7 @@ export default function App() {
         onClose={() => setOpenSettings(false)}
         onUpdated={onAlertsUpdated}
         onOpenSectionsManager={() => { setOpenSettings(false); setOpenSectionsManager(true); }}
+        onOpenItemTypeManager={() => { setOpenSettings(false); setOpenItemTypeManager(true); }}
       />
       <ChangeStatusModal
         open={!!changeCase}
@@ -476,6 +479,16 @@ export default function App() {
           onRacksChange(racks);
           setScanFlash({ kind: 'ok', text: 'Section names saved' });
           setTimeout(() => setScanFlash(null), 2500);
+        }}
+      />
+      <ItemTypeManagerModal
+        open={openItemTypeManager}
+        racks={data.racks}
+        onClose={() => setOpenItemTypeManager(false)}
+        onSaved={() => {
+          setScanFlash({ kind: 'ok', text: 'Item types saved' });
+          setTimeout(() => setScanFlash(null), 2500);
+          reload();
         }}
       />
 

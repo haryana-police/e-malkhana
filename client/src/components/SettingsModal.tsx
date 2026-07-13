@@ -7,6 +7,7 @@ interface Props {
   onClose: () => void;
   onUpdated: (cfg: AlertConfig) => void;
   onOpenSectionsManager?: () => void;
+  onOpenItemTypeManager?: () => void;
 }
 
 const ACTION_LABELS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' | 'critical' }> = {
@@ -27,7 +28,7 @@ function fmtTime(iso: string) {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager }: Props) {
+export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager }: Props) {
   const [tab, setTab] = useState<'thresholds' | 'log' | 'backup'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
@@ -180,6 +181,14 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager 
               onClick={() => { onOpenSectionsManager(); }}
               style={{ marginLeft: 'auto' }}
             >✏ Edit Malkhana Sections</button>
+          )}
+          {onOpenItemTypeManager && (
+            <button
+              className="audit-tab"
+              type="button"
+              onClick={() => { onOpenItemTypeManager(); }}
+              style={{ marginLeft: 8 }}
+            >✏ Edit Item Types</button>
           )}
         </div>
 

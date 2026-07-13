@@ -15,6 +15,8 @@ export interface CaseRow {
   itemType: string;           // "Country-made pistol (.315 bore)"
   itemSub: string;            // "1 unit, with 2 live cartridges"
   quantity?: string;          // parsed count, e.g. "2" (decorated server-side)
+  itemTypeId?: number | null; // FK to item_types master row (controlled vocab)
+  description?: string;       // free-text specifics, e.g. "80 grams, sealed poly bag"
   lastMovement?: string;      // YYYY-MM-DD of last movement-log entry (decorated server-side)
   section: string;            // "PART B" — letter reference, never display
   sectionName: string;        // "Weapons Almirah" — joined from sections table at read time
@@ -83,6 +85,17 @@ export interface DashboardStats {
   asOf: string;                // "05 Jul 2026, 10:42 AM"
 }
 
+// Standardised "Item Type" master row (controlled vocabulary per section).
+// Mirrors the server's ItemType shape exactly.
+export interface ItemType {
+  id: number;
+  sectionLetter: string;     // "A".."E"
+  name: string;
+  sortOrder: number;
+  active: boolean;            // false = soft-deleted (hidden from dropdown)
+  caseCount: number;          // how many cases currently use this type
+}
+
 export interface RackItem {
   letter: string;              // "A" or "AA"
   name: string;                // "Narcotics Rack"
@@ -127,6 +140,8 @@ export interface NewCaseInput {
   photo?: string;            // OPTIONAL — URL of the uploaded photo of the seized object
   supportingDoc?: string;   // OPTIONAL — URL of the seizure memo / supporting document
   legalSection?: string;    // OPTIONAL — BNS section no. (e.g. "101" or "BNS 101"); server validates
+  itemTypeId?: number | null; // OPTIONAL — FK to the item_types master row
+  description?: string;       // OPTIONAL — free-text specifics, e.g. "80 grams, sealed poly bag"
 }
 
 export interface ScanInput {

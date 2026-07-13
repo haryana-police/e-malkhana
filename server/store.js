@@ -72,12 +72,14 @@ export async function loadMirror() {
       const [kvRes, usersRes, sectionsRes, bnsRes, casesRes, movRes, auditRes] = await Promise.all([
         client.query("SELECT key, value FROM kv WHERE key IN ('meta','officer','alertConfig','alertIssues','backupLog')"),
         client.query("SELECT id, initials, name, rank, designation, station, password FROM users ORDER BY id"),
-        client.query("SELECT letter, name, count, active FROM sections ORDER BY length(letter), letter"),
-        client.query("SELECT section_no, title, description, category FROM bns_sections ORDER BY length(section_no), section_no"),
+        client.query(`SELECT letter, name, count, active FROM sections ORDER BY length(letter), letter`),
+        client.query(`SELECT id, section_letter, name, sort_order, active FROM item_types ORDER BY section_letter, sort_order, name`),
+        client.query(`SELECT section_no, title, description, category FROM bns_sections ORDER BY length(section_no), section_no`),
         client.query(`SELECT id, item_type, item_sub, section, status,
                              seizing_officer, seized_on, item_id,
                              image_url, image_auto_generated, skip_auto_image,
                              doc_ref, legal_section, legal_section_title,
+                             item_type_id, description,
                              created_at
                       FROM cases ORDER BY created_at`),
         client.query(`SELECT id, case_id, from_location, to_location, moved_by,
@@ -113,6 +115,14 @@ export async function loadMirror() {
           description: r.description || undefined,
           category:  r.category || undefined,
         })),
+        itemTypes: itRes.rows.map(r => ({
+          id:            Number(r.id),
+          sectionLetter: r.section_letter,
+          name:          r.name,
+          sortOrder:     Number(r.sort_order) || 0,
+          active:        r.active !== false,
+          caseCount:    0,                 // filled by the pass below
+        })),
         cases: casesRes.rows.map(r => ({
           id: r.id,
           itemType: r.item_type,
@@ -128,6 +138,8 @@ export async function loadMirror() {
           docRef: r.doc_ref || undefined,
           legalSection:      r.legal_section || undefined,        // "101" (no "BNS " prefix on the wire)
           legalSectionTitle: r.legal_section_title || undefined,  // "Murder"
+          itemTypeId:       r.item_type_id != null ? Number(r.item_type_id) : undefined,
+          description:       r.description || undefined,
           createdAt: new Date(r.created_at).toISOString(),
         })),
         movements: movRes.rows.map(r => ({
@@ -146,15 +158,19 @@ export async function loadMirror() {
         // single row in the `kv` table under key='backupLog'.  Capped to
         // 100 entries in the server.js appendBackupLog() helper.
         backupLog: kv.backupLog || [],
-        // Legacy fields: kept as empty arrays for any callers that still
-        // read them (server.js merges `cases + extraCasesForAlerts`).
-        // In the SQL world, the alert-only case is just another row in
-        // `cases` with a special flag, but for the moment we keep it in the
-        // main table so the boot seed lands in one place.  If a future
-        // migration splits them, these two arrays stay here.
+        // Per-item-type case count: how many cases currently point at
+        // each type id.  Drives the "N cases" badge in the form builder
+        // and the soft-delete guard (can't deactivate a type still in use).
         extraCasesForAlerts: [],
         extraMovements: [],
       };
+      // Compute caseCount for each item type from the loaded cases.
+      for (const c of _mirror.cases) {
+        if (c.itemTypeId != null) {
+          const it = _mirror.itemTypes.find(t => t.id === c.itemTypeId);
+          if (it) it.caseCount = (it.caseCount || 0) + 1;
+        }
+      }
       return _mirror;
     } finally {
       client.release();
@@ -303,6 +319,33 @@ async function persistDiff(client, pre, post) {
     }
   }
 
+  // 3b. Item Types (id key = id)
+  {
+    const { inserted, updated, deleted } = diffById(prev.itemTypes || [], post.itemTypes || [], 'id');
+    for (const t of inserted) {
+      await client.query(
+        `INSERT INTO item_types (id, section_letter, name, sort_order, active)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (id) DO NOTHING`,
+        [t.id, t.sectionLetter, t.name, t.sortOrder || 0, t.active !== false]
+      );
+    }
+    for (const t of updated) {
+      await client.query(
+        `UPDATE item_types SET section_letter=$2, name=$3, sort_order=$4, active=$5
+         WHERE id=$1`,
+        [t.id, t.sectionLetter, t.name, t.sortOrder || 0, t.active !== false]
+      );
+    }
+    for (const t of deleted) {
+      // Soft guard: the API refuses to deactivate types that still have
+      // cases, but if a delete slipped through we hard-remove (FK
+      // ON DELETE is RESTRICT-free here — we null the case link first
+      // in the manager to avoid orphan rows).
+      await client.query('DELETE FROM item_types WHERE id=$1', [t.id]);
+    }
+  }
+
   // 4. Cases
   {
     const { inserted, updated, deleted } = diffById(pre.cases, post.cases);
@@ -311,13 +354,15 @@ async function persistDiff(client, pre, post) {
         `INSERT INTO cases (id, item_type, item_sub, section, status,
                             seizing_officer, seized_on, item_id,
                             image_url, image_auto_generated, skip_auto_image,
-                            doc_ref, legal_section, legal_section_title, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+                            doc_ref, legal_section, legal_section_title,
+                            item_type_id, description, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [c.id, c.itemType, c.itemSub || '', c.section, c.status,
          c.seizingOfficer || null, c.seizedOn || null, c.itemId || null,
          c.imageUrl || null, !!c.imageAutoGenerated, !!c.skipAutoImage,
          c.docRef || null,
          c.legalSection || null, c.legalSectionTitle || null,
+         c.itemTypeId != null ? c.itemTypeId : null, c.description || null,
          c.createdAt || new Date().toISOString()]
       );
     }
@@ -326,13 +371,15 @@ async function persistDiff(client, pre, post) {
         `UPDATE cases SET item_type=$2, item_sub=$3, section=$4, status=$5,
                           seizing_officer=$6, seized_on=$7, item_id=$8,
                           image_url=$9, image_auto_generated=$10, skip_auto_image=$11,
-                          doc_ref=$12, legal_section=$13, legal_section_title=$14
+                          doc_ref=$12, legal_section=$13, legal_section_title=$14,
+                          item_type_id=$15, description=$16
          WHERE id=$1`,
         [c.id, c.itemType, c.itemSub || '', c.section, c.status,
          c.seizingOfficer || null, c.seizedOn || null, c.itemId || null,
          c.imageUrl || null, !!c.imageAutoGenerated, !!c.skipAutoImage,
          c.docRef || null,
-         c.legalSection || null, c.legalSectionTitle || null]
+         c.legalSection || null, c.legalSectionTitle || null,
+         c.itemTypeId != null ? c.itemTypeId : null, c.description || null]
       );
     }
     for (const c of deleted) {

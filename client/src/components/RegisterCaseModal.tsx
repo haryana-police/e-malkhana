@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { RackItem, BnsSection } from '../types';
 import { api } from '../api';
+import type { RackItem, BnsSection, ItemType } from '../types';
+
+// Controlled-vocabulary option for the Item Type dropdown in this modal.
+interface ItemTypeOption { id: number; name: string; }
 
 interface Props {
   open: boolean;
@@ -38,8 +41,9 @@ interface BnsPick {
 export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const [firOrDd, setFirOrDd]        = useState('FIR ');
-  const [itemType, setItemType]      = useState('');
-  const [itemSub, setItemSub]        = useState('');
+  const [itemTypeId, setItemTypeId]  = useState<number | null>(null);
+  const [itemTypeName, setItemTypeName] = useState('');   // mirrored free-text fallback label
+  const [description, setDescription] = useState('');       // "80 grams, sealed poly bag"
   const [quantity, setQuantity]      = useState('1');
   // "Location (Rack)" — the physical storage rack the item is being
   // placed in.  Was called "Section (Rack)" in the previous UI; renamed
@@ -52,6 +56,27 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
   const [doc, setDoc]                = useState<PendingFile | null>(null);
   const [busy, setBusy]              = useState(false);
   const [msg, setMsg]                = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  // Item Types for the chosen section.  Loaded from /api/item-types
+  // (active only) and refreshed whenever the section changes or the
+  // modal re-opens.  This is the controlled vocabulary that replaces
+  // free-text item type entry.
+  const [typeOptions, setTypeOptions] = useState<ItemTypeOption[]>([]);
+  const [typesLoading, setTypesLoading] = useState(false);
+
+  // Load the item-type list for the currently-selected section.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setTypesLoading(true);
+    api.itemTypes(location).then(rows => {
+      if (!cancelled) {
+        setTypeOptions(rows.map(r => ({ id: r.id, name: r.name })));
+        setTypesLoading(false);
+      }
+    }).catch(() => { if (!cancelled) { setTypeOptions([]); setTypesLoading(false); } });
+    return () => { cancelled = true; };
+  }, [open, location]);
 
   // BNS (Bharatiya Nyaya Sanhita, 2023) legal-section typeahead.  The
   // user types "302" or "murder" and picks one of the 100 BNS sections
@@ -99,10 +124,11 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
   }, [bnsOpen]);
 
   function reset() {
-    setFirOrDd('FIR '); setItemType(''); setItemSub(''); setQuantity('1');
+    setFirOrDd('FIR '); setItemTypeId(null); setItemTypeName('');
+    setDescription(''); setQuantity('1');
     setLocation(racks[0]?.letter ?? 'A'); setOfficer('SI Rakesh Sharma');
     setSeizedOn(today); setPhoto(null); setDoc(null); setMsg(null);
-    setBnsQuery(''); setBnsPick(null); setBnsHits([]); setBnsOpen(false); setBnsActive(-1);
+    setTypeOptions([]);
   }
 
   function pickBns(s: BnsSection) {
@@ -184,20 +210,23 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
         const docUpload = await api.upload(doc.file.name, doc.dataUrl);
         docUrl = docUpload.url;
       }
-      // 3. Register the case
-      const itemSubFinal = itemSub.trim()
-        ? `${quantity} unit${quantity === '1' ? '' : 's'} · ${itemSub.trim()}`
-        : `${quantity} unit${quantity === '1' ? '' : 's'}`;
+      // 3. Register the case.  itemTypeId (FK to item_types) +
+      // description (free-text specifics) replace the old free-text
+      // itemType/itemSub pair.  If the MM somehow has no type
+      // options loaded yet (race), we fall back to sending the
+      // mirrored name so the row still records something readable.
       await api.createCase({
         firOrDd: firOrDd.trim(),
-        itemType: itemType.trim(),
-        itemSub:  itemSubFinal,
+        itemType: itemTypeName || (typeOptions.find(t => t.id === itemTypeId)?.name || ''),
+        itemSub:  '',
         section:  location,                              // rack letter — was `section`
         seizingOfficer: seizingOfficer.trim(),
         seizedOn,
         photo: photoUrl,
         supportingDoc: docUrl,
         legalSection: bnsPick?.sectionNo,                // optional — validated server-side
+        itemTypeId: itemTypeId ?? null,
+        description: description.trim() || undefined,
       });
       const bnsPart = bnsPick ? ` — BNS ${bnsPick.sectionNo} (${bnsPick.title})` : '';
       setMsg({ kind: 'ok', text: `Registered ${firOrDd} — evidence tag generated. Status: Seized.${bnsPart}` });
@@ -229,11 +258,34 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
           </label>
           <label className="full">
             Item type
-            <input value={itemType} onChange={e => setItemType(e.target.value)} placeholder="e.g. Country-made pistol, Heroin packet" required />
+            <select
+              value={itemTypeId != null ? String(itemTypeId) : ''}
+              onChange={e => {
+                const v = e.target.value;
+                if (!v) { setItemTypeId(null); setItemTypeName(''); return; }
+                const id = Number(v);
+                const opt = typeOptions.find(t => t.id === id);
+                setItemTypeId(id);
+                setItemTypeName(opt?.name || '');
+              }}
+              disabled={busy || typesLoading}
+              title="Pick from the section's standardised item-type list (managed in System Settings)"
+            >
+              <option value="">— select item type —</option>
+              {typeOptions.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            {typesLoading && <div className="sub" style={{ marginTop: 4 }}>Loading item types…</div>}
           </label>
-          <label>
-            Quantity
-            <input type="number" min={1} value={quantity} onChange={e => setQuantity(e.target.value)} required />
+
+          <label className="full">
+            Description (specifics)
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="e.g. 80 grams, sealed poly bag · 2 live cartridges"
+            />
           </label>
           <label>
             {/* Renamed from "Section (Rack)" — the rack letter is the
@@ -311,10 +363,6 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
             )}
           </label>
 
-          <label className="full">
-            Description
-            <textarea value={itemSub} onChange={e => setItemSub(e.target.value)} placeholder="e.g. 1 unit, with 2 live cartridges (auto-prefixed with quantity)" />
-          </label>
           <label>
             Seized on
             <input type="date" value={seizedOn} max={today} onChange={e => setSeizedOn(e.target.value)} required />
@@ -361,7 +409,7 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
 
         <div className="form-actions">
           <button type="button" className="btn ghost" onClick={() => { reset(); onClose(); }} disabled={busy}>Cancel</button>
-          <button type="submit" className="btn" disabled={busy || !firOrDd.trim() || !itemType.trim()}>
+          <button type="submit" className="btn" disabled={busy || !firOrDd.trim() || itemTypeId == null}>
             {busy ? 'Saving…' : 'Register & Generate Tag'}
           </button>
         </div>

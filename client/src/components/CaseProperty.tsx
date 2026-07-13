@@ -31,6 +31,50 @@ function statusClass(s: CaseStatus): string {
   }
 }
 
+// ---- Column model for the Case Property Register -------------------------
+// Every column (except S.NO which is the running row index and Actions which
+// holds the per-row buttons) is described here so the user can DRAG the
+// headers to reorder them.  The order is persisted to localStorage so a
+// station's preferred layout sticks across reloads.  No DB change — purely
+// client-side, so the Neon schema is untouched.
+type ColKey =
+  | 'sno' | 'id' | 'seizingOfficer' | 'seizedOn' | 'itemType'
+  | 'section' | 'quantity' | 'status' | 'lastMovement' | 'actions';
+
+interface ColumnDef {
+  key: ColKey;
+  label: string;
+  className?: string;
+  // When true the header is NOT draggable (S.NO + Actions stay put).
+  locked?: boolean;
+  render: (c: CaseRow, i: number) => React.ReactNode;
+}
+
+// Simplified register: FIR/DD · Item Type · Section · Quantity · Status ·
+// Last Movement.  Full description lives on the detail page (row click).
+const DEFAULT_ORDER: ColKey[] = [
+  'sno', 'id', 'itemType',
+  'section', 'quantity', 'status', 'lastMovement', 'actions',
+];
+
+const LS_KEY = 'cpr-column-order';
+
+function loadOrder(): ColKey[] {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return [...DEFAULT_ORDER];
+    const parsed = JSON.parse(raw) as ColKey[];
+    // Keep only known keys, preserve default order for any that are missing,
+    // and drop unknown ones — defensive against schema drift.
+    const known = new Set(DEFAULT_ORDER);
+    const kept = parsed.filter(k => known.has(k));
+    for (const k of DEFAULT_ORDER) if (!kept.includes(k)) kept.push(k);
+    return kept;
+  } catch {
+    return [...DEFAULT_ORDER];
+  }
+}
+
 export function CaseProperty({
   cases, activeSection, onClearSection,
   activeStatus, onClearStatus,
@@ -39,17 +83,116 @@ export function CaseProperty({
   onDownloadReport,
 }: Props) {
   const [textFilter, setTextFilter] = useState('');
-  // Used to make the whole <tr> clickable (per PRD #7).  We can't just
-  // put a <Link> around the row because <tr> can't be a <a>; we attach an
-  // onClick that does a navigate() and let the inner <Link>s / buttons
-  // stopPropagation() so the user can still hit the per-row actions
-  // (QR / timeline / change-status) without triggering the row nav.
+  const [order, setOrder] = useState<ColKey[]>(loadOrder);
+  const [dragKey, setDragKey] = useState<ColKey | null>(null);
   const navigate = useNavigate();
+
+  const columns: Record<ColKey, ColumnDef> = {
+    sno: {
+      key: 'sno', label: 'S.NO', className: 'col-sno', locked: true,
+      render: (_c, i) => <td className="sno">{i + 1}</td>,
+    },
+    id: {
+      key: 'id', label: 'FIR / DD No.',
+      render: (c) => (
+        <td className="fir">
+          <Link
+            to={`/case-property/${encodeURIComponent(c.id)}`}
+            className="case-link"
+            onClick={(e) => e.stopPropagation()}
+            title={`Open ${c.id} detail page`}
+          >{c.id}</Link>
+        </td>
+      ),
+    },
+    seizingOfficer: {
+      key: 'seizingOfficer', label: 'Seizing Officer',
+      render: (c) => <td>{c.seizingOfficer}</td>,
+    },
+    seizedOn: {
+      key: 'seizedOn', label: 'Seized On',
+      render: (c) => <td className="date-col">{c.seizedOn}</td>,
+    },
+    itemType: {
+      key: 'itemType', label: 'Item Type',
+      render: (c) => <td className="type">{c.itemType}</td>,
+    },
+    quantity: {
+      key: 'quantity', label: 'Quant', className: 'col-quant',
+      render: (c) => <td className="quant">{c.quantity || '1'}</td>,
+    },
+    section: {
+      key: 'section', label: 'Section',
+      render: (c) => (
+        <td>
+          <span
+            className="section-tag"
+            style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            onClick={(e) => { e.stopPropagation(); onClearSection(); }}
+            title={`Part ${c.section?.replace('PART ', '') || '?'} — click rack name in sidebar to filter`}
+          >
+            <small style={{ opacity: 0.7, fontWeight: 500 }}>{c.section?.replace('PART ', '')}</small>
+            <span>{c.sectionName}</span>
+          </span>
+        </td>
+      ),
+    },
+    status: {
+      key: 'status', label: 'Status',
+      render: (c) => (
+        <td>
+          <span className={`stamp ${statusClass(c.status)}`}>{c.status}</span>
+        </td>
+      ),
+    },
+    lastMovement: {
+      key: 'lastMovement', label: 'Last Movement Date',
+      render: (c) => <td className="date-col">{c.lastMovement ? c.lastMovement : '—'}</td>,
+    },
+    actions: {
+      key: 'actions', label: 'Actions', className: 'col-actions', locked: true,
+      render: (c) => (
+        <td>
+          <div className="row-actions">
+            <Link
+              to={`/case-property/${encodeURIComponent(c.id)}?tab=tag`}
+              className="icon-btn"
+              onClick={(e) => e.stopPropagation()}
+              title="View evidence tag (real QR) on detail page"
+            >▦</Link>
+            <Link
+              to={`/case-property/${encodeURIComponent(c.id)}?tab=timeline`}
+              className="icon-btn"
+              onClick={(e) => e.stopPropagation()}
+              title="View movement log on detail page"
+            >⏱</Link>
+            <div className="icon-btn" title="Change status (record a movement)" onClick={(e) => { e.stopPropagation(); onChangeStatus(c); }}>↻</div>
+          </div>
+        </td>
+      ),
+    },
+  };
+
+  function onDrop(target: ColKey) {
+    if (!dragKey || dragKey === target) return;
+    setOrder((o) => {
+      const next = o.filter((k) => k !== dragKey);
+      const idx = next.indexOf(target);
+      next.splice(idx, 0, dragKey);
+      try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch { /* ignore quota */ }
+      return next;
+    });
+    setDragKey(null);
+  }
+
+  function resetColumns() {
+    setOrder([...DEFAULT_ORDER]);
+    try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
+  }
 
   // Three filters: text + section + status.  When `excludeDisposed` is set
   // (dashboard "Pending Disposal" tile), the 'Disposed' rows are dropped on
-  // top of any other filters — the count on the tile then matches the rows
-  // the user actually sees.
+  // top of any other filters.
   const bySection = activeSection
     ? cases.filter(c => c.section === `PART ${activeSection}`)
     : cases;
@@ -67,7 +210,7 @@ export function CaseProperty({
     const f = textFilter.toLowerCase();
     return c.id.toLowerCase().includes(f)
         || c.itemType.toLowerCase().includes(f)
-        || c.itemSub.toLowerCase().includes(f)
+        || (c.description || c.itemSub || '').toLowerCase().includes(f)
         || c.seizingOfficer.toLowerCase().includes(f)
         || c.sectionName.toLowerCase().includes(f)
         || c.status.toLowerCase().includes(f);
@@ -130,34 +273,43 @@ export function CaseProperty({
       <div className="panel">
         <div className="panel-head">
           <h2>All Case Property</h2>
-          <span className="meta">▦ evidence tag &nbsp; ⏱ movement log &nbsp; ↻ change status</span>
+          <span className="meta">
+            <span className="col-reorder-hint" title="Drag a column header left/right to reorder it. Layout is saved on this device.">⠿ drag headers to reorder</span>
+            <button className="btn tiny ghost" onClick={resetColumns} title="Reset columns to default order">reset</button>
+            &nbsp; ▦ evidence tag &nbsp; ⏱ movement log &nbsp; ↻ change status
+          </span>
         </div>
-        <table>
+        <table className="register-table">
           <thead>
             <tr>
-              <th>FIR / DD No.</th>
-              <th>Item</th>
-              <th>Location</th>
-              <th>Section</th>
-              <th>Status</th>
-              <th>Seizing Officer</th>
-              <th>Seized On</th>
-              <th></th>
+              {order.map((key) => {
+                const col = columns[key];
+                return (
+                  <th
+                    key={key}
+                    className={[col.className, col.locked ? '' : 'col-draggable'].filter(Boolean).join(' ')}
+                    draggable={!col.locked}
+                    onDragStart={(e) => { setDragKey(key); e.dataTransfer.effectAllowed = 'move'; }}
+                    onDragOver={(e) => { if (!col.locked) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); } }}
+                    onDragLeave={(e) => { e.currentTarget.classList.remove('drag-over'); }}
+                    onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); onDrop(key); }}
+                    onDragEnd={() => setDragKey(null)}
+                  >
+                    {!col.locked && <span className="drag-handle" aria-hidden>⠿</span>}
+                    {col.label}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--slate-soft)' }}>
+              <tr><td colSpan={order.length} style={{ textAlign: 'center', color: 'var(--slate-soft)' }}>
                 No matching cases. {activeSection && <a href="#" onClick={e => { e.preventDefault(); onClearSection(); }}>Clear location filter</a>}
                 {textFilter && <a href="#" onClick={e => { e.preventDefault(); setTextFilter(''); }}>Clear text filter</a>}
               </td></tr>
             )}
-            {visible.map(c => (
-              // Whole row is clickable → /case-property/:id (PRD #7).  The
-              // inner <Link>s and the change-status <div> call stopPropagation
-              // so they keep their own click semantics (deep-link with
-              // ?tab=tag / ?tab=timeline, or open the change-status modal)
-              // and don't also fire the row navigation.
+            {visible.map((c, i) => (
               <tr
                 key={c.id}
                 className="row-clickable"
@@ -168,71 +320,7 @@ export function CaseProperty({
                 aria-label={`Open ${c.id} detail page`}
                 title={`Open ${c.id} detail page`}
               >
-                <td className="fir">
-                  <Link
-                    to={`/case-property/${encodeURIComponent(c.id)}`}
-                    className="case-link"
-                    onClick={(e) => e.stopPropagation()}
-                    title={`Open ${c.id} detail page`}
-                  >{c.id}</Link>
-                </td>
-                <td className="item-desc">
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                    {c.imageUrl && <img src={c.imageUrl} alt="" className="case-thumb" />}
-                    <div>
-                      <div className="type">{c.itemType}</div>
-                      <div className="sub">{c.itemSub}</div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <span
-                    className="section-tag"
-                    style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    onClick={(e) => { e.stopPropagation(); onClearSection(); /* will reset filter, then re-set via sidebar */ }}
-                    title={`Part ${c.section?.replace('PART ', '') || '?'} — click rack name in sidebar to filter`}
-                  >
-                    <small style={{ opacity: 0.7, fontWeight: 500 }}>{c.section?.replace('PART ', '')}</small>
-                    <span>{c.sectionName}</span>
-                  </span>
-                </td>
-                <td>
-                  {c.legalSection ? (
-                    <span
-                      className="bns-chip"
-                      title={c.legalSectionTitle ? `BNS ${c.legalSection} — ${c.legalSectionTitle}` : `BNS ${c.legalSection}`}
-                    >
-                      <span className="bns-chip-no">BNS&nbsp;{c.legalSection}</span>
-                      {c.legalSectionTitle && <span className="bns-chip-title">{c.legalSectionTitle}</span>}
-                    </span>
-                  ) : (
-                    <span className="muted" style={{ fontSize: 11 }}>—</span>
-                  )}
-                </td>
-                <td>
-                  <span className={`stamp ${statusClass(c.status)}`}>
-                    {c.status}
-                  </span>
-                </td>
-                <td>{c.seizingOfficer}</td>
-                <td>{c.seizedOn}</td>
-                <td>
-                  <div className="row-actions">
-                    <Link
-                      to={`/case-property/${encodeURIComponent(c.id)}?tab=tag`}
-                      className="icon-btn"
-                      onClick={(e) => e.stopPropagation()}
-                      title="View evidence tag (real QR) on detail page"
-                    >▦</Link>
-                    <Link
-                      to={`/case-property/${encodeURIComponent(c.id)}?tab=timeline`}
-                      className="icon-btn"
-                      onClick={(e) => e.stopPropagation()}
-                      title="View movement log on detail page"
-                    >⏱</Link>
-                    <div className="icon-btn" title="Change status (record a movement)" onClick={(e) => { e.stopPropagation(); onChangeStatus(c); }}>↻</div>
-                  </div>
-                </td>
+                {order.map((key) => columns[key].render(c, i))}
               </tr>
             ))}
           </tbody>

@@ -72,6 +72,52 @@ export const pool = {
   },
 };
 
+// Standardised "Item Type" master list.  Each entry belongs to ONE
+// malkhana section (A–E match the five seeded sections).  These are the
+// only values a new Case Property can pick from the "Item Type" dropdown —
+// free-text item type entry is replaced by this controlled vocabulary.
+// The free-text `description` (e.g. "80 grams, sealed poly bag") still
+// lives on the case row for the case-specific specifics.
+//
+// `sort_order` controls display order within a section. `active` is a
+// SOFT-DELETE flag: deactivated types stay in the DB (old cases keep
+// pointing at them) but disappear from the registration dropdown.
+const ITEM_TYPES = [
+  // ---- Part A — Narcotics ----
+  { section: 'A', name: 'Heroin',                sort: 10 },
+  { section: 'A', name: 'Ganja',                 sort: 20 },
+  { section: 'A', name: 'Charas',                sort: 30 },
+  { section: 'A', name: 'Opium',                sort: 40 },
+  { section: 'A', name: 'Poppy Husk',           sort: 50 },
+  { section: 'A', name: 'Synthetic Drugs',       sort: 60 },
+  { section: 'A', name: 'Tablets / Capsules',   sort: 70 },
+  // ---- Part B — Weapons ----
+  { section: 'B', name: 'Country-made pistol',   sort: 10 },
+  { section: 'B', name: 'Revolver',             sort: 20 },
+  { section: 'B', name: 'Rifle (long barrel)', sort: 30 },
+  { section: 'B', name: 'Cartridges / Ammunition', sort: 40 },
+  { section: 'B', name: 'Knife / Sharp weapon', sort: 50 },
+  { section: 'B', name: 'Air gun / Replica',   sort: 60 },
+  // ---- Part C — Documents & Cash ----
+  { section: 'C', name: 'Cash — currency notes', sort: 10 },
+  { section: 'C', name: 'Gold / Jewellery',    sort: 20 },
+  { section: 'C', name: 'Documents',            sort: 30 },
+  { section: 'C', name: 'Mobile phone / SIM',  sort: 40 },
+  { section: 'C', name: 'Laptop / Hard disk', sort: 50 },
+  // ---- Part D — Vehicles ----
+  { section: 'D', name: 'Motorcycle',           sort: 10 },
+  { section: 'D', name: 'Car / Jeep',         sort: 20 },
+  { section: 'D', name: 'Truck',                sort: 30 },
+  { section: 'D', name: 'Auto / Temo',        sort: 40 },
+  { section: 'D', name: 'Stolen vehicle parts', sort: 50 },
+  // ---- Part E — Biological / Viscera ----
+  { section: 'E', name: 'Viscera sample',       sort: 10 },
+  { section: 'E', name: 'Blood sample',        sort: 20 },
+  { section: 'E', name: 'Hair / Fibre sample', sort: 30 },
+  { section: 'E', name: 'Semen sample',        sort: 40 },
+  { section: 'E', name: 'Swabs / Saliva',     sort: 50 },
+];
+
 // ---------- schema ----------
 
 // 100 BNS (Bharatiya Nyaya Sanhita, 2023) sections used by the "Section"
@@ -230,6 +276,16 @@ CREATE TABLE IF NOT EXISTS sections (
   active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
+CREATE TABLE IF NOT EXISTS item_types (
+  id            BIGSERIAL PRIMARY KEY,
+  section_letter TEXT NOT NULL REFERENCES sections (letter) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  active        BOOLEAN NOT NULL DEFAULT TRUE,
+  UNIQUE (section_letter, name)
+);
+CREATE INDEX IF NOT EXISTS item_types_section_idx ON item_types (section_letter, sort_order);
+
 CREATE TABLE IF NOT EXISTS cases (
   id            TEXT PRIMARY KEY,
   item_type     TEXT NOT NULL,
@@ -256,6 +312,9 @@ ALTER TABLE cases ADD COLUMN IF NOT EXISTS legal_section_title TEXT;
 CREATE INDEX IF NOT EXISTS cases_section_idx       ON cases (section);
 CREATE INDEX IF NOT EXISTS cases_status_idx        ON cases (status);
 CREATE INDEX IF NOT EXISTS cases_legal_section_idx ON cases (legal_section);
+
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS item_type_id BIGINT REFERENCES item_types (id);
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS description  TEXT;
 
 -- Bharatiya Nyaya Sanhita (BNS) sections — dummy reference table.  Used by
 -- the "Section" typeahead on Register New Case Property.  The MM types
@@ -469,9 +528,38 @@ export async function seedBnsSectionsIfEmpty() {
   }
 }
 
+// Seed the standardised Item Type master list.  Runs SEPARATELY from
+// `seedIfEmpty()` so it fires even on prod DBs that already have users
+// (and would otherwise short-circuit the main seed).  Idempotent —
+// each INSERT does nothing if that (section, name) pair already exists,
+// so re-runs are safe.  Only inserts for sections that actually exist
+// in the sections table (guards against a typo'd letter in ITEM_TYPES).
+export async function seedItemTypesIfEmpty() {
+  await initSchema();
+  const { rows: secRows } = await pool.query('SELECT letter FROM sections');
+  const have = new Set(secRows.map(r => r.letter));
+  const todo = ITEM_TYPES.filter(t => have.has(t.section));
+  if (todo.length === 0) return;                 // nothing to seed (no sections yet)
+  const { rows: cur } = await pool.query('SELECT count(*)::int AS n FROM item_types');
+  if (cur[0] && cur[0].n > 0) return;    // already populated
+  for (const t of todo) {
+    await pool.query(
+      `INSERT INTO item_types (section_letter, name, sort_order, active)
+       VALUES ($1, $2, $3, TRUE)
+       ON CONFLICT (section_letter, name) DO NOTHING`,
+      [t.section, t.name, t.sort || 0]
+    );
+  }
+  const { rows: after } = await pool.query('SELECT count(*)::int AS n FROM item_types');
+  if (after[0] && after[0].n > 0) {
+    console.log(`[db] seeded item_types with ${after[0].n} rows`);
+  }
+}
+
 // Convenience: ensure everything is ready before any read or write.  Call
 // this at the top of every exported store function.
 export async function ensureReady() {
   await seedIfEmpty();
   await seedBnsSectionsIfEmpty();
+  await seedItemTypesIfEmpty();
 }

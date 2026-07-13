@@ -11,6 +11,7 @@ import type {
   UploadResult,
   AuditEntry,
   BnsSection,
+  ItemType,
 } from './types';
 
 const base = '/api';
@@ -97,8 +98,16 @@ export const api = {
   case:        (id: string) => get<CaseRow>(`/cases/${encodeURIComponent(id)}`),
   alerts:      () => get<AlertRow[]>('/alerts'),
   alertConfig: () => get<AlertConfig>('/alerts/config'),
+  itemTypes:   (section?: string) => get<ItemType[]>(`/item-types${section ? `?section=${encodeURIComponent(section)}` : ''}`),
   sections:    (active: 'true' | 'false' | 'all' = 'true') =>
     get<{ letter: string; name: string; count: number; active?: boolean }[]>(`/sections?active=${active}`),
+  // manager CRUD (auth as the signed-in MM, like the sections API)
+  createItemType:  (sectionLetter: string, name: string, sortOrder?: number) =>
+    send<ItemType>('POST', '/item-types', { sectionLetter, name, ...(sortOrder != null ? { sortOrder } : {}) }),
+  updateItemType:  (id: number, patch: Partial<{ name: string; sortOrder: number; active: boolean }>) =>
+    send<ItemType>('PATCH', `/item-types/${id}`, patch),
+  deleteItemType:  (id: number) =>
+    send<{ id: number; sectionLetter: string; name: string; deleted: boolean }>('DELETE', `/item-types/${id}`, {}),
   // BNS (Bharatiya Nyaya Sanhita) section typeahead.  `q` is the live
   // search text from the Register form.  Empty `q` returns the first 15
   // (so the dropdown has content the moment the field is focused).
