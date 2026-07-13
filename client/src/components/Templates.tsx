@@ -184,6 +184,38 @@ export function Templates() {
     setShowBuilder(false);
   }
 
+  // Fit the printable sheet onto ONE A4 page.  Measured from the sheet's
+  // natural (unzoomed) height against the page's printable height; if it
+  // overflows we scale it down via the `--sheet-zoom` CSS var so it never
+  // spills onto a second page.  Restore zoom after printing.
+  useEffect(() => {
+    function fitToPage() {
+      const sheet = document.querySelector<HTMLElement>('.tmpl-sheet');
+      if (!sheet) return;
+      sheet.style.zoom = '';                 // measure natural size
+      const natural = sheet.getBoundingClientRect().height;
+      // A4 portrait printable height = 297mm − 12mm top − 12mm bottom margins.
+      // px @96dpi => 1mm = 96/25.4 = 3.7795px.
+      const pageH = (297 - 12 - 12) * 3.7795;
+      const scale = natural > pageH ? Math.max(0.5, pageH / natural) : 1;
+      sheet.style.setProperty('--sheet-zoom', String(scale));
+      sheet.style.zoom = String(scale);
+    }
+    function resetZoom() {
+      const sheet = document.querySelector<HTMLElement>('.tmpl-sheet');
+      if (sheet) {
+        sheet.style.zoom = '';
+        sheet.style.removeProperty('--sheet-zoom');
+      }
+    }
+    window.addEventListener('beforeprint', fitToPage);
+    window.addEventListener('afterprint', resetZoom);
+    return () => {
+      window.removeEventListener('beforeprint', fitToPage);
+      window.removeEventListener('afterprint', resetZoom);
+    };
+  }, [active]);
+
   return (
     <div className="view">
       <div className="page-head">

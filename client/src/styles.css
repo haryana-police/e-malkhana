@@ -1703,13 +1703,25 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .btn-row{ display:flex; gap:8px; }
 .btn-row .btn{ white-space:nowrap; }
 
-/* Print: only the sheet, no app chrome */
+/* Print: only the sheet, no app chrome.  Force the whole template onto a
+   SINGLE A4 page — never spill onto page 2.  The JS `beforeprint` handler
+   computes a `zoom` so even the longest Hindi performa scales to fit. */
+@page { size: A4 portrait; margin: 12mm; }
+
 @media print {
+  html, body {
+    width: 210mm;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   body * { visibility: hidden !important; }
   .tmpl-sheet, .tmpl-sheet * { visibility: visible !important; }
   .tmpl-sheet{
     position:absolute; left:0; top:0; width:100%; max-width:none;
-    margin:0; border:0; border-radius:0; box-shadow:none; padding:18px 24px;
+    margin:0; border:0; border-radius:0; box-shadow:none; padding:14px 18px;
+    zoom: var(--sheet-zoom, 1);
+    page-break-inside: avoid; break-inside: avoid;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .tmpl-preview-bar, .tmpl-card, .overlay,
   .tmpl-fillbar, .tmpl-vals { display:none !important; }
