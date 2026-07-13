@@ -354,6 +354,84 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS audit_log_ts_idx      ON audit_log (ts DESC);
 CREATE INDEX IF NOT EXISTS audit_log_user_id_idx ON audit_log (user_id);
 CREATE INDEX IF NOT EXISTS audit_log_action_idx  ON audit_log (action);
+
+-- ---------------------------------------------------------------------------
+-- Case Property entry extension (per the e-Malkhana Case Property spec).
+--
+-- The existing 'cases' table is the inventory/register backbone (one row
+-- per seized item, primary key = FIR number for legacy rows, or a unique
+-- MK-xxxx code for new ones).  The spec adds a split where:
+--   * every item also has a set of COMMON fields (seized time, witnesses,
+--     quantity, storage location, photo, remarks) plus a per-item-type set
+--     of SPECIFIC fields (e.g. Narcotics -> Gross/Net weight) captured in a
+--     popup at registration time;
+--   * the FIR's static details (police station, date, U/S, IO) are entered
+--     ONCE per FIR and reused for every subsequent item.
+--
+-- To avoid disturbing the battle-tested 17-column cases INSERT/UPDATE in
+-- store.js, these live in their OWN tables and are read/written through
+-- small dedicated functions in db.js + server.js.
+-- ---------------------------------------------------------------------------
+
+-- fir_master: FIR/DD static details, entered once per FIR number.
+CREATE TABLE IF NOT EXISTS fir_master (
+  fir_no        TEXT PRIMARY KEY,            -- "FIR 214/2026" / "DD 41/2026"
+  police_station TEXT NOT NULL DEFAULT '',
+  fir_date      TEXT,                         -- YYYY-MM-DD
+  us_sections   TEXT,                         -- "NDPS 21, 22", "BNS 101" — U/S applied
+  io            TEXT,                         -- Investigating Officer
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- case_property: the COMMON fields for one seized item.  Keyed by the
+-- case's item_id (MK-xxxx), which is unique per item.  One-to-one with a
+-- row in 'cases' (joined on item_id).  'fir_no' links it back to
+-- fir_master and to the cases row's new fir_no column.
+CREATE TABLE IF NOT EXISTS case_property (
+  item_id        TEXT PRIMARY KEY REFERENCES cases (item_id) ON DELETE CASCADE,
+  fir_no         TEXT,
+  seized_time    TEXT,
+  witness1       TEXT,
+  witness2       TEXT,
+  quantity       TEXT,
+  storage_location TEXT,
+  photo_url      TEXT,
+  remarks        TEXT,
+  status         TEXT NOT NULL DEFAULT 'Seized',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS case_property_fir_idx ON case_property (fir_no);
+
+-- item_type_fields: the DEFINITION of the dynamic popup fields, one row
+-- per field per Malkhana section (A–E).  Mirrors the spec's "Item Type
+-- Form Builder" — admins add/edit/delete/reorder these without coding.
+CREATE TABLE IF NOT EXISTS item_type_fields (
+  id          BIGSERIAL PRIMARY KEY,
+  section_letter TEXT NOT NULL REFERENCES sections (letter) ON DELETE CASCADE,
+  key         TEXT NOT NULL,                  -- stable snake_case id (e.g. "gross_weight")
+  label       TEXT NOT NULL,                  -- display label ("Gross Weight")
+  field_type  TEXT NOT NULL DEFAULT 'text',   -- text|number|select|date|time
+  options     JSONB,                          -- for select: ["Cash","Fake Currency","Papers"]
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  active      BOOLEAN NOT NULL DEFAULT TRUE,
+  UNIQUE (section_letter, key)
+);
+CREATE INDEX IF NOT EXISTS item_type_fields_section_idx ON item_type_fields (section_letter, sort_order);
+
+-- case_property_fields: the ACTUAL data captured in the popup, one row per
+-- (item, field).  Keyed by item_id + field key.
+CREATE TABLE IF NOT EXISTS case_property_fields (
+  id          BIGSERIAL PRIMARY KEY,
+  item_id     TEXT NOT NULL REFERENCES cases (item_id) ON DELETE CASCADE,
+  field_key   TEXT NOT NULL,
+  field_value TEXT,
+  UNIQUE (item_id, field_key)
+);
+CREATE INDEX IF NOT EXISTS case_property_fields_item_idx ON case_property_fields (item_id);
+
+-- Back-fill: add fir_no to the legacy 'cases' table so the register can
+-- show / group by FIR even for pre-existing rows (where id == the FIR no).
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS fir_no TEXT;
 `;
 
 export async function initSchema() {
@@ -551,8 +629,201 @@ export async function seedItemTypesIfEmpty() {
     );
   }
   const { rows: after } = await pool.query('SELECT count(*)::int AS n FROM item_types');
-  if (after[0] && after[0].n > 0) {
-    console.log(`[db] seeded item_types with ${after[0].n} rows`);
+  if (after.rows[0].n > 0) {
+    console.log(`[db] seeded item_types with ${after.rows[0].n} rows`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Per-item-type dynamic popup field DEFINITIONS (the spec's "Form Builder").
+// One row per field per Malkhana section (A–E).  These seed the popups the
+// UI opens when an MM picks an Item Type — e.g. selecting a Narcotics item
+// (Part A) shows Substance Type / Gross Weight / Net Weight / Packing Type.
+// Admins can edit/add/delete/reorder them live via System Settings.
+// ---------------------------------------------------------------------------
+const ITEM_TYPE_FIELDS = [
+  // ---- Part A — Narcotics ----
+  { section: 'A', key: 'substance_type', label: 'Substance Type', type: 'text' },
+  { section: 'A', key: 'gross_weight',   label: 'Gross Weight',    type: 'text' },
+  { section: 'A', key: 'net_weight',     label: 'Net Weight',      type: 'text' },
+  { section: 'A', key: 'packing_type',   label: 'Packing Type',    type: 'text' },
+  // ---- Part B — Weapons ----
+  { section: 'B', key: 'weapon_type',     label: 'Weapon Type',      type: 'text' },
+  { section: 'B', key: 'bore_caliber',    label: 'Bore/Caliber',     type: 'text' },
+  { section: 'B', key: 'no_cartridges',   label: 'No. of Cartridges', type: 'number' },
+  { section: 'B', key: 'licensed_illegal', label: 'Licensed/Illegal', type: 'select', options: ['Licensed', 'Illegal'] },
+  // ---- Part C — Cash & Documents ----
+  { section: 'C', key: 'doc_type',  label: 'Type', type: 'select', options: ['Cash', 'Fake Currency', 'Papers'] },
+  { section: 'C', key: 'amount',    label: 'Amount', type: 'text' },
+  { section: 'C', key: 'currency',  label: 'Currency', type: 'text' },
+  // ---- Part D — Vehicle ----
+  { section: 'D', key: 'vehicle_type',    label: 'Vehicle Type',    type: 'text' },
+  { section: 'D', key: 'registration_no', label: 'Registration No.', type: 'text' },
+  { section: 'D', key: 'chassis_no',     label: 'Chassis No.',     type: 'text' },
+  { section: 'D', key: 'engine_no',      label: 'Engine No.',      type: 'text' },
+  // ---- Part E — Biological / Viscera ----
+  { section: 'E', key: 'sample_type',        label: 'Sample Type',        type: 'text' },
+  { section: 'E', key: 'no_jars_vials',      label: 'No. of Jars/Vials',  type: 'number' },
+  { section: 'E', key: 'preservative_used',  label: 'Preservative Used',  type: 'text' },
+];
+
+export async function seedItemTypeFieldsIfEmpty() {
+  await initSchema();
+  const { rows: cur } = await pool.query('SELECT count(*)::int AS n FROM item_type_fields');
+  if (cur[0] && cur[0].n > 0) return;    // already populated
+  for (const f of ITEM_TYPE_FIELDS) {
+    await pool.query(
+      `INSERT INTO item_type_fields (section_letter, key, label, field_type, options, sort_order, active)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, TRUE)
+       ON CONFLICT (section_letter, key) DO NOTHING`,
+      [f.section, f.key, f.label, f.type, f.options ? JSON.stringify(f.options) : null, 0]
+    );
+  }
+  const { rows: after } = await pool.query('SELECT count(*)::int AS n FROM item_type_fields');
+  if (after.rows[0].n > 0) {
+    console.log(`[db] seeded item_type_fields with ${after.rows[0].n} rows`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Read/write helpers for the Case Property extension.  These are the ONLY
+// functions server.js touches for the new tables — store.js's 17-column
+// cases diff is left untouched.
+// ---------------------------------------------------------------------------
+
+// Metadata for a section's popup builder: section letter + human label.
+export async function getSectionMeta(letter) {
+  const where = letter ? ` WHERE letter = $1` : '';
+  const params = letter ? [letter] : [];
+  const { rows } = await pool.query(
+    `SELECT letter, name, count, active FROM sections${where} ORDER BY length(letter), letter`,
+    params
+  );
+  return rows.map(r => ({ letter: r.letter, name: r.name, count: r.count, active: r.active !== false }));
+}
+
+// Active popup field definitions for a section, in display order.
+export async function getItemTypeFields(letter) {
+  const { rows } = await pool.query(
+    `SELECT id, section_letter, key, label, field_type, options, sort_order, active
+     FROM item_type_fields
+     WHERE section_letter = $1
+     ORDER BY sort_order, id`,
+    [letter]
+  );
+  return rows.map(r => ({
+    id: Number(r.id),
+    sectionLetter: r.section_letter,
+    key: r.key,
+    label: r.label,
+    fieldType: r.field_type,
+    options: r.options || undefined,
+    sortOrder: Number(r.sort_order) || 0,
+    active: r.active !== false,
+  }));
+}
+
+// Insert or update a single popup field definition.
+export async function upsertItemTypeField(letter, field) {
+  const key = (field.key || field.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')).slice(0, 60);
+  const { rows } = await pool.query(
+    `INSERT INTO item_type_fields (section_letter, key, label, field_type, options, sort_order, active)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+     ON CONFLICT (section_letter, key) DO UPDATE
+       SET label = EXCLUDED.label, field_type = EXCLUDED.field_type,
+           options = EXCLUDED.options, sort_order = EXCLUDED.sort_order, active = EXCLUDED.active
+     RETURNING id, section_letter, key, label, field_type, options, sort_order, active`,
+    [letter, key, field.label.trim(), field.fieldType || 'text',
+     field.options ? JSON.stringify(field.options) : null, field.sortOrder ?? 0, field.active !== false]
+  );
+  const r = rows[0];
+  return {
+    id: Number(r.id), sectionLetter: r.section_letter, key: r.key, label: r.label,
+    fieldType: r.field_type, options: r.options || undefined,
+    sortOrder: Number(r.sort_order) || 0, active: r.active !== false,
+  };
+}
+
+export async function deleteItemTypeField(id) {
+  await pool.query('DELETE FROM item_type_fields WHERE id = $1', [id]);
+}
+
+export async function getFirMaster(firNo) {
+  const { rows } = await pool.query('SELECT * FROM fir_master WHERE fir_no = $1', [firNo]);
+  if (!rows[0]) return null;
+  const r = rows[0];
+  return {
+    firNo: r.fir_no, policeStation: r.police_station, firDate: r.fir_date,
+    usSections: r.us_sections, io: r.io, createdAt: r.created_at,
+  };
+}
+
+// Insert or update a FIR master row.  Returns the upserted row.
+export async function upsertFirMaster(fir) {
+  const { rows } = await pool.query(
+    `INSERT INTO fir_master (fir_no, police_station, fir_date, us_sections, io)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (fir_no) DO UPDATE
+       SET police_station = EXCLUDED.police_station, fir_date = EXCLUDED.fir_date,
+           us_sections = EXCLUDED.us_sections, io = EXCLUDED.io
+     RETURNING *`,
+    [fir.firNo, fir.policeStation || '', fir.firDate || null, fir.usSections || null, fir.io || null]
+  );
+  const r = rows[0];
+  return {
+    firNo: r.fir_no, policeStation: r.police_station, firDate: r.fir_date,
+    usSections: r.us_sections, io: r.io, createdAt: r.created_at,
+  };
+}
+
+export async function getCaseProperty(itemId) {
+  const { rows } = await pool.query('SELECT * FROM case_property WHERE item_id = $1', [itemId]);
+  if (!rows[0]) return null;
+  const r = rows[0];
+  const fRes = await pool.query(
+    'SELECT field_key, field_value FROM case_property_fields WHERE item_id = $1 ORDER BY id',
+    [itemId]
+  );
+  return {
+    itemId: r.item_id,
+    firNo: r.fir_no,
+    seizedTime: r.seized_time,
+    witness1: r.witness1,
+    witness2: r.witness2,
+    quantity: r.quantity,
+    storageLocation: r.storage_location,
+    photoUrl: r.photo_url,
+    remarks: r.remarks,
+    status: r.status,
+    createdAt: r.created_at,
+    fields: fRes.rows.map((f) => ({ key: f.field_key, value: f.field_value })),
+  };
+}
+
+// Write the COMMON case_property row + the per-item popup field values.
+// Common fields that are null/undefined are written as NULL; popup field
+// values are upserted individually so reordering/renaming keys never orphans
+// old data while still preserving history on key rename (old key kept).
+export async function upsertCaseProperty(itemId, common, fields) {
+  await pool.query(
+    `INSERT INTO case_property (item_id, fir_no, seized_time, witness1, witness2, quantity, storage_location, photo_url, remarks, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ON CONFLICT (item_id) DO UPDATE
+       SET fir_no = EXCLUDED.fir_no, seized_time = EXCLUDED.seized_time, witness1 = EXCLUDED.witness1,
+           witness2 = EXCLUDED.witness2, quantity = EXCLUDED.quantity, storage_location = EXCLUDED.storage_location,
+           photo_url = EXCLUDED.photo_url, remarks = EXCLUDED.remarks, status = EXCLUDED.status`,
+    [itemId, common.firNo || null, common.seizedTime || null, common.witness1 || null,
+     common.witness2 || null, common.quantity || null, common.storageLocation || null,
+     common.photoUrl || null, common.remarks || null, common.status || 'Seized']
+  );
+  for (const f of fields) {
+    if (f.key == null || f.key === '') continue;
+    await pool.query(
+      `INSERT INTO case_property_fields (item_id, field_key, field_value)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (item_id, field_key) DO UPDATE SET field_value = EXCLUDED.field_value`,
+      [itemId, f.key, f.value ?? null]
+    );
   }
 }
 
@@ -562,4 +833,5 @@ export async function ensureReady() {
   await seedIfEmpty();
   await seedBnsSectionsIfEmpty();
   await seedItemTypesIfEmpty();
+  await seedItemTypeFieldsIfEmpty();
 }

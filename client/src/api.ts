@@ -12,6 +12,10 @@ import type {
   AuditEntry,
   BnsSection,
   ItemType,
+  ItemTypeField,
+  SectionMeta,
+  FirMaster,
+  CasePropertyData,
 } from './types';
 
 const base = '/api';
@@ -99,6 +103,20 @@ export const api = {
   alerts:      () => get<AlertRow[]>('/alerts'),
   alertConfig: () => get<AlertConfig>('/alerts/config'),
   itemTypes:   (section?: string) => get<ItemType[]>(`/item-types${section ? `?section=${encodeURIComponent(section)}` : ''}`),
+
+  // ---- Case Property entry extension ----
+  sectionMeta: () => get<SectionMeta[]>('/sections/meta'),
+  itemTypeFields: (section: string) => get<ItemTypeField[]>(`/item-type-fields?section=${encodeURIComponent(section)}`),
+  upsertItemTypeField: (section: string, f: Partial<ItemTypeField> & { label: string }) =>
+    send<ItemTypeField>('POST', '/item-type-fields', { section, ...f }),
+  deleteItemTypeField: (id: number) =>
+    send<{ id: number; deleted: boolean }>('DELETE', `/item-type-fields/${id}`, {}),
+  firMaster: (firNo: string) => get<FirMaster>(`/fir-master/${encodeURIComponent(firNo)}`),
+  upsertFirMaster: (fir: Partial<FirMaster> & { firNo: string }) =>
+    send<FirMaster>('POST', '/fir-master', fir),
+  caseProperty: (itemId: string) => get<CasePropertyData>(`/case-property/${encodeURIComponent(itemId)}`),
+  saveCaseProperty: (payload: { itemId: string; firNo?: string; common: Record<string, string>; fields: { key: string; value: string }[] }) =>
+    send<CasePropertyData>('POST', '/case-property', payload),
   sections:    (active: 'true' | 'false' | 'all' = 'true') =>
     get<{ letter: string; name: string; count: number; active?: boolean }[]>(`/sections?active=${active}`),
   // manager CRUD (auth as the signed-in MM, like the sections API)

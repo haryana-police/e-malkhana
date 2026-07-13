@@ -19,6 +19,10 @@ import {
   getDb, mutate, getCase, getMovements, nextMovementId, rebuildSectionCounts,
   appendAudit, boot as bootStore, ensureBoot,
 } from './store.js';
+import {
+  getSectionMeta, getItemTypeFields, upsertItemTypeField, deleteItemTypeField,
+  getFirMaster, upsertFirMaster, getCaseProperty, upsertCaseProperty,
+} from './db.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
 import crypto from 'node:crypto';
 
@@ -501,6 +505,7 @@ app.post('/api/cases', async (req, res, next) => {
     // value is the foreign key.
     const newCase = {
       id,
+      firNo: body.firNo || id,                 // FIR number for register grouping (defaults to id)
       itemType:   itemTypeName || body.itemType,
       itemSub:    body.itemSub || '',
       section:    `PART ${section.letter}`,
@@ -1020,7 +1025,124 @@ app.get('/api/item-types', (req, res) => {
   res.json(rows);
 });
 
-// POST /api/item-types  { sectionLetter, name, sortOrder? }
+// ---------------------------------------------------------------------------
+// CASE PROPERTY ENTRY EXTENSION
+// ---------------------------------------------------------------------------
+
+// GET /api/sections/meta  -> [{ letter, name, count, active }] for the popup
+// builder.  Lightweight list of the five Malkhana sections (Narcotics,
+// Weapons, Cash & Documents, Vehicle, Biological/Viscera).
+app.get('/api/sections/meta', async (_req, res, next) => {
+  try { res.json(await getSectionMeta()); } catch (e) { next(e); }
+});
+
+// GET /api/item-type-fields?section=A  -> popup field definitions for a
+// section (Narcotics = A, Weapons = B, ...).  Returns active ones first.
+app.get('/api/item-type-fields', async (req, res, next) => {
+  try {
+    const letter = String(req.query.section || '').toUpperCase().trim();
+    if (!/^[A-Z]{1,2}$/.test(letter)) { const e = new Error('section is required (A–E)'); e.status = 400; throw e; }
+    res.json(await getItemTypeFields(letter));
+  } catch (e) { next(e); }
+});
+
+// POST /api/item-type-fields  { section, label, fieldType?, options?, sortOrder?, active?, key? }
+//   upsert a popup field definition for a section (Form Builder add/edit).
+app.post('/api/item-type-fields', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const section = String(body.section || '').toUpperCase().trim();
+    if (!/^[A-Z]{1,2}$/.test(section)) { const e = new Error('section must be 1-2 letters A-Z'); e.status = 400; throw e; }
+    if (!db_sectionByLetter(section)) { const e = new Error(`unknown section: ${section}`); e.status = 400; throw e; }
+    if (!body.label || !String(body.label).trim()) { const e = new Error('label is required'); e.status = 400; throw e; }
+    const f = await upsertItemTypeField(section, {
+      key: body.key, label: String(body.label).trim(),
+      fieldType: body.fieldType || 'text',
+      options: Array.isArray(body.options) ? body.options.map(String) : undefined,
+      sortOrder: body.sortOrder, active: body.active,
+    });
+    await auditMm(req, 'section.fields', section, `Saved popup field "${f.label}" for Part ${section}`);
+    res.status(201).json(f);
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/item-type-fields/:id
+app.delete('/api/item-type-fields/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { const e = new Error('invalid id'); e.status = 400; throw e; }
+    await deleteItemTypeField(id);
+    await auditMm(req, 'section.fields', String(id), `Deleted popup field #${id}`);
+    res.json({ id, deleted: true });
+  } catch (e) { next(e); }
+});
+
+// GET /api/fir-master/:firNo  -> FIR master record (or 404 null).
+app.get('/api/fir-master/:firNo', async (req, res, next) => {
+  try {
+    const firNo = decodeURIComponent(req.params.firNo).trim();
+    const fir = await getFirMaster(firNo);
+    if (!fir) { res.status(404).json({ error: 'not found' }); return; }
+    res.json(fir);
+  } catch (e) { next(e); }
+});
+
+// POST /api/fir-master  { firNo, policeStation?, firDate?, usSections?, io? }
+//   upsert the FIR's static details (entered once, reused per item).
+app.post('/api/fir-master', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const firNo = String(body.firNo || '').trim();
+    if (!firNo) { const e = new Error('firNo is required'); e.status = 400; throw e; }
+    const fir = await upsertFirMaster({
+      firNo,
+      policeStation: body.policeStation,
+      firDate: body.firDate,
+      usSections: body.usSections,
+      io: body.io,
+    });
+    await auditMm(req, 'fir.master', firNo, `Saved FIR master for ${firNo}`);
+    res.status(201).json(fir);
+  } catch (e) { next(e); }
+});
+
+// GET /api/case-property/:itemId  -> common + type-specific fields for an item.
+app.get('/api/case-property/:itemId', async (req, res, next) => {
+  try {
+    const itemId = decodeURIComponent(req.params.itemId).trim();
+    const cp = await getCaseProperty(itemId);
+    if (!cp) { res.status(404).json({ error: 'not found' }); return; }
+    res.json(cp);
+  } catch (e) { next(e); }
+});
+
+// POST /api/case-property  { itemId, firNo?, common:{...}, fields:[{key,value}] }
+//   write the COMMON case_property row + per-item popup field values.
+app.post('/api/case-property', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const itemId = String(body.itemId || '').trim();
+    if (!itemId) { const e = new Error('itemId is required'); e.status = 400; throw e; }
+    if (!getCase(itemId)) { const e = new Error(`unknown item: ${itemId}`); e.status = 404; throw e; }
+    const common = body.common || {};
+    const fields = Array.isArray(body.fields) ? body.fields : [];
+    await upsertCaseProperty(itemId, {
+      firNo: body.firNo,
+      seizedTime: common.seizedTime,
+      witness1: common.witness1,
+      witness2: common.witness2,
+      quantity: common.quantity,
+      storageLocation: common.storageLocation,
+      photoUrl: common.photoUrl,
+      remarks: common.remarks,
+      status: common.status || 'Seized',
+    }, fields.map(f => ({ key: String(f.key), value: f.value == null ? null : String(f.value) })));
+    await auditMm(req, 'case.property', itemId, `Saved case property for ${itemId} (${fields.length} type-specific field(s))`);
+    res.status(201).json(await getCaseProperty(itemId));
+  } catch (e) { next(e); }
+});
+
+// POST /api/cases
 //   - creates a new item type in the given section
 //   - name must be unique within the section (UNIQUE constraint + guard)
 app.post('/api/item-types', async (req, res, next) => {

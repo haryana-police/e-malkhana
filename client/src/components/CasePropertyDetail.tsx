@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import type { CaseRow, MovementLogRow, RackItem, BnsSection, ItemType } from '../types';
+import type { CaseRow, MovementLogRow, RackItem, BnsSection, ItemType, FirMaster, CasePropertyData } from '../types';
 
 interface Props {
   onOpenTag: (c: CaseRow) => void;        // legacy: kept for global fallback
@@ -66,6 +66,8 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
   const [movements, setMovements] = useState<MovementLogRow[]>([]);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrMask, setQrMask] = useState<string | null>(null);
+  const [firMaster, setFirMaster] = useState<FirMaster | null>(null);
+  const [cp, setCp]             = useState<CasePropertyData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -103,7 +105,7 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         // isn't an array to [] so the rest of the component can rely on
         // .length / .map without crashing.
         const safeArray = <T,>(x: unknown): T[] => Array.isArray(x) ? (x as T[]) : [];
-        const [mv, qr, sec, types] = await Promise.all([
+        const [mv, qr, sec, types, fir, cp] = await Promise.all([
           api.movements(c.id).catch(() => [] as MovementLogRow[]),
           api.qr(c.id).catch(() => ({ dataUrl: '', payload: '', encrypted: false, mask: null })),
           // load racks for the section picker; ignore failure (the form
@@ -113,12 +115,18 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
           // edit dropdown only shows valid options.  The letter comes
           // from the loaded case; fall back to 'A' if unresolved.
           api.itemTypes(c.section?.replace('PART ', '') || 'A').catch(() => [] as ItemType[]),
+          // FIR master details (police station, U/S, IO) — once per FIR.
+          api.firMaster(c.firNo || c.id).catch(() => null),
+          // Per-item COMMON + type-specific fields.
+          api.caseProperty(c.itemId || c.id).catch(() => null),
         ]);
         setMovements(safeArray<MovementLogRow>(mv));
         setQrUrl(qr.dataUrl);
         setQrMask(qr.mask || null);
         setRacks(safeArray<RackItem>(sec));
         setTypeOptions(safeArray<ItemType>(types).map(t => ({ id: t.id, name: t.name })));
+        setFirMaster(fir);
+        setCp(cp);
       } catch (e) {
         setErr((e as Error).message);
       } finally {
@@ -392,6 +400,49 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         </div>
         <span className={`stamp ${STATUS_TONE[caseRow.status] || ''}`}>{caseRow.status}</span>
       </header>
+
+      {/* FIR master details — entered once per FIR */}
+      {firMaster && (
+        <div className="case-detail-card" style={{ marginTop: 16 }}>
+          <h3>FIR Master</h3>
+          <div className="case-detail-meta">
+            <div><span className="k">FIR/DD No.</span><span className="v">{firMaster.firNo}</span></div>
+            <div><span className="k">Police Station</span><span className="v">{firMaster.policeStation || '—'}</span></div>
+            <div><span className="k">FIR Date</span><span className="v">{firMaster.firDate || '—'}</span></div>
+            <div><span className="k">U/S</span><span className="v">{firMaster.usSections || '—'}</span></div>
+            <div><span className="k">Investigating Officer</span><span className="v">{firMaster.io || '—'}</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* Case property: type-specific (popup) + common fields */}
+      {cp && (
+        <div className="case-detail-card" style={{ marginTop: 16 }}>
+          <h3>Seizure Details</h3>
+          {cp.fields && cp.fields.length > 0 && (
+            <>
+              <div className="case-detail-sub" style={{ marginBottom: 8 }}>Item-type specific fields</div>
+              <div className="case-detail-meta">
+                {cp.fields.filter(f => f.value).map(f => (
+                  <div key={f.key}><span className="k">{f.key.replace(/_/g, ' ')}</span><span className="v">{f.value}</span></div>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="case-detail-sub" style={{ margin: '10px 0 8px' }}>Common fields</div>
+          <div className="case-detail-meta">
+            <div><span className="k">Seized On</span><span className="v">{caseRow.seizedOn}{cp.seizedTime ? ` · ${cp.seizedTime}` : ''}</span></div>
+            <div><span className="k">Seizing Officer</span><span className="v">{caseRow.seizingOfficer}</span></div>
+            <div><span className="k">Place of Seizure</span><span className="v">{cp.storageLocation || '—'}</span></div>
+            <div><span className="k">Witness 1</span><span className="v">{cp.witness1 || '—'}</span></div>
+            <div><span className="k">Witness 2</span><span className="v">{cp.witness2 || '—'}</span></div>
+            <div><span className="k">Quantity</span><span className="v">{cp.quantity || '—'}</span></div>
+            <div><span className="k">Status</span><span className="v">{cp.status || caseRow.status}</span></div>
+            {cp.remarks && <div><span className="k">Remarks</span><span className="v">{cp.remarks}</span></div>}
+            {cp.photoUrl && <div><span className="k">Photo</span><span className="v"><a href={cp.photoUrl} target="_blank" rel="noreferrer">view</a></span></div>}
+          </div>
+        </div>
+      )}
 
       {/* edit form OR read-only meta strip */}
       {isEditing && editDraft ? (

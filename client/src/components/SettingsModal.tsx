@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { AlertConfig, AuditEntry } from '../types';
+import type { AlertConfig, AuditEntry, ItemTypeField } from '../types';
 
 interface Props {
   open: boolean;
@@ -29,7 +29,7 @@ function fmtTime(iso: string) {
 }
 
 export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager }: Props) {
-  const [tab, setTab] = useState<'thresholds' | 'log' | 'backup'>('thresholds');
+  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
   const [backupLog, setBackupLog] = useState<any[]>([]);
@@ -167,6 +167,10 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
             onClick={() => setTab('thresholds')}
           >⚙ Alert thresholds</button>
           <button
+            className={`audit-tab${tab === 'fields' ? ' active' : ''}`}
+            onClick={() => setTab('fields')}
+          >🧩 Item Type Fields</button>
+          <button
             className={`audit-tab${tab === 'backup' ? ' active' : ''}`}
             onClick={() => setTab('backup')}
           >☁ Backup &amp; Restore</button>
@@ -279,6 +283,10 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
               <button className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
             </div>
           </>
+        )}
+
+        {tab === 'fields' && (
+          <ItemTypeFieldsManager />
         )}
 
         {tab === 'backup' && (
@@ -494,3 +502,176 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
     </div>
   );
 }
+
+// =============================================================
+// Item Type Fields manager — the spec's "Form Builder".  Lets an admin
+          // configure, per Malkhana section (Narcotics / Weapons / Cash & Documents /
+          // Vehicle / Biological), the popup fields that appear when an MM registers
+          // an item of that type.  Add / edit / delete / reorder without coding.
+          // =============================================================
+          function ItemTypeFieldsManager() {
+          const [sections, setSections] = useState<{ letter: string; name: string }[]>([]);
+          const [tab, setTab]           = useState<string>('A');
+          const [fields, setFields]     = useState<ItemTypeField[]>([]);
+          const [loading, setLoading]   = useState(false);
+          const [busy, setBusy]         = useState(false);
+          const [msg, setMsg]           = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+          // draft row for add/edit
+          const [draft, setDraft]       = useState<Partial<ItemTypeField> | null>(null);
+          const [newLabel, setNewLabel] = useState('');
+          const [newType, setNewType]   = useState<'text' | 'number' | 'select' | 'date' | 'time'>('text');
+          const [newOptions, setNewOptions] = useState('');
+
+          useEffect(() => {
+          api.sectionMeta().then(list => {
+          const s = list.map(r => ({ letter: r.letter, name: r.name }));
+          setSections(s);
+          if (s.length && !s.find(x => x.letter === tab)) setTab(s[0].letter);
+          }).catch(() => setSections([]));
+          }, []);
+
+          useEffect(() => {
+          if (!tab) return;
+          setLoading(true); setMsg(null);
+          api.itemTypeFields(tab).then(f => { setFields(f); setLoading(false); })
+          .catch(e => { setMsg({ kind: 'error', text: (e as Error).message }); setLoading(false); });
+          }, [tab]);
+
+          function openAdd() {
+          setDraft({}); setNewLabel(''); setNewType('text'); setNewOptions('');
+          }
+          function openEdit(f: ItemTypeField) {
+          setDraft(f); setNewLabel(f.label); setNewType(f.fieldType);
+          setNewOptions((f.options || []).join(', '));
+          }
+          async function saveField() {
+          const label = newLabel.trim();
+          if (!label) { setMsg({ kind: 'error', text: 'Field label is required.' }); return; }
+          const options = newType === 'select'
+          ? newOptions.split(',').map(s => s.trim()).filter(Boolean)
+          : undefined;
+          setBusy(true); setMsg(null);
+          try {
+          const payload: any = { section: tab, label, fieldType: newType };
+          if (options) payload.options = options;
+          if (draft?.key) payload.key = draft.key;
+          if (draft?.id) payload.key = draft.key; // preserve key on edit
+          await api.upsertItemTypeField(tab, payload);
+          setDraft(null);
+          const f = await api.itemTypeFields(tab);
+          setFields(f);
+          setMsg({ kind: 'ok', text: `Saved field "${label}" for Part ${tab}.` });
+          } catch (e) {
+          setMsg({ kind: 'error', text: (e as Error).message });
+          } finally {
+          setBusy(false);
+          }
+          }
+          async function removeField(f: ItemTypeField) {
+          if (!confirm(`Delete field "${f.label}" from Part ${tab}?`)) return;
+          setBusy(true); setMsg(null);
+          try {
+          await api.deleteItemTypeField(f.id);
+          setFields(await api.itemTypeFields(tab));
+          setMsg({ kind: 'ok', text: `Deleted "${f.label}".` });
+          } catch (e) {
+          setMsg({ kind: 'error', text: (e as Error).message });
+          } finally {
+          setBusy(false);
+          }
+          }
+          async function moveField(f: ItemTypeField, dir: -1 | 1) {
+          const idx = fields.findIndex(x => x.id === f.id);
+          const ni = idx + dir;
+          if (idx < 0 || ni < 0 || ni >= fields.length) return;
+          const next = [...fields];
+          [next[idx], next[ni]] = [next[ni], next[idx]];
+          // persist the new sort orders
+          setFields(next);
+          try {
+          await Promise.all(next.map((x, i) => api.upsertItemTypeField(tab, { key: x.key, label: x.label, fieldType: x.fieldType, sortOrder: i * 10, active: x.active })));
+          } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+          }
+
+          return (
+          <div>
+          <div className="sub" style={{ marginBottom: 12 }}>
+            Per Item Type (Malkhana section), configure the popup fields the MM fills at
+            registration — e.g. Narcotics → Substance Type / Gross Weight / Net Weight / Packing Type.
+            Changes apply immediately to new registrations.
+          </div>
+
+          <div className="itemtype-tabs">
+            {sections.map(s => (
+              <button key={s.letter} type="button"
+                className={`itemtype-tab${tab === s.letter ? ' active' : ''}`}
+                onClick={() => setTab(s.letter)} disabled={busy}>
+                <span className="itemtype-tab-letter">{s.letter}</span>
+                <span className="itemtype-tab-name">{s.name}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="itemtype-section-head">
+            <b>Part {tab}</b> · {sections.find(s => s.letter === tab)?.name}
+            <span className="itemtype-count">{fields.length} field{fields.length === 1 ? '' : 's'}</span>
+          </div>
+
+          {loading && <div className="sub" style={{ padding: 12 }}>Loading fields…</div>}
+
+          {!loading && (
+            <div className="itemtype-list">
+              {fields.length === 0 && !draft && (
+                <div className="sub" style={{ padding: 16, textAlign: 'center' }}>No fields yet — add the first one below.</div>
+              )}
+              {fields.map((f, i) => (
+                <div key={f.id} className="itemtype-row" style={f.active === false ? { opacity: 0.55 } : undefined}>
+                  <div className="itemtype-row-name">
+                    <input value={f.label} disabled readOnly />
+                    <span className="itemtype-case-badge">{f.fieldType}{f.options ? ` · ${(f.options).join(' / ')}` : ''}</span>
+                  </div>
+                  <div className="itemtype-row-actions">
+                    <button type="button" className="icon-btn" title="Move up" onClick={() => moveField(f, -1)} disabled={busy || i === 0}>↑</button>
+                    <button type="button" className="icon-btn" title="Move down" onClick={() => moveField(f, 1)} disabled={busy || i === fields.length - 1}>↓</button>
+                    <button type="button" className="icon-btn" title="Edit" onClick={() => openEdit(f)} disabled={busy}>✎</button>
+                    <button type="button" className="icon-btn" title="Delete" onClick={() => removeField(f)} disabled={busy}
+                      style={{ color: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}>×</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {draft && (
+            <div className="itemtype-add" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+              <div className="sub" style={{ margin: 0 }}>{draft.key ? 'Edit field' : `+ Add field to Part ${tab}`}</div>
+              <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Field label e.g. Gross Weight" />
+              <select value={newType} onChange={e => setNewType(e.target.value as any)}>
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="select">Select (dropdown)</option>
+                <option value="date">Date</option>
+                <option value="time">Time</option>
+              </select>
+              {newType === 'select' && (
+                <input value={newOptions} onChange={e => setNewOptions(e.target.value)} placeholder="Comma-separated options e.g. Cash, Fake Currency, Papers" />
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn" type="button" onClick={saveField} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+                <button className="btn ghost" type="button" onClick={() => setDraft(null)} disabled={busy}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {!draft && (
+            <div className="itemtype-add">
+              <div className="sub" style={{ margin: 0, flex: '0 0 auto', paddingRight: 8 }}>+ Add field to Part {tab}</div>
+              <button className="btn" type="button" onClick={openAdd} disabled={busy}>Add</button>
+            </div>
+          )}
+
+          {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 8 }}>{msg.text}</div>}
+          </div>
+          );
+          }

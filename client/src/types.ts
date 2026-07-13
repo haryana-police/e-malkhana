@@ -13,6 +13,7 @@ export type CaseStatus =
 
 export interface CaseRow {
   id: string;                 // "FIR 214/2026" or "DD 41/2026"
+  firNo: string;              // FIR number for register grouping (== id for legacy rows)
   itemType: string;           // "Country-made pistol (.315 bore)"
   itemSub: string;            // "1 unit, with 2 live cartridges"
   quantity?: string;          // parsed count, e.g. "2" (decorated server-side)
@@ -138,13 +139,63 @@ export interface NewCaseInput {
   section: string;          // letter "A".."E"
   seizingOfficer: string;
   seizedOn: string;
+  firNo?: string;           // FIR number for register grouping (defaults to id on server)
   status?: CaseStatus;
-  itemId?: string;
+  itemId?: string;          // MK-xxxx; server auto-generates if omitted
   photo?: string;            // OPTIONAL — URL of the uploaded photo of the seized object
   supportingDoc?: string;   // OPTIONAL — URL of the seizure memo / supporting document
   legalSection?: string;    // OPTIONAL — BNS section no. (e.g. "101" or "BNS 101"); server validates
   itemTypeId?: number | null; // OPTIONAL — FK to the item_types master row
   description?: string;       // OPTIONAL — free-text specifics, e.g. "80 grams, sealed poly bag"
+}
+
+// ---- Case Property entry extension (per the spec) ----------------------
+// A "section" is one of the five Malkhana categories (Narcotics = A,
+// Weapons = B, Cash & Documents = C, Vehicle = D, Biological/Viscera = E).
+// The "Item Type" chosen at registration belongs to one section; its
+// popup fields are defined per section in item_type_fields.
+export interface ItemTypeField {
+  id: number;
+  sectionLetter: string;   // "A".."E"
+  key: string;             // stable snake_case id (e.g. "gross_weight")
+  label: string;           // "Gross Weight"
+  fieldType: 'text' | 'number' | 'select' | 'date' | 'time';
+  options?: string[];       // for select
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface SectionMeta {
+  letter: string;           // "A".."E"
+  name: string;             // "Narcotics Rack"
+  count: number;
+  active: boolean;
+}
+
+// The FIR's static master details, entered once and reused per item.
+export interface FirMaster {
+  firNo: string;            // "FIR 214/2026"
+  policeStation: string;
+  firDate?: string;         // YYYY-MM-DD
+  usSections?: string;      // "NDPS 21, 22" / "BNS 101"
+  io?: string;              // Investigating Officer
+  createdAt?: string;
+}
+
+// The COMMON fields + per-item type-specific (popup) values for one item.
+export interface CasePropertyData {
+  itemId: string;
+  firNo?: string;
+  seizedTime?: string;
+  witness1?: string;
+  witness2?: string;
+  quantity?: string;
+  storageLocation?: string;
+  photoUrl?: string;
+  remarks?: string;
+  status?: string;
+  createdAt?: string;
+  fields: { key: string; value: string }[];  // type-specific popup values
 }
 
 export interface ScanInput {
