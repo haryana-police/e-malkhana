@@ -303,6 +303,14 @@ CREATE TABLE IF NOT EXISTS cases (
   legal_section_title TEXT,           -- denormalised title for read perf + offline look
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Per the Case Property spec: fir_no groups items by FIR, and item_id must
+-- be UNIQUE so case_property / case_property_fields can FK to it.  These are
+-- added right after the cases table (BEFORE the new FK tables below) so the
+-- unique constraint exists when case_property references cases(item_id).
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS fir_no TEXT;
+ALTER TABLE cases ADD CONSTRAINT cases_item_id_uniq UNIQUE (item_id);
+
 -- ADD COLUMN IF NOT EXISTS so existing prod DBs get the new columns without
 -- a destructive migration.  The bns_sections table + 100-row seed below are
 -- created on first boot.  legal_section + legal_section_title start as NULL
@@ -431,9 +439,8 @@ CREATE INDEX IF NOT EXISTS case_property_fields_item_idx ON case_property_fields
 
 -- Back-fill: add fir_no to the legacy 'cases' table so the register can
 -- show / group by FIR even for pre-existing rows (where id == the FIR no).
-ALTER TABLE cases ADD COLUMN IF NOT EXISTS fir_no TEXT;
--- item_id must be UNIQUE so case_property / case_property_fields can FK to it.
-ALTER TABLE cases ADD CONSTRAINT cases_item_id_uniq UNIQUE (item_id);
+-- (fir_no + item_id UNIQUE are added right after the cases table above,
+-- before these FK tables are created, so the references resolve.)
 `;
 
 export async function initSchema() {
