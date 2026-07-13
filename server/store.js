@@ -321,7 +321,7 @@ async function persistDiff(client, pre, post) {
 
   // 3b. Item Types (id key = id)
   {
-    const { inserted, updated, deleted } = diffById(prev.itemTypes || [], post.itemTypes || [], 'id');
+    const { inserted, updated, deleted } = diffById(pre.itemTypes || [], post.itemTypes || [], 'id');
     for (const t of inserted) {
       await client.query(
         `INSERT INTO item_types (id, section_letter, name, sort_order, active)
