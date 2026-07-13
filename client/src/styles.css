@@ -284,6 +284,37 @@ tbody td{
   vertical-align:middle;
 }
 tbody tr:hover{ background: rgba(140,122,84,0.05); }
+
+/* Case Property Register — matches the issued paper register format:
+   dark-blue header, white / light-beige alternating rows, a serial
+   column and a numeric Quant + date columns. */
+.register-table thead th{
+  background: var(--ink-navy);
+  color: #fff;
+  font-size:10px;
+  font-weight:600;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  padding:11px 12px;
+  border-bottom:2px solid rgba(0,0,0,0.25);
+  position:sticky; top:0; z-index:1;
+}
+.register-table tbody td{
+  padding:10px 12px;
+  font-size:12.5px;
+  border-bottom:1px solid var(--paper-dark);
+}
+.register-table tbody tr:nth-child(odd){ background:#ffffff; }
+.register-table tbody tr:nth-child(even){ background:#F7F2E6; }
+.register-table tbody tr.row-clickable:hover{ background:rgba(140,122,84,0.12); }
+.register-table .col-sno{ width:44px; text-align:center; }
+.register-table .sno{ text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }
+.register-table .col-quant{ width:56px; text-align:center; }
+.register-table .quant{ text-align:center; font-family:'IBM Plex Mono',monospace; font-weight:600; }
+.register-table .col-actions{ width:96px; text-align:center; }
+.register-table .date-col{ font-family:'IBM Plex Mono',monospace; font-size:12px; white-space:nowrap; }
+.register-table .type{ font-weight:600; color:var(--slate); }
+.register-table .bns-chip{ margin-top:4px; }
 .fir{
   font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:600; color: var(--ink-navy);
 }
@@ -1586,3 +1617,86 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 }
 .sections-manager-filter { display: flex; gap: 4px; }
 .sections-manager-filter .btn { padding: 4px 10px; font-size: 11px; }
+
+/* Case Property Register — draggable column headers (drag left/right to
+   reorder).  S.NO and Actions are locked so they stay put; the order is
+   saved per-device in localStorage (no DB / Neon change). */
+.register-table .col-draggable { cursor: grab; user-select: none; }
+.register-table .col-draggable:active { cursor: grabbing; }
+.register-table .col-draggable.drag-over { outline: 2px dashed var(--khaki); outline-offset: -3px; }
+.register-table .drag-handle { opacity: 0.55; margin-right: 4px; font-size: 11px; }
+.register-table .col-draggable:hover .drag-handle { opacity: 1; }
+.col-reorder-hint { color: var(--slate-soft); font-size: 10px; letter-spacing: 0.04em; margin-right: 6px; }
+.btn.tiny.ghost { padding: 1px 7px; font-size: 10px; line-height: 1.5; border-radius: 5px; }
+
+/* ============================================================
+   Templates view — blank, fill-in-the-blanks forms
+   ============================================================ */
+.tmpl-grid{
+  display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap:16px; margin-top:6px;
+}
+.tmpl-card{
+  background: var(--white-paper); border:1px solid var(--line);
+  border-radius:8px; padding:16px 18px; display:flex; flex-direction:column; gap:6px;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .08s ease;
+}
+.tmpl-card:hover{
+  border-color: var(--khaki); box-shadow:0 4px 14px rgba(20,36,61,0.10);
+  transform: translateY(-1px);
+}
+.tmpl-card-name{ font-family:'Rajdhani',sans-serif; font-size:17px; font-weight:700; color: var(--ink-navy); }
+.tmpl-card-sub{ font-size:11.5px; color: var(--slate-soft); line-height:1.4; flex:1; }
+.tmpl-card-meta{ font-size:11px; color: var(--khaki); font-weight:600; letter-spacing:0.05em; text-transform:uppercase; }
+.tmpl-card-actions{ margin-top:6px; }
+
+.tmpl-preview{ margin-top:4px; }
+.tmpl-preview-bar{ display:flex; gap:10px; justify-content:space-between; align-items:center; margin-bottom:14px; }
+
+/* The printable sheet itself.  White "paper" on screen, scoped to print. */
+.tmpl-sheet{
+  background:#fff; color:#1a1a1a; max-width:720px; margin:0 auto;
+  padding:34px 38px 28px; border:1px solid #d8d2bf; border-radius:6px;
+  font-family:'IBM Plex Sans', sans-serif; box-shadow:0 8px 26px rgba(20,36,61,0.10);
+}
+.tmpl-sheet-head{ display:flex; gap:14px; align-items:center; border-bottom:2px solid #14243D; padding-bottom:12px; }
+.tmpl-crest{
+  width:44px; height:44px; border-radius:50%; flex-shrink:0;
+  background: radial-gradient(circle at 35% 30%, #A99968, #8C7A54 60%, #6e5f3f);
+  border:2px solid #E4DCC5; color:#14243D; font-family:'Rajdhani',sans-serif;
+  font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center;
+}
+.tmpl-org{ font-size:11px; letter-spacing:0.14em; font-weight:600; color:#8C7A54; text-transform:uppercase; }
+.tmpl-sheet-title h2{ font-family:'Rajdhani',sans-serif; font-size:22px; color:#14243D; margin:2px 0 2px; }
+.tmpl-sheet-sub{ font-size:12px; color:#5C5A4E; }
+
+.tmpl-sheet-meta{
+  display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;
+  font-size:12px; color:#333; margin:14px 0 6px; padding-bottom:10px; border-bottom:1px dashed #c9bfa0;
+}
+.tmpl-fields{ margin-top:10px; display:flex; flex-direction:column; gap:14px; }
+.tmpl-field{ display:flex; flex-direction:column; gap:4px; }
+.tmpl-field-label{ font-size:12.5px; font-weight:600; color:#2B2B28; }
+.tmpl-hint{ font-weight:400; color:#8C7A54; font-size:11px; margin-left:4px; }
+.tmpl-line{ border-bottom:1.5px dotted #6b6660; height:22px; }
+.tmpl-line.tall{ height:54px; }
+
+.tmpl-sign{ display:flex; gap:32px; margin-top:30px; }
+.tmpl-sign-box{ flex:1; display:flex; flex-direction:column; gap:5px; }
+.tmpl-sign-cap{ font-size:11px; color:#5C5A4E; }
+
+.tmpl-foot{ margin-top:26px; padding-top:10px; border-top:1px dashed #c9bfa0; font-size:10px; color:#8C7A54; text-align:center; }
+
+.btn-row{ display:flex; gap:8px; }
+.btn-row .btn{ white-space:nowrap; }
+
+/* Print: only the sheet, no app chrome */
+@media print {
+  body * { visibility: hidden !important; }
+  .tmpl-sheet, .tmpl-sheet * { visibility: visible !important; }
+  .tmpl-sheet{
+    position:absolute; left:0; top:0; width:100%; max-width:none;
+    margin:0; border:0; border-radius:0; box-shadow:none; padding:18px 24px;
+  }
+  .tmpl-preview-bar, .tmpl-card, .overlay { display:none !important; }
+}

@@ -1,6 +1,6 @@
 // Shared types between client and server (mirrored on the server side)
 
-export type ViewName = 'dashboard' | 'caseproperty' | 'movements' | 'alerts';
+export type ViewName = 'dashboard' | 'caseproperty' | 'movements' | 'templates' | 'alerts';
 
 export type CaseStatus =
   | 'Seized'
@@ -14,6 +14,8 @@ export interface CaseRow {
   id: string;                 // "FIR 214/2026" or "DD 41/2026"
   itemType: string;           // "Country-made pistol (.315 bore)"
   itemSub: string;            // "1 unit, with 2 live cartridges"
+  quantity?: string;          // parsed count, e.g. "2" (decorated server-side)
+  lastMovement?: string;      // YYYY-MM-DD of last movement-log entry (decorated server-side)
   section: string;            // "PART B" — letter reference, never display
   sectionName: string;        // "Weapons Almirah" — joined from sections table at read time
   sectionLetter?: string;     // "B" — convenience for the UI; same as section.replace('PART ', '')

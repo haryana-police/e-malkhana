@@ -10,6 +10,7 @@ import { Dashboard } from './components/Dashboard';
 import { CaseProperty } from './components/CaseProperty';
 import { Alerts } from './components/Alerts';
 import { Movements } from './components/Movements';
+import { Templates } from './components/Templates';
 import { TagModal } from './components/TagModal';
 import { TimelineModal } from './components/TimelineModal';
 import { RegisterCaseModal } from './components/RegisterCaseModal';
@@ -44,12 +45,14 @@ function viewToPath(v: ViewName): string {
     case 'dashboard':    return '/dashboard';
     case 'caseproperty': return '/caseproperty';
     case 'movements':    return '/movements';
+    case 'templates':    return '/templates';
     case 'alerts':       return '/alerts';
   }
 }
 function pathToView(p: string): ViewName {
   if (p.startsWith('/caseproperty') || p.startsWith('/case-property')) return 'caseproperty';
   if (p.startsWith('/movements'))    return 'movements';
+  if (p.startsWith('/templates'))    return 'templates';
   if (p.startsWith('/alerts'))       return 'alerts';
   return 'dashboard';
 }
@@ -399,10 +402,13 @@ export default function App() {
                 onOpenTag={setTagCase}
               />
             } />
+            <Route path="/templates" element={<Templates />} />
             <Route path="/alerts" element={
               <Alerts
                 alerts={data.alerts}
                 onOpenSettings={() => setOpenSettings(true)}
+                onDownloadReport={onDownloadReport}
+                onGenerateRegister={onGenerateRegister}
               />
             } />
             <Route path="*" element={
