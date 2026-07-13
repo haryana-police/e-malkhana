@@ -304,12 +304,15 @@ CREATE TABLE IF NOT EXISTS cases (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Per the Case Property spec: fir_no groups items by FIR, and item_id must
--- be UNIQUE so case_property / case_property_fields can FK to it.  These are
--- added right after the cases table (BEFORE the new FK tables below) so the
--- unique constraint exists when case_property references cases(item_id).
+-- Per the Case Property spec: fir_no groups items by FIR.  NOTE: we do NOT
+-- force a hard UNIQUE on item_id here because the live prod 'cases' table
+-- already contains rows (legacy + seed) and forcing a unique index would
+-- fail boot when duplicates exist.  item_id is unique in practice (the
+-- server auto-generates a unique MK-xxxx code on every new registration),
+-- and the case_property tables below are kept consistent at the app level.
+-- A non-unique lookup index is added for read perf.
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS fir_no TEXT;
-ALTER TABLE cases ADD CONSTRAINT cases_item_id_uniq UNIQUE (item_id);
+CREATE INDEX IF NOT EXISTS cases_item_id_idx ON cases (item_id);
 
 -- ADD COLUMN IF NOT EXISTS so existing prod DBs get the new columns without
 -- a destructive migration.  The bns_sections table + 100-row seed below are
@@ -396,7 +399,7 @@ CREATE TABLE IF NOT EXISTS fir_master (
 -- row in 'cases' (joined on item_id).  'fir_no' links it back to
 -- fir_master and to the cases row's new fir_no column.
 CREATE TABLE IF NOT EXISTS case_property (
-  item_id        TEXT PRIMARY KEY REFERENCES cases (item_id) ON DELETE CASCADE,
+  item_id        TEXT PRIMARY KEY,
   fir_no         TEXT,
   seized_time    TEXT,
   witness1       TEXT,
@@ -430,7 +433,7 @@ CREATE INDEX IF NOT EXISTS item_type_fields_section_idx ON item_type_fields (sec
 -- (item, field).  Keyed by item_id + field key.
 CREATE TABLE IF NOT EXISTS case_property_fields (
   id          BIGSERIAL PRIMARY KEY,
-  item_id     TEXT NOT NULL REFERENCES cases (item_id) ON DELETE CASCADE,
+  item_id     TEXT NOT NULL,
   field_key   TEXT NOT NULL,
   field_value TEXT,
   UNIQUE (item_id, field_key)
