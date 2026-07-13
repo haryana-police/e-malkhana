@@ -1666,6 +1666,30 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .tmpl-preview{ margin-top:4px; }
 .tmpl-preview-bar{ display:flex; gap:10px; justify-content:space-between; align-items:center; margin-bottom:14px; }
 
+/* Two-column editor: Fill details (left) | Template preview (right). */
+.tmpl-split{
+  display:grid; grid-template-columns: minmax(340px, 1fr) minmax(360px, 1.05fr);
+  gap:20px; align-items:start;
+}
+.tmpl-fill-panel, .tmpl-sheet-panel{
+  background: var(--paper-dark); border:1px solid var(--line);
+  border-radius:10px; padding:14px 16px;
+}
+.tmpl-panel-head{
+  font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:700;
+  letter-spacing:0.08em; text-transform:uppercase; color:var(--khaki);
+  margin-bottom:12px; padding-bottom:8px; border-bottom:1px dashed var(--line);
+}
+/* The sheet sits inside a narrower right column — drop the fixed max-width
+   and the auto-centering so it fills the panel. */
+.tmpl-sheet-panel .tmpl-sheet{
+  max-width:none; margin:0; box-shadow:0 4px 14px rgba(20,36,61,0.08);
+}
+/* On narrow screens, stack the two panels vertically. */
+@media (max-width: 900px){
+  .tmpl-split{ grid-template-columns: 1fr; }
+}
+
 /* The printable sheet itself.  White "paper" on screen, scoped to print. */
 .tmpl-sheet{
   background:#fff; color:#1a1a1a; max-width:720px; margin:0 auto;
@@ -1724,7 +1748,8 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .tmpl-preview-bar, .tmpl-card, .overlay,
-  .tmpl-fillbar, .tmpl-vals { display:none !important; }
+  .tmpl-fillbar, .tmpl-vals, .tmpl-fill-panel,
+  .tmpl-panel-head { display:none !important; }
 }
 
 /* ---- Letter / prose performa (Hindi applications) ---- */

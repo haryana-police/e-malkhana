@@ -255,52 +255,64 @@ export function Templates() {
             >🖨 Print blank form</button>
           </div>
 
-          {/* Fill-from-FIR selector + per-field blanks. */}
-          <div className="tmpl-fillbar">
-            <label className="tmpl-fir-label">
-              Fill details from FIR / DD no.:
-              <select
-                value={selectedFir}
-                onChange={e => onFirChange(e.target.value)}
-                disabled={!cases.length}
-              >
-                <option value="">
-                  {casesErr ? 'FIR list unavailable' : cases.length ? '— select —' : 'Loading FIRs…'}
-                </option>
-                {cases.map(c => (
-                  <option key={c.id} value={c.id}>{c.id}</option>
+          {/* Two-column: Fill details (left) | Template preview (right). */}
+          <div className="tmpl-split">
+            {/* LEFT — Fill details */}
+            <div className="tmpl-fill-panel">
+              <div className="tmpl-panel-head">Fill details</div>
+
+              {/* Fill-from-FIR selector + per-field blanks. */}
+              <div className="tmpl-fillbar">
+                <label className="tmpl-fir-label">
+                  Fill details from FIR / DD no.:
+                  <select
+                    value={selectedFir}
+                    onChange={e => onFirChange(e.target.value)}
+                    disabled={!cases.length}
+                  >
+                    <option value="">
+                      {casesErr ? 'FIR list unavailable' : cases.length ? '— select —' : 'Loading FIRs…'}
+                    </option>
+                    {cases.map(c => (
+                      <option key={c.id} value={c.id}>{c.id}</option>
+                    ))}
+                  </select>
+                </label>
+                {selectedFir && (
+                  <span className="tmpl-fir-note">Prefilled from record · edit any field below</span>
+                )}
+              </div>
+
+              <div className="tmpl-vals">
+                {active.fields.map(f => (
+                  <label key={f.key} className={`tmpl-val${f.type === 'textarea' ? ' ta' : ''}`}>
+                    <span className="tmpl-val-label">
+                      {f.label}
+                      {f.hint && <em className="tmpl-hint"> ({f.hint})</em>}
+                    </span>
+                    {f.type === 'textarea'
+                      ? <textarea
+                          value={values[f.key] || ''}
+                          onChange={e => onManual(f.key, e.target.value)}
+                          placeholder="—"
+                        />
+                      : <input
+                          type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
+                          value={values[f.key] || ''}
+                          onChange={e => onManual(f.key, e.target.value)}
+                          placeholder="—"
+                        />}
+                  </label>
                 ))}
-              </select>
-            </label>
-            {selectedFir && (
-              <span className="tmpl-fir-note">Prefilled from record · edit any field below</span>
-            )}
-          </div>
+              </div>
+            </div>
 
-          <div className="tmpl-vals">
-            {active.fields.map(f => (
-              <label key={f.key} className={`tmpl-val${f.type === 'textarea' ? ' ta' : ''}`}>
-                <span className="tmpl-val-label">
-                  {f.label}
-                  {f.hint && <em className="tmpl-hint"> ({f.hint})</em>}
-                </span>
-                {f.type === 'textarea'
-                  ? <textarea
-                      value={values[f.key] || ''}
-                      onChange={e => onManual(f.key, e.target.value)}
-                      placeholder="—"
-                    />
-                  : <input
-                      type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
-                      value={values[f.key] || ''}
-                      onChange={e => onManual(f.key, e.target.value)}
-                      placeholder="—"
-                    />}
-              </label>
-            ))}
+            {/* RIGHT — Template live preview */}
+            <div className="tmpl-sheet-panel">
+              <div className="tmpl-panel-head">Template (live preview)</div>
+              <Sheet tmpl={active} values={values} />
+            </div>
           </div>
-
-          <Sheet tmpl={active} values={values} />
         </div>
       )}
 
