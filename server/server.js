@@ -20,6 +20,7 @@ import {
   appendAudit, boot as bootStore, ensureBoot,
 } from './store.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
+import crypto from 'node:crypto';
 
 // Defence-in-depth: surface unhandled rejections instead of silently killing
 // the process (which is what the live PATCH bug looked like from the client).
@@ -789,26 +790,67 @@ app.get('/api/bns-sections', (req, res) => {
 });
 
 // =================== API: QR codes ===================
+// The QR tag encodes a compact JSON payload (case id + item id + type).
+// To stop anyone with a generic QR scanner from reading case data, the
+// payload is AES-256-GCM encrypted server-side.  Only the e-Malkhana
+// backend (which holds QR_SECRET) can decrypt it via /api/scan, so a tag
+// is meaningless until an MM has logged in and points the app at it.
+// Fallback secret keeps local/dev working; SET QR_SECRET in production.
+const QR_SECRET = (() => {
+  const raw = process.env.QR_SECRET || 'eMalkhana-QR-v1-secret-key!!';
+  return Buffer.from(raw, 'utf8').subarray(0, 32).toString('utf8').padEnd(32, '0');
+})();
+
+// Encrypt a plain object into a compact, self-describing AES-256-GCM blob.
+// Returns a JSON string: { v:2, enc:'aes-256-gcm', iv, tag, ct } (base64).
+function encryptQrPayload(obj) {
+  const plaintext = JSON.stringify(obj);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(QR_SECRET, 'utf8'), iv);
+  const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  const b64 = (buf) => buf.toString('base64');
+  return JSON.stringify({ v: 2, enc: 'aes-256-gcm', iv: b64(iv), tag: b64(authTag), ct: b64(enc) });
+}
+
+// Reverse of encryptQrPayload.  Throws if the blob isn't aes-256-gcm.
+function decryptQrPayload(encJson) {
+  const j = JSON.parse(encJson);
+  if (!j || j.enc !== 'aes-256-gcm') throw new Error('unsupported QR encryption');
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm', Buffer.from(QR_SECRET, 'utf8'), Buffer.from(j.iv, 'base64'));
+  decipher.setAuthTag(Buffer.from(j.tag, 'base64'));
+  const dec = Buffer.concat([decipher.update(Buffer.from(j.ct, 'base64')), decipher.final()]);
+  return JSON.parse(dec.toString('utf8'));
+}
 
 app.get('/api/cases/:id/qr', async (req, res, next) => {
   try {
     const c = findOrThrow(req.params.id);
-    // The QR encodes a compact JSON payload — the field scanner app
-    // (or our web /api/scan) parses this to start a movement.
-    const payload = JSON.stringify({
+    // Plain payload that the backend would decode.  We ENCRYPT it before
+    // encoding into the QR so the printed tag carries no readable case data.
+    const payloadObj = {
       v: 1,
       id: c.id,
       item: c.itemId,
       type: c.itemType,
       section: c.section,
-    });
-    const dataUrl = await QRCode.toDataURL(payload, {
+    };
+    const encrypted = encryptQrPayload(payloadObj);
+    const dataUrl = await QRCode.toDataURL(encrypted, {
       errorCorrectionLevel: 'M',
       margin: 1,
       width: 256,
       color: { dark: '#14243D', light: '#FAF7EE' },
     });
-    res.json({ dataUrl, payload, case: c });
+    // The on-screen "Payload" line must NOT leak case data — show a mask.
+    res.json({
+      dataUrl,
+      payload: encrypted,
+      encrypted: true,
+      mask: '🔒 Encrypted — scan with e-Malkhana to decode',
+      case: c,
+    });
   } catch (e) { next(e); }
 });
 
@@ -864,8 +906,10 @@ function lastLocationOf(caseId) {
 }
 
 // =================== API: scan endpoint ===================
-// Accepts either a raw case id (e.g. "FIR 214/2026") or a JSON payload
-// (the same string the QR encodes).  Creates a movement log entry.
+// Accepts either a raw case id (e.g. "FIR 214/2026"), the encrypted QR
+// blob (aes-256-gcm), or a legacy plaintext JSON payload.  A logged-in
+// MM is required (the X-MM-Id header must resolve to a known user) —
+// anonymous scans are refused so a found tag can't be decoded by anyone.
 
 app.post('/api/scan', async (req, res, next) => {
   try {
@@ -873,9 +917,37 @@ app.post('/api/scan', async (req, res, next) => {
     const raw = (b.payload || b.caseId || '').trim();
     if (!raw) { const e = new Error('payload (QR text) or caseId is required'); e.status = 400; throw e; }
 
-    // Try to parse as JSON payload
+    // Gate: only an authenticated MM may decode a tag.  The audit
+    // middleware sets req.mm from the X-MM-Id header; 'anonymous' means
+    // nobody is signed in (or the app didn't send the header).
+    if (!req.mm || req.mm.id === 'anonymous') {
+      const e = new Error('login required to scan');
+      e.status = 401;
+      throw e;
+    }
+
+    // Resolve the candidate case id from whatever form the input takes.
     let candidate = raw;
-    try { if (raw.startsWith('{')) candidate = JSON.parse(raw).id; } catch {}
+    try {
+      const looksEncrypted = raw.includes('"enc":"aes-256-gcm"') || raw.startsWith('enc::');
+      if (looksEncrypted) {
+        // Encrypted QR payload — only the backend holding QR_SECRET can read it.
+        const encJson = raw.startsWith('enc::') ? raw.slice('enc::'.length) : raw;
+        const obj = decryptQrPayload(encJson);
+        candidate = obj.id || raw;
+      } else if (raw.startsWith('{')) {
+        // Legacy plaintext JSON payload (pre-encryption tags / manual).
+        candidate = JSON.parse(raw).id || raw;
+      }
+      // otherwise: a bare case id typed manually — keep as-is.
+    } catch (decErr) {
+      // If decryption fails (wrong secret / tampered tag), do NOT fall
+      // back to treating the blob as a case id — that would leak/scrub it.
+      const e = new Error('could not decode QR tag');
+      e.status = 400;
+      e.payload = { detail: String(decErr?.message || decErr) };
+      throw e;
+    }
 
     const r = resolveCaseId(candidate);
     if (!r.case) {

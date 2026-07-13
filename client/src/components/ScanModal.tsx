@@ -20,21 +20,28 @@ const QUICK_LOCATIONS = [
 ];
 
 // Parse a QR payload (the same one /api/cases/:id/qr encodes).
-//   - JSON { v:1, id, item, ... }  →  returns id
-//   - Bare FIR/DD number           →  returns it as-is
-// Returns { id, explicitItemId } — when the payload carries an explicit
-// `item` field we use that for the case lookup too (matches MK-... ids
-// for the rare case where the FIR id is missing/legacy).
-function parsePayload(raw: string): { id: string; itemId: string } {
+//   - JSON { v:2, enc:'aes-256-gcm', iv, tag, ct }  →  ENCRYPTED tag.
+//     We must NOT try to read an `id` out of it — there isn't one.  We
+//     pass the whole blob straight to /api/scan, which is the only place
+//     that can decrypt it (backend holds QR_SECRET).  Parse it as an
+//     encrypted payload and return id='' so onScanSuccess ships the raw
+//     blob to the server rather than failing with "no case id".
+//   - JSON { v:1, id, item, ... }  →  legacy plaintext tag (pre-encryption).
+//   - Bare FIR/DD number           →  returns it as-is (manual entry).
+function parsePayload(raw: string): { id: string; itemId: string; encrypted: boolean } {
   const trimmed = String(raw || '').trim();
-  if (!trimmed) return { id: '', itemId: '' };
+  if (!trimmed) return { id: '', itemId: '', encrypted: false };
   if (trimmed.startsWith('{')) {
     try {
       const j = JSON.parse(trimmed);
-      return { id: j.id || '', itemId: j.item || '' };
+      if (j && j.enc === 'aes-256-gcm') {
+        // Encrypted tag: nothing to read client-side; server decrypts.
+        return { id: '', itemId: '', encrypted: true };
+      }
+      return { id: j.id || '', itemId: j.item || '', encrypted: false };
     } catch { /* fall through */ }
   }
-  return { id: trimmed, itemId: '' };
+  return { id: trimmed, itemId: '', encrypted: false };
 }
 
 export function ScanModal({ open, onClose, onSuccess }: Props) {
@@ -91,9 +98,13 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
           (isRear(b) ? 1 : 0) - (isRear(a) ? 1 : 0),
         );
         setCameras(sorted);
-        // Default the active selection to the first rear camera (or the
-        // first camera in the list if none labelled as rear).
-        setActiveCamId(sorted.find(isRear)?.id ?? sorted[0].id);
+        // Default to a NULL selection so startScanner() falls back to
+        // facingMode:'environment' (the REAR camera).  This is the correct
+        // default for scanning a physical QR tag — on many phones the front
+        // lens is enumerated first and would otherwise open by mistake.
+        // The user can still pick a specific lens from the dropdown; until
+        // they do, we always use the rear camera.
+        setActiveCamId(null);
       })
       .catch(e => {
         setScanError(`Camera unavailable: ${e?.message || e}. Use the manual entry below.`);
@@ -145,7 +156,13 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
 
   async function onScanSuccess(decodedText: string) {
     await stopScanner();
-    const { id, itemId } = parsePayload(decodedText);
+    const { id, itemId, encrypted } = parsePayload(decodedText);
+    // Encrypted tags carry no readable id — the server is the only place
+    // that can decrypt them, so we forward the raw blob as the payload.
+    if (encrypted) {
+      await lookupAndPrompt({ payload: decodedText, fallbackId: '', itemId: '' });
+      return;
+    }
     if (!id) {
       setMsg({ kind: 'error', text: 'QR did not contain a recognisable case id.' });
       setPhase('idle');
@@ -209,7 +226,13 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
   function submitManual() {
     if (!manualPayload.trim()) return;
     setBusy(true); setMsg(null);
-    const { id, itemId } = parsePayload(manualPayload);
+    const { id, itemId, encrypted } = parsePayload(manualPayload);
+    // Encrypted blob pasted manually → forward the raw string to the server.
+    if (encrypted) {
+      lookupAndPrompt({ payload: manualPayload, fallbackId: '', itemId: '' })
+        .finally(() => setBusy(false));
+      return;
+    }
     lookupAndPrompt({ payload: manualPayload, fallbackId: id, itemId })
       .finally(() => setBusy(false));
   }

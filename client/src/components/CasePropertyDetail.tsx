@@ -65,6 +65,7 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
   const [caseRow, setCaseRow] = useState<CaseRow | null>(null);
   const [movements, setMovements] = useState<MovementLogRow[]>([]);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [qrMask, setQrMask] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -104,7 +105,7 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         const safeArray = <T,>(x: unknown): T[] => Array.isArray(x) ? (x as T[]) : [];
         const [mv, qr, sec, types] = await Promise.all([
           api.movements(c.id).catch(() => [] as MovementLogRow[]),
-          api.qr(c.id).catch(() => ({ dataUrl: '', payload: '' })),
+          api.qr(c.id).catch(() => ({ dataUrl: '', payload: '', encrypted: false, mask: null })),
           // load racks for the section picker; ignore failure (the form
           // is hidden until the user clicks Edit anyway).
           api.sections('all').catch(() => [] as RackItem[]),
@@ -115,6 +116,7 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         ]);
         setMovements(safeArray<MovementLogRow>(mv));
         setQrUrl(qr.dataUrl);
+        setQrMask(qr.mask || null);
         setRacks(safeArray<RackItem>(sec));
         setTypeOptions(safeArray<ItemType>(types).map(t => ({ id: t.id, name: t.name })));
       } catch (e) {
@@ -535,7 +537,7 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
             ? <img src={qrUrl} alt="QR code" className="case-detail-qr" />
             : <div className="sub">No QR available</div>}
           <div className="case-detail-qr-meta">
-            <div><span className="k">Payload</span><span className="v" style={{fontFamily:'monospace',fontSize:11}}>{JSON.stringify({id:caseRow.id, type:caseRow.itemType, ts:caseRow.createdAt}).slice(0,80)}…</span></div>
+            <div><span className="k">Payload</span><span className="v" style={{fontFamily:'monospace',fontSize:11}}>{qrMask || JSON.stringify({id:caseRow.id, type:caseRow.itemType, ts:caseRow.createdAt}).slice(0,80)}…</span></div>
           </div>
         </div>
         <div className="case-detail-card">

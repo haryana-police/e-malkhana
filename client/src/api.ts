@@ -118,7 +118,7 @@ export const api = {
     return get<BnsSection[]>(`/bns-sections?${p.toString()}`);
   },
   users:       () => get<User[]>('/users'),
-  qr:          (id: string) => get<{ dataUrl: string; payload: string }>(`/cases/${encodeURIComponent(id)}/qr`),
+  qr:          (id: string) => get<{ dataUrl: string; payload: string; encrypted?: boolean; mask?: string }>(`/cases/${encodeURIComponent(id)}/qr`),
   movements:   (id: string) => get<MovementLogRow[]>(`/cases/${encodeURIComponent(id)}/movements`),
   audit:       (params?: { limit?: number; userId?: string; action?: string; target?: string }) => {
     const q = new URLSearchParams();
