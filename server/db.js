@@ -432,6 +432,8 @@ CREATE INDEX IF NOT EXISTS case_property_fields_item_idx ON case_property_fields
 -- Back-fill: add fir_no to the legacy 'cases' table so the register can
 -- show / group by FIR even for pre-existing rows (where id == the FIR no).
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS fir_no TEXT;
+-- item_id must be UNIQUE so case_property / case_property_fields can FK to it.
+ALTER TABLE cases ADD CONSTRAINT cases_item_id_uniq UNIQUE (item_id);
 `;
 
 export async function initSchema() {
