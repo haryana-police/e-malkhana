@@ -75,7 +75,7 @@ export async function loadMirror() {
         client.query(`SELECT letter, name, count, active FROM sections ORDER BY length(letter), letter`),
         client.query(`SELECT id, section_letter, name, sort_order, active FROM item_types ORDER BY section_letter, sort_order, name`),
         client.query(`SELECT section_no, title, description, category FROM bns_sections ORDER BY length(section_no), section_no`),
-        client.query(`SELECT id, item_type, item_sub, section, status,
+        client.query(`SELECT id, fir_no, item_type, item_sub, section, status,
                              seizing_officer, seized_on, item_id,
                              image_url, image_auto_generated, skip_auto_image,
                              doc_ref, legal_section, legal_section_title,
