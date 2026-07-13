@@ -23,6 +23,7 @@ const FORWARD: Record<CaseStatus, CaseStatus[]> = {
   'Expert Opinion Pending': ['In Malkhana', 'In Court'],
   'In Court':               ['In Malkhana', 'Disposed'],
   'Disposed':               ['In Malkhana'],
+  'Transfer':               ['In Malkhana', 'With FSL', 'Expert Opinion Pending', 'In Court', 'Disposed'],
 };
 
 // Record<string,string> (not Record<CaseStatus,string>) so the 'Transfer'
@@ -111,7 +112,9 @@ export function ChangeStatusModal({ open, caseRow, onClose, onChanged }: Props) 
     setBusy(true); setMsg(null);
     try {
       // record the movement + change status in one call.
-      // For a Transfer we intentionally do NOT change the case status.
+      // A Transfer DOES change the case status to 'Transfer' so it shows up
+      // as a TRANSFER badge in the Case Property Register and the dashboard
+      // count — it is a distinct malkhana status, not just a movement.
       await api.createMovement({
         caseId: caseRow.id,
         toLocation: toLocation || QUICK_LOCATIONS[nextStatus] || '',
@@ -119,10 +122,10 @@ export function ChangeStatusModal({ open, caseRow, onClose, onChanged }: Props) 
         purpose: purpose || QUICK_PURPOSE[nextStatus] || 'Movement',
         // Prefer the uploaded file URL; otherwise fall back to the typed ref.
         docRef: attached?.url || docRef,
-        setStatus: isTransfer ? undefined : nextStatus,
+        setStatus: isTransfer ? 'Transfer' : nextStatus,
       });
       const text = isTransfer
-        ? `Transfer logged → ${toLocation || 'new location'}. Status unchanged (${caseRow.status}).`
+        ? `Transfer logged → ${toLocation || 'new location'}. Status set to Transfer.`
         : `Status changed: ${caseRow.status} → ${nextStatus}. Movement logged.`;
       setMsg({ kind: 'ok', text });
       onChanged();

@@ -116,7 +116,7 @@ if (!IS_VERCEL) {
 
 const STATUSES = [
   'Seized', 'Expert Opinion Pending', 'In Malkhana',
-  'With FSL', 'In Court', 'Disposed',
+  'With FSL', 'In Court', 'Disposed', 'Transfer',
 ];
 
 function todayISO() {
@@ -239,11 +239,13 @@ function dashboardStats() {
   const pendingDisp  = cs.filter(c => c.status !== 'Disposed').length;
   const expert       = cs.filter(c => c.status === 'Expert Opinion Pending').length;
   const withFsl      = cs.filter(c => c.status === 'With FSL').length;
+  const transfers    = cs.filter(c => c.status === 'Transfer').length;
   return {
     totalProperty:   db.cases.length,            // only "real" register, matches design
     pendingDisposal: pendingDisp,
     expertPending:   expert,
     withFSL:         withFsl,
+    transfers:       transfers,
     inspectionDue:   inspectionDueText(),
     station:         db.meta.station,
     // Always show the current server time — never a stale seeded value

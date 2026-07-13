@@ -12,6 +12,7 @@ const STATUS_TONE: Record<string, string> = {
   'Seized': 'tone-info', 'In Malkhana': 'tone-info',
   'With FSL': 'tone-warn', 'Expert Opinion Pending': 'tone-warn',
   'In Court': 'tone-info', 'Disposed': 'tone-good',
+  'Transfer': 'tone-info',
 };
 
 // Editable copy of the case row used by the inline-edit form.  Every key

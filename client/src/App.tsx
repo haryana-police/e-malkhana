@@ -252,7 +252,7 @@ export default function App() {
 
   // Click on a dashboard stat-tile — navigates and pre-filters the case list
   // (or jumps to the alerts page for inspection-due).
-  function onStatClick(target: 'all' | 'pending' | 'expert' | 'fsl' | 'inspection') {
+  function onStatClick(target: 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection') {
     if (target === 'inspection') {
       setActiveSection(null);
       setActiveStatus(null);
@@ -266,6 +266,7 @@ export default function App() {
     else if (target === 'pending') { setActiveStatus(null);   setExcludeDisposed(true);  }  // all non-disposed
     else if (target === 'expert')  { setActiveStatus('Expert Opinion Pending'); setExcludeDisposed(false); }
     else if (target === 'fsl')     { setActiveStatus('With FSL'); setExcludeDisposed(false); }
+    else if (target === 'transfer'){ setActiveStatus('Transfer'); setExcludeDisposed(false); }
   }
 
   // Download handlers (used by Dashboard, CaseProperty, and Alerts).

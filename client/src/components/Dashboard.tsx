@@ -10,12 +10,12 @@ interface Props {
   movements: MovementRow[];
   alerts: AlertRow[];
   totalCases: number;
-  onStatClick: (target: 'all' | 'pending' | 'expert' | 'fsl' | 'inspection') => void;
+  onStatClick: (target: 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection') => void;
   onOpenTag: (c: CaseRow) => void;
   onOpenTimeline: (fir: string) => void;
 }
 
-type TileId = 'all' | 'pending' | 'expert' | 'fsl' | 'inspection';
+type TileId = 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection';
 
 interface TileSpec {
   id: TileId;
@@ -34,6 +34,7 @@ export function Dashboard({
     { id: 'pending',    label: 'Pending Disposal',        value: String(stats.pendingDisposal), foot: 'All stages except Disposed', urgent: true, hint: 'Show all cases except those with status "Disposed"' },
     { id: 'expert',     label: 'Expert Opinion Pending',  value: String(stats.expertPending),   foot: 'Viscera / chemical samples', hint: 'Show only cases with status "Expert Opinion Pending"' },
     { id: 'fsl',        label: 'With FSL',                value: String(stats.withFSL),         foot: 'Sent, report awaited', hint: 'Show only cases with status "With FSL"' },
+    { id: 'transfer',   label: 'Transfer',               value: String(stats.transfers ?? 0),  foot: 'In transit between locations', hint: 'Show only cases currently marked "Transfer"' },
     { id: 'inspection', label: 'Inspection Due',          value: stats.inspectionDue,           foot: 'Quarterly malkhana check', urgent: true, hint: 'Open the Alerts page' },
   ];
 

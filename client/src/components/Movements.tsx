@@ -25,6 +25,7 @@ function statusClass(s: CaseStatus): string {
     case 'With FSL':                return 'fsl';
     case 'In Court':                return 'court';
     case 'Disposed':                return 'disposed';
+    case 'Transfer':                return 'transfer';
   }
 }
 

@@ -8,7 +8,8 @@ export type CaseStatus =
   | 'In Malkhana'
   | 'With FSL'
   | 'In Court'
-  | 'Disposed';
+  | 'Disposed'
+  | 'Transfer';
 
 export interface CaseRow {
   id: string;                 // "FIR 214/2026" or "DD 41/2026"
@@ -84,6 +85,7 @@ export interface DashboardStats {
   inspectionDue: string;       // e.g. "2 days"
   station: string;             // "PS Sector-5, Panchkula"
   asOf: string;                // "05 Jul 2026, 10:42 AM"
+  transfers?: number;          // count of cases currently in 'Transfer' status
 }
 
 // Standardised "Item Type" master row (controlled vocabulary per section).
