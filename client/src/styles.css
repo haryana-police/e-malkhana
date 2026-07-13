@@ -1642,6 +1642,25 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .col-reorder-hint { color: var(--slate-soft); font-size: 10px; letter-spacing: 0.04em; margin-right: 6px; }
 .btn.tiny.ghost { padding: 1px 7px; font-size: 10px; line-height: 1.5; border-radius: 5px; }
 
+/* ---- Click-a-column-heading filter popover ---------------------------- */
+.register-table thead th { position: relative; }
+.register-table thead th.col-filtered { box-shadow: inset 0 -3px 0 var(--khaki); }
+.register-table thead th.col-filter-open { background: #fff; color: var(--slate); }
+.col-filter-dot { color: var(--khaki); margin-left: 5px; font-size: 11px; vertical-align: middle; }
+.col-filter-pop {
+  position: absolute; top: 100%; left: 0; margin-top: 5px; z-index: 80;
+  background: #fff; border: 1px solid var(--khaki); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.22); padding: 12px; min-width: 210px;
+  text-align: left;
+}
+.cfp-title { font-size: 11px; font-weight: 700; color: var(--slate); margin-bottom: 7px; letter-spacing: .03em; text-transform: uppercase; }
+.cfp-input { width: 100%; padding: 7px 9px; border: 1px solid var(--khaki); border-radius: 7px; font-size: 12px; box-sizing: border-box; outline: none; }
+.cfp-input:focus { border-color: var(--slate); }
+.cfp-checks { display: flex; flex-direction: column; gap: 5px; max-height: 250px; overflow: auto; }
+.cfp-check { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+.cfp-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 9px; }
+.cfp-chip { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; font-size: 12px; }
+
 /* ============================================================
    Templates view — blank, fill-in-the-blanks forms
    ============================================================ */

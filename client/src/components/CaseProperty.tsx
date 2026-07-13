@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { CaseRow, CaseStatus } from '../types';
 import { api } from '../api';
@@ -31,6 +31,11 @@ function statusClass(s: CaseStatus): string {
     case 'Transfer':                return 'transfer';
   }
 }
+
+const ALL_STATUSES: CaseStatus[] = [
+  'Seized', 'Expert Opinion Pending', 'In Malkhana', 'With FSL',
+  'In Court', 'Disposed', 'Transfer',
+];
 
 // ---- Column model for the Case Property Register -------------------------
 // Every column (except S.NO which is the running row index and Actions which
@@ -87,6 +92,55 @@ export function CaseProperty({
   const [order, setOrder] = useState<ColKey[]>(loadOrder);
   const [dragKey, setDragKey] = useState<ColKey | null>(null);
   const navigate = useNavigate();
+
+  // ---- Click a column heading to filter the register --------------------
+  const [openCol, setOpenCol] = useState<ColKey | null>(null);
+  const [colFilters, setColFilters] = useState<Partial<Record<ColKey, string>>>({});
+  const [statusFilter, setStatusFilter] = useState<CaseStatus[]>([]);
+
+  useEffect(() => {
+    if (!openCol) return;
+    const onDocDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest('[data-colpop]')) setOpenCol(null);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [openCol]);
+
+  const TEXT_COLS: ColKey[] = ['id', 'itemType', 'section', 'quantity', 'lastMovement'];
+
+  function cellText(c: CaseRow, key: ColKey): string {
+    switch (key) {
+      case 'id': return c.id;
+      case 'itemType': return c.itemType;
+      case 'section': return c.sectionName;
+      case 'quantity': return c.quantity || '1';
+      case 'lastMovement': return c.lastMovement || '';
+      default: return '';
+    }
+  }
+  function isColFiltered(key: ColKey): boolean {
+    if (key === 'status') return statusFilter.length > 0;
+    return !!(colFilters[key] && colFilters[key]!.trim());
+  }
+  function clearColFilter(key: ColKey) {
+    if (key === 'status') setStatusFilter([]);
+    else setColFilters(p => { const n = { ...p }; delete n[key]; return n; });
+  }
+  function applyColFilters(rows: CaseRow[]): CaseRow[] {
+    let out = rows;
+    for (const key of TEXT_COLS) {
+      const v = colFilters[key];
+      if (v && v.trim()) {
+        const f = v.toLowerCase();
+        out = out.filter(c => (cellText(c, key) || '').toLowerCase().includes(f));
+      }
+    }
+    if (statusFilter.length) out = out.filter(c => statusFilter.includes(c.status));
+    return out;
+  }
+  const colFilterCount = TEXT_COLS.filter(isColFiltered).length + (statusFilter.length ? 1 : 0);
 
   const columns: Record<ColKey, ColumnDef> = {
     sno: {
@@ -206,7 +260,7 @@ export function CaseProperty({
     ? byStatus.filter(c => c.status !== 'Disposed')
     : byStatus;
 
-  const visible = byExcludeDisposed.filter(c => {
+  const searchFiltered = byExcludeDisposed.filter(c => {
     if (!textFilter) return true;
     const f = textFilter.toLowerCase();
     return c.id.toLowerCase().includes(f)
@@ -217,6 +271,8 @@ export function CaseProperty({
         || c.status.toLowerCase().includes(f);
   });
 
+  const visible = applyColFilters(searchFiltered);
+
   return (
     <div className={`view${active ? ' active' : ''}`} id="view-caseproperty">
       <div className="page-head">
@@ -224,8 +280,9 @@ export function CaseProperty({
           <h1>Case Property Register</h1>
           <div className="sub">
             {visible.length} of {cases.length} items
-            {activeSection && <> · filtered by location: <b>Part {activeSection}</b></>}
-            {!activeSection && <> · filtered by: all locations</>}
+            {activeSection && <> · location: <b>Part {activeSection}</b></>}
+            {!activeSection && <> · all locations</>}
+            {colFilterCount > 0 && <> · <b>{colFilterCount}</b> column filter{colFilterCount > 1 ? 's' : ''} active</>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -260,6 +317,22 @@ export function CaseProperty({
         </div>
       )}
 
+      {colFilterCount > 0 && (
+        <div className="section-banner" style={{ background: 'rgba(140,122,84,0.10)', borderColor: 'var(--khaki)' }}>
+          Column filters:{' '}
+          {TEXT_COLS.filter(isColFiltered).map(key => (
+            <span key={key} className="cfp-chip">{columns[key].label}: <b>{colFilters[key]}</b>
+              <button className="section-banner-clear" onClick={() => clearColFilter(key)}>×</button>
+            </span>
+          ))}
+          {statusFilter.length > 0 && (
+            <span className="cfp-chip">Status: <b>{statusFilter.join(' / ')}</b>
+              <button className="section-banner-clear" onClick={() => setStatusFilter([])}>×</button>
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="scan-bar">
         <span className="scan-label">Search</span>
         <input
@@ -288,8 +361,11 @@ export function CaseProperty({
                 return (
                   <th
                     key={key}
-                    className={[col.className, col.locked ? '' : 'col-draggable'].filter(Boolean).join(' ')}
+                    data-colpop
+                    className={[col.className, col.locked ? '' : 'col-draggable', !col.locked && openCol === key ? 'col-filter-open' : '', isColFiltered(key) ? 'col-filtered' : ''].filter(Boolean).join(' ')}
                     draggable={!col.locked}
+                    title={!col.locked ? `Click heading to filter by ${col.label}` : undefined}
+                    onClick={() => { if (!col.locked) setOpenCol(o => o === key ? null : key); }}
                     onDragStart={(e) => { setDragKey(key); e.dataTransfer.effectAllowed = 'move'; }}
                     onDragOver={(e) => { if (!col.locked) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); } }}
                     onDragLeave={(e) => { e.currentTarget.classList.remove('drag-over'); }}
@@ -298,6 +374,47 @@ export function CaseProperty({
                   >
                     {!col.locked && <span className="drag-handle" aria-hidden>⠿</span>}
                     {col.label}
+                    {isColFiltered(key) && <span className="col-filter-dot" title="Column filtered">▾</span>}
+                    {!col.locked && openCol === key && (
+                      <div className="col-filter-pop" onClick={e => e.stopPropagation()}>
+                        {key === 'status' ? (
+                          <>
+                            <div className="cfp-title">Filter by Status</div>
+                            <div className="cfp-checks">
+                              {ALL_STATUSES.map(s => (
+                                <label key={s} className="cfp-check">
+                                  <input
+                                    type="checkbox"
+                                    checked={statusFilter.includes(s)}
+                                    onChange={() => setStatusFilter(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s])}
+                                  />
+                                  <span className={`stamp ${statusClass(s)}`}>{s}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="cfp-actions">
+                              <button className="btn tiny ghost" onClick={() => setStatusFilter([])}>Clear</button>
+                              <button className="btn tiny" onClick={() => setOpenCol(null)}>Done</button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="cfp-title">Filter by {col.label}</div>
+                            <input
+                              autoFocus
+                              className="cfp-input"
+                              placeholder={`Type ${col.label}…`}
+                              value={colFilters[key] || ''}
+                              onChange={e => setColFilters(p => ({ ...p, [key]: e.target.value }))}
+                            />
+                            <div className="cfp-actions">
+                              <button className="btn tiny ghost" onClick={() => clearColFilter(key)}>Clear</button>
+                              <button className="btn tiny" onClick={() => setOpenCol(null)}>Done</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </th>
                 );
               })}
