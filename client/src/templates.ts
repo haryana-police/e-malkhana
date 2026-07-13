@@ -34,6 +34,18 @@ export interface LetterParagraph {
   text: string;
 }
 
+// Structured Hindi letterhead (as seen on the official performa): the police
+// station + district sit on ONE row, left/right aligned, followed by the
+// "सेवा में" / judicial-authority / city lines.  Kept as data (not hand-typed
+// prose) so every Hindi performa renders the identical official header.
+export interface LetterHead {
+  station: string;   // left  — e.g. थाना शहर
+  district: string;  // right — e.g. जिला पानीपत
+  service?: string;  // e.g. सेवा में
+  authority: string; // e.g. मुख्य न्यायिक डंडाधिकारी / सत्र न्यायाधीश
+  city: string;      // e.g. पानीपत
+}
+
 export interface FormTemplate {
   id: string;
   name: string;
@@ -42,7 +54,9 @@ export interface FormTemplate {
   kind?: TemplateKind;
   /** Present only for kind === 'letter'. */
   paragraphs?: LetterParagraph[];
-  /** true for the 3 performa supplied in Downloads\templets.docx (Hindi applications). */
+  /** Structured official letterhead for Hindi performa (rendered top of sheet). */
+  letterhead?: LetterHead;
+  /** true for the 3 performa supplied in Downloads\\templets.docx (Hindi applications). */
   hindi?: boolean;
   fields: DocField[];
 }
@@ -173,6 +187,13 @@ export const formTemplates: FormTemplate[] = [
     sub: 'अपने पास जमा माल मुकदमा की FSL रिपोर्ट कांस्टेबल को सौंपने हेतु आवेदन — डायरेक्टर, न्यायवेदिक प्रयोगशाला, मधुबन (करनाल)',
     kind: 'letter',
     hindi: true,
+    letterhead: {
+      station: 'थाना शहर',
+      district: 'जिला पानीपत',
+      service: 'सेवा में',
+      authority: 'डायरेक्टर न्यायवेदिक प्रयोगशाला',
+      city: 'मधुबन (करनाल)',
+    },
     fields: [
       { key: 'kr_number', label: 'क्रमांक संख्या / Reference No.', type: 'text' },
       { key: 'kr_date', label: 'दिनांक / Date', type: 'date' },
@@ -185,10 +206,6 @@ export const formTemplates: FormTemplate[] = [
       { key: 'next_date', label: 'अगली तारीख / Next Court Date', type: 'date' },
     ],
     paragraphs: [
-      { text: 'थाना शहर जिला पानीपत' },
-      { text: 'सेवा मे' },
-      { text: 'डायरेक्टर न्यायवेदिक प्रयोगशाला' },
-      { text: 'मधुबन (करनाल )' },
       { blank: true, text: 'क्रमांक संख्या -दिनांक –' },
       { blank: true, text: 'विषय – मुकदमा नंबर {{fir}} धारा {{section}} भारतीय न्याय संहिता' },
       { text: 'श्री मान जी ,' },
@@ -206,6 +223,13 @@ export const formTemplates: FormTemplate[] = [
     sub: 'न्यायालय के आदेश हेतु आवेदन — तयशुदा (निर्णीत) मुकदमों की केस प्रॉपर्टी (माल मुकदमा) को नष्ट करने की अनुमति बारे — मुख्य न्यायिक दंडाधिकारी / सत्र न्यायाधीश, पानीपत',
     kind: 'letter',
     hindi: true,
+    letterhead: {
+      station: 'थाना शहर',
+      district: 'जिला पानीपत',
+      service: 'सेवा में',
+      authority: 'मुख्य न्यायिक दंडाधिकारी / सत्र न्यायाधीश',
+      city: 'पानीपत',
+    },
     fields: [
       { key: 'court', label: 'न्यायालय / Court', type: 'text', hint: 'मुख्य न्यायिक दंडाधिकारी / सत्र न्यायाधीश' },
       { key: 'fir', label: 'मुकदमा नंबर / FIR No.', type: 'text' },
@@ -215,9 +239,6 @@ export const formTemplates: FormTemplate[] = [
       { key: 'decision_date', label: 'फैसले की तारीख / Date of Judgment', type: 'date' },
     ],
     paragraphs: [
-      { text: 'थाना शहर जिला पानीपत सेवा मे' },
-      { text: 'मुख्य न्यायिक दंडाधिकारी / सत्र न्यायाधीश' },
-      { text: 'पानीपत' },
       { blank: true, text: 'मुकदमा नंबर: {{fir}} दिनांक: {{fir_date}} धारा: {{section}} थाना: {{ps}}' },
       { blank: true, text: 'विषय: मुकदमा उपरोक्त में तयशुदा केस प्रॉपर्टी (माल मुकदमा) को नष्ट करने की अनुमति प्रदान करने बारे।' },
       { text: 'श्रीमतीमान जी,' },
@@ -234,6 +255,13 @@ export const formTemplates: FormTemplate[] = [
     sub: 'अपने पास जमा माल मुकदमा की FSL रिपोर्ट कांस्टेबल को सौंपने हेतु आवेदन — असिस्टन्ट डायरेक्टर, न्यायवेदिक प्रयोगशाला, पंचकुला',
     kind: 'letter',
     hindi: true,
+    letterhead: {
+      station: 'थाना शहर',
+      district: 'जिला पानीपत',
+      service: 'सेवा में',
+      authority: 'असिस्टन्ट डायरेक्टर न्यायवेदिक प्रयोगशाला',
+      city: 'पंचकुला',
+    },
     fields: [
       { key: 'kr_number', label: 'क्रमांक संख्या / Reference No.', type: 'text' },
       { key: 'kr_date', label: 'दिनांक / Date', type: 'date' },
@@ -246,11 +274,6 @@ export const formTemplates: FormTemplate[] = [
       { key: 'next_date', label: 'अगली तारीख / Next Court Date', type: 'date' },
     ],
     paragraphs: [
-      { text: 'थाना शहर जिला पानीपत' },
-      { text: 'सेवा मे' },
-      { text: 'असिस्टन्ट डायरेक्टर' },
-      { text: 'न्यायवेदिक प्रयोगशाला' },
-      { text: 'पंचकुला' },
       { blank: true, text: 'क्रमांक संख्या -दिनांक –' },
       { blank: true, text: 'विषय – मुकदमा नंबर {{fir}} धारा {{section}} भारतीय न्याय संहिता' },
       { text: 'श्री मान जी ,' },

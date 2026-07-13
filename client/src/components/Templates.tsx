@@ -7,6 +7,7 @@ import {
   type FormTemplate,
   type DocField,
   type LetterParagraph,
+  type LetterHead,
 } from '../templates';
 import type { CaseRow } from '../types';
 
@@ -46,7 +47,7 @@ function Sheet({ tmpl, values }: { tmpl: FormTemplate; values: Record<string, st
       </div>
 
       {kind === 'letter'
-        ? <LetterBody paragraphs={tmpl.paragraphs || []} values={values} />
+        ? <LetterBody paragraphs={tmpl.paragraphs || []} values={values} letterhead={tmpl.letterhead} />
         : <FormFields fields={tmpl.fields} values={values} />}
 
       <div className="tmpl-sign">
@@ -70,12 +71,24 @@ function Sheet({ tmpl, values }: { tmpl: FormTemplate; values: Record<string, st
 // Render a prose performa.  Static paragraphs print as-is; paragraphs flagged
 // `blank` are merged with the officer's values: any {{key}} that has a value
 // is shown inline (bold), any still-empty key becomes a dotted "____" gap.
-function LetterBody({ paragraphs, values }: {
+function LetterBody({ paragraphs, values, letterhead }: {
   paragraphs: LetterParagraph[];
   values: Record<string, string>;
+  letterhead?: LetterHead;
 }) {
   return (
     <div className="tmpl-letter">
+      {letterhead && (
+        <div className="tmpl-letterhead">
+          <div className="tmpl-lh-row tmpl-lh-top">
+            <span className="tmpl-lh-left">{letterhead.station}</span>
+            <span className="tmpl-lh-right">{letterhead.district}</span>
+          </div>
+          {letterhead.service && <div className="tmpl-lh-service">{letterhead.service}</div>}
+          <div className="tmpl-lh-authority">{letterhead.authority}</div>
+          <div className="tmpl-lh-city">{letterhead.city}</div>
+        </div>
+      )}
       {paragraphs.map((p, i) => {
         if (!p.blank) {
           return <p key={i} className="tmpl-para">{p.text}</p>;
