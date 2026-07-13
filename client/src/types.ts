@@ -45,6 +45,7 @@ export interface BnsSection {
 export interface MovementEvent {
   title: string;
   meta: string;               // "by ... · date · note"
+  docRef?: string;            // optional attached-doc ref/URL for this step
 }
 
 export interface MovementRow {

@@ -33,6 +33,19 @@ function fmtTime(iso: string) {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
+// A movement's docRef is either a short reference (e.g. "FSL-FWD-2026-114")
+// or a full uploaded-file URL (e.g. "/api/uploads/...pdf").  Render the URL
+// as a clickable link, and inline-references as plain text.
+function renderDocRef(ref: string) {
+  if (!ref) return null;
+  const isUrl = /^https?:\/\//.test(ref) || ref.startsWith('/uploads') || ref.startsWith('/api/uploads');
+  if (isUrl) {
+    const name = decodeURIComponent(ref.split('/').pop() || ref);
+    return <><br /><a href={ref} target="_blank" rel="noreferrer">📎 {name}</a></>;
+  }
+  return <> · {ref}</>;
+}
+
 export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, active }: Props) {
   const [summaries, setSummaries] = useState<CaseSummary[] | null>(null);
   const [filter, setFilter] = useState('');
@@ -70,7 +83,8 @@ export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, ac
       const events = await api.movements(caseId);
       setTimeline(events.map(e => ({
         title: `${e.fromLocation === '—' ? 'New' : e.fromLocation} → ${e.toLocation}`,
-        meta: `by ${e.movedBy} · ${fmtTime(e.timestamp)} · ${e.purpose}${e.docRef ? ' · ' + e.docRef : ''}`,
+        meta: `by ${e.movedBy} · ${fmtTime(e.timestamp)} · ${e.purpose}`,
+        docRef: e.docRef,
       })));
     } catch {
       setTimeline([]);
@@ -223,7 +237,7 @@ export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, ac
                       <div className="tl-dot">●</div>
                       <div className="tl-body">
                         <div className="tl-title">{ev.title}</div>
-                        <div className="tl-meta">{ev.meta}</div>
+                        <div className="tl-meta">{ev.meta}{renderDocRef(ev.docRef || '')}</div>
                       </div>
                     </div>
                   ))}
