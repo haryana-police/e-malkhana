@@ -23,6 +23,15 @@ function bootOnce() {
 }
 
 export default async function handler(req, res) {
-  await bootOnce();
+  try {
+    await bootOnce();
+  } catch (e) {
+    // Log the real boot error so it shows up in `vercel logs` /
+    // Vercel runtime logs (otherwise FUNCTION_INVOCATION_FAILED swallows
+    // the actual reason).  Returns a 500 with the message in dev.
+    console.error('[api/index] boot failed:', e && (e.stack || e.message || e));
+    res.status(500).json({ error: 'boot_failed', message: e?.message || String(e) });
+    return;
+  }
   return app(req, res);
 };
