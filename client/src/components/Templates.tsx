@@ -1,17 +1,35 @@
-import { useState } from 'react';
-import { formTemplates, blankTemplate, type FormTemplate } from '../templates';
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '../api';
+import {
+  formTemplates,
+  blankTemplate,
+  firValues,
+  type FormTemplate,
+  type DocField,
+  type LetterParagraph,
+} from '../templates';
+import type { CaseRow } from '../types';
 
 // Printable, fill-in-the-blanks form sheet.  Intentional blanks + dotted
 // fill-lines mean the officer prints the sheet and writes the values by
 // hand.  Print is scoped with @media print so only the sheet is sent to
 // the printer (see styles.css `.tmpl-sheet` / `.tmpl-print`).
+//
+// Two flavours:
+//   kind 'form'   — labelled fields rendered as dotted fill-lines.
+//   kind 'letter' — prose performa; paragraphs containing {{key}} tokens are
+//                   merged with the officer's filled values and rendered as a
+//                   letter body with inline gaps where a value is still blank.
 
-function Sheet({ tmpl }: { tmpl: FormTemplate }) {
+function Sheet({ tmpl, values }: { tmpl: FormTemplate; values: Record<string, string> }) {
   const today = new Date().toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
   });
+  const kind = tmpl.kind || 'form';
+  const isHindi = !!tmpl.hindi;
+
   return (
-    <div className="tmpl-sheet">
+    <div className={`tmpl-sheet${isHindi ? ' hindi' : ''}`}>
       <div className="tmpl-sheet-head">
         <div className="tmpl-crest" aria-hidden="true">HP</div>
         <div className="tmpl-sheet-title">
@@ -27,19 +45,9 @@ function Sheet({ tmpl }: { tmpl: FormTemplate }) {
         <span>Date: {today}</span>
       </div>
 
-      <div className="tmpl-fields">
-        {tmpl.fields.map(f => (
-          <div className={`tmpl-field${f.type === 'textarea' ? ' ta' : ''}`} key={f.key}>
-            <div className="tmpl-field-label">
-              {f.label}
-              {f.hint && <span className="tmpl-hint">({f.hint})</span>}
-            </div>
-            {f.type === 'textarea'
-              ? <div className="tmpl-line tall" />
-              : <div className="tmpl-line" />}
-          </div>
-        ))}
-      </div>
+      {kind === 'letter'
+        ? <LetterBody paragraphs={tmpl.paragraphs || []} values={values} />
+        : <FormFields fields={tmpl.fields} values={values} />}
 
       <div className="tmpl-sign">
         <div className="tmpl-sign-box">
@@ -59,6 +67,66 @@ function Sheet({ tmpl }: { tmpl: FormTemplate }) {
   );
 }
 
+// Render a prose performa.  Static paragraphs print as-is; paragraphs flagged
+// `blank` are merged with the officer's values: any {{key}} that has a value
+// is shown inline (bold), any still-empty key becomes a dotted "____" gap.
+function LetterBody({ paragraphs, values }: {
+  paragraphs: LetterParagraph[];
+  values: Record<string, string>;
+}) {
+  return (
+    <div className="tmpl-letter">
+      {paragraphs.map((p, i) => {
+        if (!p.blank) {
+          return <p key={i} className="tmpl-para">{p.text}</p>;
+        }
+        // Merge tokens into React nodes so filled values render inline and
+        // missing ones render as a dotted gap.
+        const nodes: React.ReactNode[] = [];
+        const re = /\{\{\s*([\w]+)\s*\}\}/g;
+        let last = 0; let m: RegExpExecArray | null;
+        while ((m = re.exec(p.text)) !== null) {
+          if (m.index > last) nodes.push(p.text.slice(last, m.index));
+          const v = (values[m[1]] || '').trim();
+          nodes.push(
+            v
+              ? <span key={m[1]} className="tmpl-fill">{v}</span>
+              : <span key={m[1]} className="tmpl-gap" />,
+          );
+          last = m.index + m[0].length;
+        }
+        if (last < p.text.length) nodes.push(p.text.slice(last));
+        return <p key={i} className="tmpl-para">{nodes}</p>;
+      })}
+    </div>
+  );
+}
+
+function FormFields({ fields, values }: {
+  fields: DocField[];
+  values: Record<string, string>;
+}) {
+  return (
+    <div className="tmpl-fields">
+      {fields.map(f => {
+        const v = (values[f.key] || '').trim();
+        const cls = `tmpl-field${f.type === 'textarea' ? ' ta' : ''}`;
+        return (
+          <div className={cls} key={f.key}>
+            <div className="tmpl-field-label">
+              {f.label}
+              {f.hint && <span className="tmpl-hint">({f.hint})</span>}
+            </div>
+            {f.type === 'textarea'
+              ? <div className={`tmpl-line tall${v ? ' filled' : ''}`}>{v}</div>
+              : <div className={`tmpl-line${v ? ' filled' : ''}`}>{v}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Templates() {
   const [active, setActive] = useState<FormTemplate | null>(null);
 
@@ -66,6 +134,47 @@ export function Templates() {
   const [showBuilder, setShowBuilder] = useState(false);
   const [docName, setDocName] = useState('');
   const [fieldText, setFieldText] = useState('');
+
+  // --- FIR auto-fill ---
+  const [cases, setCases] = useState<CaseRow[]>([]);
+  const [casesErr, setCasesErr] = useState('');
+  const [selectedFir, setSelectedFir] = useState('');
+  const [manual, setManual] = useState<Record<string, string>>({});
+
+  // Load the case list once when a template is opened (so the FIR dropdown
+  // can be populated).  Failures are non-fatal — the dropdown just stays
+  // empty and the officer can still type values by hand.
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    setCases([]); setCasesErr(''); setSelectedFir(''); setManual({});
+    api.cases()
+      .then(list => { if (alive) setCases(list); })
+      .catch(e => { if (alive) setCasesErr(String(e?.message || e)); });
+    return () => { alive = false; };
+  }, [active]);
+
+  // Final values = prefill-from-FIR (if a FIR is chosen) merged over any
+  // values the officer typed manually.  Manual edits always win.
+  const values = useMemo<Record<string, string>>(() => {
+    if (!active) return {};
+    const base: Record<string, string> = {};
+    if (selectedFir) {
+      const c = cases.find(c => c.id === selectedFir);
+      if (c) Object.assign(base, firValues(c));
+    }
+    return { ...base, ...manual };
+  }, [active, selectedFir, cases, manual]);
+
+  function onFirChange(id: string) {
+    setSelectedFir(id);
+    // Prefilling from a FIR resets any manual edits that came from a
+    // previous selection so we don't carry stale values across cases.
+    setManual({});
+  }
+  function onManual(key: string, val: string) {
+    setManual(prev => ({ ...prev, [key]: val }));
+  }
 
   function build() {
     const labels = fieldText.split('\n');
@@ -93,7 +202,9 @@ export function Templates() {
             <div className="tmpl-card" key={t.id}>
               <div className="tmpl-card-name">{t.name}</div>
               <div className="tmpl-card-sub">{t.sub}</div>
-              <div className="tmpl-card-meta">{t.fields.length} fields</div>
+              <div className="tmpl-card-meta">
+                {t.hindi ? 'PERFORMA (HI)' : `${t.fields.length} FIELDS`}
+              </div>
               <div className="tmpl-card-actions">
                 <button className="btn small" onClick={() => setActive(t)}>Open</button>
               </div>
@@ -111,7 +222,53 @@ export function Templates() {
               onClick={() => window.print()}
             >🖨 Print blank form</button>
           </div>
-          <Sheet tmpl={active} />
+
+          {/* Fill-from-FIR selector + per-field blanks. */}
+          <div className="tmpl-fillbar">
+            <label className="tmpl-fir-label">
+              Fill details from FIR / DD no.:
+              <select
+                value={selectedFir}
+                onChange={e => onFirChange(e.target.value)}
+                disabled={!cases.length}
+              >
+                <option value="">
+                  {casesErr ? 'FIR list unavailable' : cases.length ? '— select —' : 'Loading FIRs…'}
+                </option>
+                {cases.map(c => (
+                  <option key={c.id} value={c.id}>{c.id}</option>
+                ))}
+              </select>
+            </label>
+            {selectedFir && (
+              <span className="tmpl-fir-note">Prefilled from record · edit any field below</span>
+            )}
+          </div>
+
+          <div className="tmpl-vals">
+            {active.fields.map(f => (
+              <label key={f.key} className={`tmpl-val${f.type === 'textarea' ? ' ta' : ''}`}>
+                <span className="tmpl-val-label">
+                  {f.label}
+                  {f.hint && <em className="tmpl-hint"> ({f.hint})</em>}
+                </span>
+                {f.type === 'textarea'
+                  ? <textarea
+                      value={values[f.key] || ''}
+                      onChange={e => onManual(f.key, e.target.value)}
+                      placeholder="—"
+                    />
+                  : <input
+                      type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
+                      value={values[f.key] || ''}
+                      onChange={e => onManual(f.key, e.target.value)}
+                      placeholder="—"
+                    />}
+              </label>
+            ))}
+          </div>
+
+          <Sheet tmpl={active} values={values} />
         </div>
       )}
 

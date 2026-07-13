@@ -5,6 +5,16 @@
 // blank so an officer can hand-fill the printed sheet.  The `blankTemplate`
 // helper lets the user generate a *custom* blank form from their own list of
 // field names typed into the Templates page.
+//
+// Templates are either:
+//   kind: 'form'   — a list of labelled fields with dotted fill-lines
+//                    (the original 6 registers, plus any custom blank form).
+//   kind: 'letter' — a prose performa (application / letter) with inline
+//                    blanks.  The three performa supplied in
+//                    Downloads\templets.docx (Hindi applications) are of this
+//                    kind and carry `hindi: true`.
+
+import type { CaseRow } from './types';
 
 export type FieldType = 'text' | 'date' | 'time' | 'number' | 'textarea';
 
@@ -16,11 +26,44 @@ export interface DocField {
   hint?: string;
 }
 
+export type TemplateKind = 'form' | 'letter';
+
+export interface LetterParagraph {
+  /** true = a fill-in-the-blank paragraph (renders an editable "_____" gap). */
+  blank?: boolean;
+  text: string;
+}
+
 export interface FormTemplate {
   id: string;
   name: string;
   sub: string;
+  /** 'form' = field list (fill-in-the-blanks sheet); 'letter' = prose performa. */
+  kind?: TemplateKind;
+  /** Present only for kind === 'letter'. */
+  paragraphs?: LetterParagraph[];
+  /** true for the 3 performa supplied in Downloads\templets.docx (Hindi applications). */
+  hindi?: boolean;
   fields: DocField[];
+}
+
+// Map an existing case (FIR/DD) row onto the field keys shared by the
+// register-style templates.  Used by the "Fill from FIR no." selector so an
+// officer doesn't re-type what is already recorded against the case.
+export function firValues(c: CaseRow): Record<string, string> {
+  const out: Record<string, string> = {
+    fir: c.id || '',
+    date: c.seizedOn || '',
+    item: c.itemType || '',
+    qty: c.quantity || '',
+    desc: c.description || '',
+    bns: c.legalSection ? `BNS ${c.legalSection}` : '',
+    // letters label the BNS section as "धारा / Section"
+    section: c.legalSection ? `BNS ${c.legalSection}` : '',
+    officer: c.seizingOfficer || '',
+    ps: '',
+  };
+  return out;
 }
 
 export const formTemplates: FormTemplate[] = [
@@ -124,6 +167,101 @@ export const formTemplates: FormTemplate[] = [
       { key: 'remarks', label: 'Remarks', type: 'textarea' },
     ],
   },
+  {
+    id: 'fsl-madhuban',
+    name: 'FSL Report Handover — Madhuban (Karnal)',
+    sub: 'अपने पास जमा माल मुकदमा की FSL रिपोर्ट कांस्टेबल को सौंपने हेतु आवेदन — डायरेक्टर, न्यायवेदिक प्रयोगशाला, मधुबन (करनाल)',
+    kind: 'letter',
+    hindi: true,
+    fields: [
+      { key: 'kr_number', label: 'क्रमांक संख्या / Reference No.', type: 'text' },
+      { key: 'kr_date', label: 'दिनांक / Date', type: 'date' },
+      { key: 'fir', label: 'मुकदमा नंबर / FIR No.', type: 'text', hint: 'e.g. 01 दिनांक 01/01/26' },
+      { key: 'section', label: 'धारा / Section', type: 'text', hint: 'e.g. 302 BNS' },
+      { key: 'rc', label: 'RC No.', type: 'text', hint: 'माल मुकदमा RC NO' },
+      { key: 'rc_date', label: 'RC Date', type: 'date' },
+      { key: 'constable', label: 'सिपाही का नाम / Constable Name', type: 'text' },
+      { key: 'belt', label: 'बेल्ट नंबर / Belt No.', type: 'text' },
+      { key: 'next_date', label: 'अगली तारीख / Next Court Date', type: 'date' },
+    ],
+    paragraphs: [
+      { text: 'थाना शहर जिला पानीपत' },
+      { text: 'सेवा मे' },
+      { text: 'डायरेक्टर न्यायवेदिक प्रयोगशाला' },
+      { text: 'मधुबन (करनाल )' },
+      { blank: true, text: 'क्रमांक संख्या -दिनांक –' },
+      { blank: true, text: 'विषय – मुकदमा नंबर {{fir}} धारा {{section}} भारतीय न्याय संहिता' },
+      { text: 'श्री मान जी ,' },
+      {
+        blank: true,
+        text: 'निवेदन यह है की मुकदमा नंबर {{fir}} धारा {{section}} भारतीय न्याय संहिता मे माल मुकदमा {{rc}} क अनुसार सिपाही {{constable}} बेल्ट नंबर {{belt}} द्वारा दिनांक {{rc_date}} को आपके पास जमा करवाया गया था |जो उपरोक्त मुकदमा हजा की माननीय अदालत मे आगामी तारीख {{next_date}} है | अतः आपसे से निवेदन है की मुकदमा हजा की FSL रिपोर्ट सिपाही --------------- बेल्ट नंबर ------- को दी जावे |ताकि समय पर माननीय अदालत मे पेश की जा सके |',
+      },
+      { text: 'थाना प्रबंधक' },
+      { text: 'शहर पानीपत' },
+    ],
+  },
+  {
+    id: 'destroy-court-application',
+    name: 'Application to Court — Destroy Case Property',
+    sub: 'न्यायालय के आदेश हेतु आवेदन — तयशुदा (निर्णीत) मुकदमों की केस प्रॉपर्टी (माल मुकदमा) को नष्ट करने की अनुमति बारे — मुख्य न्यायिक दंडाधिकारी / सत्र न्यायाधीश, पानीपत',
+    kind: 'letter',
+    hindi: true,
+    fields: [
+      { key: 'court', label: 'न्यायालय / Court', type: 'text', hint: 'मुख्य न्यायिक दंडाधिकारी / सत्र न्यायाधीश' },
+      { key: 'fir', label: 'मुकदमा नंबर / FIR No.', type: 'text' },
+      { key: 'fir_date', label: 'मुकदमा दिनांक / FIR Date', type: 'date' },
+      { key: 'section', label: 'धारा / Section', type: 'text' },
+      { key: 'ps', label: 'थाना / Police Station', type: 'text' },
+      { key: 'decision_date', label: 'फैसले की तारीख / Date of Judgment', type: 'date' },
+    ],
+    paragraphs: [
+      { text: 'थाना शहर जिला पानीपत सेवा मे' },
+      { text: 'मुख्य न्यायिक दंडाधिकारी / सत्र न्यायाधीश' },
+      { text: 'पानीपत' },
+      { blank: true, text: 'मुकदमा नंबर: {{fir}} दिनांक: {{fir_date}} धारा: {{section}} थाना: {{ps}}' },
+      { blank: true, text: 'विषय: मुकदमा उपरोक्त में तयशुदा केस प्रॉपर्टी (माल मुकदमा) को नष्ट करने की अनुमति प्रदान करने बारे।' },
+      { text: 'श्रीमतीमान जी,' },
+      {
+        text: 'निवेदन यह है कि उपरोक्त मुकदमा यह कि माननीय न्यायालय द्वारा इस मुकदमे का अंतिम फैसला दिनांक [यहाँ फैसले की तारीख लिखें] को सुनाया जा चुका है ।यह कि इस मुकदमे से संबंधित केस प्रॉपर्टी ,जिसका विवरण नीचे दिया गया है, वर्तमान में थाना के मालखाना में जमा है| यह कि इस मुकदमे की अपील (Appeal) या निगरानी (Revision) की निर्धारित समयावधि समाप्त हो चुकी है और अब इस केस प्रॉपर्टी को मालखाने में सुरक्षित रखने का कोई कानूनी औचित्य नहीं रह गया है। मालखाने में जगह की कमी और माल के खराब होने की संभावना को देखते हुए इसे नष्ट किया जाना आवश्यक है।:अतः आपसे से विनम्र प्रार्थना है कि उपरोक्त तयशुदा केस प्रॉपर्टी को नियमानुसार नष्ट करने की अनुमति प्रदान करने की कृपा करें।',
+      },
+      { text: 'थाना प्रबंधक' },
+      { text: 'शहर पानीपत' },
+    ],
+  },
+  {
+    id: 'fsl-panchkula',
+    name: 'FSL Report Handover — Panchkula',
+    sub: 'अपने पास जमा माल मुकदमा की FSL रिपोर्ट कांस्टेबल को सौंपने हेतु आवेदन — असिस्टन्ट डायरेक्टर, न्यायवेदिक प्रयोगशाला, पंचकुला',
+    kind: 'letter',
+    hindi: true,
+    fields: [
+      { key: 'kr_number', label: 'क्रमांक संख्या / Reference No.', type: 'text' },
+      { key: 'kr_date', label: 'दिनांक / Date', type: 'date' },
+      { key: 'fir', label: 'मुकदमा नंबर / FIR No.', type: 'text', hint: 'e.g. 01 दिनांक 01/01/26' },
+      { key: 'section', label: 'धारा / Section', type: 'text', hint: 'e.g. 302 BNS' },
+      { key: 'rc', label: 'RC No.', type: 'text', hint: 'माल मुकदमा RC NO' },
+      { key: 'rc_date', label: 'RC Date', type: 'date' },
+      { key: 'constable', label: 'सिपाही का नाम / Constable Name', type: 'text' },
+      { key: 'belt', label: 'बेल्ट नंबर / Belt No.', type: 'text' },
+      { key: 'next_date', label: 'अगली तारीख / Next Court Date', type: 'date' },
+    ],
+    paragraphs: [
+      { text: 'थाना शहर जिला पानीपत' },
+      { text: 'सेवा मे' },
+      { text: 'असिस्टन्ट डायरेक्टर' },
+      { text: 'न्यायवेदिक प्रयोगशाला' },
+      { text: 'पंचकुला' },
+      { blank: true, text: 'क्रमांक संख्या -दिनांक –' },
+      { blank: true, text: 'विषय – मुकदमा नंबर {{fir}} धारा {{section}} भारतीय न्याय संहिता' },
+      { text: 'श्री मान जी ,' },
+      {
+        blank: true,
+        text: 'निवेदन यह है की मुकदमा नंबर {{fir}} धारा {{section}} भारतीय न्याय संहिता मे माल मुकदमा {{rc}} क अनुसार सिपाही {{constable}} बेल्ट नंबर {{belt}} द्वारा दिनांक {{rc_date}} को आपके पास जमा करवाया गया था |जो उपरोक्त मुकदमा हजा की माननीय अदालत मे आगामी तारीख {{next_date}} है | अतः आपसे से निवेदन है की मुकदमा हजा की FSL रिपोर्ट सिपाही --------------- बेल्ट नंबर ------- को दी जावे |ताकि समय पर माननीय अदालत मे पेश की जा सके |',
+      },
+      { text: 'थाना प्रबंधक' },
+      { text: 'शहर पानीपत' },
+    ],
+  },
 ];
 
 // Build a custom blank template from a document title + a list of field
@@ -137,6 +275,7 @@ export function blankTemplate(name: string, fieldLabels: string[]): FormTemplate
     id: 'custom-' + Date.now().toString(36),
     name: name.trim() || 'Custom Blank Form',
     sub: 'Custom blank template',
+    kind: 'form',
     fields: clean,
   };
 }
