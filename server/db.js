@@ -444,6 +444,32 @@ CREATE INDEX IF NOT EXISTS case_property_fields_item_idx ON case_property_fields
 -- show / group by FIR even for pre-existing rows (where id == the FIR no).
 -- (fir_no + item_id UNIQUE are added right after the cases table above,
 -- before these FK tables are created, so the references resolve.)
+
+-- ---------------------------------------------------------------------------
+-- Inspection module (Malkhana inspection / compliance register).
+-- One row per inspection report.  A single JSONB column holds the full
+-- structured report (all 8 sections from the form) so adding a new field
+-- never requires a destructive ALTER.  Summary columns are duplicated for
+-- fast list rendering + server-side filtering (no JSON parsing on read).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS inspections (
+  id              BIGSERIAL PRIMARY KEY,
+  inspection_id   TEXT NOT NULL UNIQUE,          -- INS-2026-0001
+  inspection_date TEXT NOT NULL,                 -- YYYY-MM-DD
+  inspection_time TEXT NOT NULL,                 -- HH:MM
+  police_station  TEXT NOT NULL DEFAULT '',
+  inspecting_officer_name TEXT NOT NULL DEFAULT '',
+  inspecting_officer_rank TEXT NOT NULL DEFAULT '',
+  malkhana_incharge_name TEXT NOT NULL DEFAULT '',
+  previous_inspection_date TEXT,                 -- read-only, link to last record
+  overall_status  TEXT NOT NULL DEFAULT 'Needs Follow-up',
+  report          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  signature_url   TEXT,                           -- officer signature (upload) or data URL
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS inspections_date_idx ON inspections (inspection_date DESC);
+CREATE INDEX IF NOT EXISTS inspections_status_idx ON inspections (overall_status);
+CREATE INDEX IF NOT EXISTS inspections_station_idx ON inspections (police_station);
 `;
 
 export async function initSchema() {
@@ -692,8 +718,8 @@ export async function seedItemTypeFieldsIfEmpty() {
     );
   }
   const { rows: after } = await pool.query('SELECT count(*)::int AS n FROM item_type_fields');
-  if (after.rows[0].n > 0) {
-    console.log(`[db] seeded item_type_fields with ${after.rows[0].n} rows`);
+  if (after[0] && after[0].n > 0) {
+    console.log(`[db] seeded item_type_fields with ${after[0].n} rows`);
   }
 }
 
@@ -839,6 +865,166 @@ export async function upsertCaseProperty(itemId, common, fields) {
   }
 }
 
+// ===================== Inspection module =====================
+// One row per inspection report.  `report` holds the full structured body
+// (all 8 form sections); the summary columns let the list view render and
+// filter without parsing JSON on every read.
+
+export async function getInspections() {
+  const { rows } = await pool.query(
+    `SELECT id, inspection_id, inspection_date, inspection_time, police_station,
+            inspecting_officer_name, inspecting_officer_rank, malkhana_incharge_name,
+            previous_inspection_date, overall_status, report, signature_url, created_at
+     FROM inspections ORDER BY inspection_date DESC, inspection_time DESC, id DESC`
+  );
+  return rows.map(mapInspectionRow);
+}
+
+export async function getInspection(inspectionId) {
+  const { rows } = await pool.query(
+    `SELECT id, inspection_id, inspection_date, inspection_time, police_station,
+            inspecting_officer_name, inspecting_officer_rank, malkhana_incharge_name,
+            previous_inspection_date, overall_status, report, signature_url, created_at
+     FROM inspections WHERE inspection_id = $1`,
+    [inspectionId]
+  );
+  return rows[0] ? mapInspectionRow(rows[0]) : null;
+}
+
+// Returns the most recent inspection date (for "previous inspection" linking),
+// or null if none exist yet.
+export async function getLastInspectionDate() {
+  const { rows } = await pool.query(
+    `SELECT inspection_date FROM inspections
+     ORDER BY inspection_date DESC, inspection_time DESC, id DESC LIMIT 1`
+  );
+  return rows[0] ? rows[0].inspection_date : null;
+}
+
+// Next sequential inspection id, e.g. INS-2026-0007.  Year comes from the
+// current IST year so the counter rolls over each calendar year.
+export async function nextInspectionId() {
+  const year = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric' });
+  const prefix = `INS-${year}-`;
+  const { rows } = await pool.query(
+    `SELECT inspection_id FROM inspections
+     WHERE inspection_id LIKE $1 ORDER BY inspection_id DESC LIMIT 1`,
+    [prefix + '%']
+  );
+  let n = 0;
+  if (rows[0]) {
+    const m = String(rows[0].inspection_id).match(/(\d+)$/);
+    if (m) n = parseInt(m[1], 10);
+  }
+  return prefix + String(n + 1).padStart(4, '0');
+}
+
+// Insert or update an inspection report.  `inspectionId` must be supplied
+// (the caller generates it via nextInspectionId so the number is stable
+// and never reused on edit).  `status` is the authoritative overall_status.
+export async function upsertInspection(rec) {
+  const id = String(rec.inspectionId).trim();
+  const status = String(rec.status || 'Needs Follow-up');
+  const { rows } = await pool.query(
+    `INSERT INTO inspections
+       (inspection_id, inspection_date, inspection_time, police_station,
+        inspecting_officer_name, inspecting_officer_rank, malkhana_incharge_name,
+        previous_inspection_date, overall_status, report, signature_url)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)
+     ON CONFLICT (inspection_id) DO UPDATE
+       SET inspection_date=$2, inspection_time=$3, police_station=$4,
+           inspecting_officer_name=$5, inspecting_officer_rank=$6,
+           malkhana_incharge_name=$7, previous_inspection_date=$8,
+           overall_status=$9, report=$10::jsonb, signature_url=$11
+     RETURNING *`,
+    [id, rec.inspectionDate, rec.inspectionTime, rec.policeStation || '',
+     rec.inspectingOfficerName || '', rec.inspectingOfficerRank || '',
+     rec.malkhanaInchargeName || '', rec.previousInspectionDate || null,
+     status, JSON.stringify(rec.report || {}), rec.signatureUrl || null]
+  );
+  return mapInspectionRow(rows[0]);
+}
+
+export async function deleteInspection(inspectionId) {
+  await pool.query('DELETE FROM inspections WHERE inspection_id = $1', [String(inspectionId).trim()]);
+}
+
+function mapInspectionRow(r) {
+  return {
+    id: Number(r.id),
+    inspectionId: r.inspection_id,
+    inspectionDate: r.inspection_date,
+    inspectionTime: r.inspection_time,
+    policeStation: r.police_station,
+    inspectingOfficerName: r.inspecting_officer_name,
+    inspectingOfficerRank: r.inspecting_officer_rank,
+    malkhanaInchargeName: r.malkhana_incharge_name,
+    previousInspectionDate: r.previous_inspection_date || undefined,
+    overallStatus: r.overall_status,
+    report: r.report || {},
+    signatureUrl: r.signature_url || undefined,
+    createdAt: new Date(r.created_at).toISOString(),
+  };
+}
+
+// Idempotent demo seed for the Inspection register — fires even on prod DBs
+// that already have users, so a fresh deployment shows a populated list.
+export async function seedInspectionsIfEmpty() {
+  await initSchema();
+  const { rows } = await pool.query('SELECT count(*)::int AS n FROM inspections');
+  if (rows[0] && rows[0].n > 0) return;          // already populated
+  const station = 'PS Sector-5, Panchkula';
+  const demo = [
+    {
+      inspectionId: 'INS-2026-0001',
+      inspectionDate: '2026-04-05', inspectionTime: '10:30',
+      policeStation: station, inspectingOfficerName: 'Insp. Amit Verma',
+      inspectingOfficerRank: 'DSP', malkhanaInchargeName: 'SI Rakesh Sharma',
+      overallStatus: 'Compliant',
+      report: {
+        registerVerification: { malkhanaRegisterUpdated: 'Yes', casePropertyRegisterVerified: 'Yes', generalDiaryCrosscheck: 'Yes' },
+        physicalVerification: { articlesCountMatch: 'Yes', sealsPacketsStatus: 'Intact', numberingLabelingCorrect: 'Yes' },
+        casePropertyStatus: { courtDisposalPendingCount: '0', ndpsPropertiesDisposalStatus: 'Compliant', fslExhibitsPendingCount: '1', fslExhibitsRemarks: 'FSL report awaited for FIR 198/2026.', oldUnclaimedPropertyCount: '0' },
+        specialCategoryCheck: { cashGoldSilverVerified: 'Yes', armsAmmunitionChecked: 'Yes', perishableNarcoticsCondition: 'Good' },
+        malkhanaCondition: { securityLocksSeals: 'Satisfactory', cleanlinessPestControl: 'Satisfactory', fireSafety: 'Satisfactory', storageSpaceAdequacy: 'Adequate' },
+        discrepanciesFound: '', previousRemarksComplianceStatus: 'Complied',
+        newRemarksSuggestions: 'Quarterly inspection schedule to be maintained.',
+      },
+    },
+    {
+      inspectionId: 'INS-2026-0002',
+      inspectionDate: '2026-07-08', inspectionTime: '14:15',
+      policeStation: station, inspectingOfficerName: 'Insp. Neha Gupta',
+      inspectingOfficerRank: 'SHO', malkhanaInchargeName: 'SI Rakesh Sharma',
+      overallStatus: 'Non-Compliant',
+      report: {
+        registerVerification: { malkhanaRegisterUpdated: 'No', malkhanaRegisterRemarks: 'Daily update lagging by 3 days.', casePropertyRegisterVerified: 'Yes', generalDiaryCrosscheck: 'No', generalDiaryRemarks: 'Cross-check not done for June entries.' },
+        physicalVerification: { articlesCountMatch: 'Discrepancy', articlesCountRemarks: '2 exhibited articles not traceable in rack.', sealsPacketsStatus: 'Tampered', sealsPacketsRemarks: 'Seal broken on FIR 176/2026 packet.', numberingLabelingCorrect: 'No', numberingLabelingRemarks: 'Relabeling pending for Part D.' },
+        casePropertyStatus: { courtDisposalPendingCount: '3', ndpsPropertiesDisposalStatus: 'Delayed', ndpsPropertiesDisposalRemarks: 'Court disposal delayed pending orders.', fslExhibitsPendingCount: '2', fslExhibitsRemarks: 'Two FSL reports overdue.', oldUnclaimedPropertyCount: '5', oldUnclaimedPropertyList: 'MK-2025-00011, MK-2025-00034, MK-2025-00058, MK-2025-00072, MK-2025-00090' },
+        specialCategoryCheck: { cashGoldSilverVerified: 'No', cashGoldSilverRemarks: 'Cash count not reconciled.', armsAmmunitionChecked: 'Yes', perishableNarcoticsCondition: 'Deteriorating', perishableNarcoticsRemarks: 'Narcotics samples need re-preservation.' },
+        malkhanaCondition: { securityLocksSeals: 'Needs Attention', securityLocksSealsRemarks: 'Almirah lock loose.', cleanlinessPestControl: 'Needs Attention', cleanlinessPestControlRemarks: 'Pest control due.', fireSafety: 'Satisfactory', storageSpaceAdequacy: 'Inadequate', storageSpaceAdequacyRemarks: 'Space exhausted in Part A.' },
+        discrepanciesFound: 'Multiple discrepancies found — register updates, seals tampered, FSL reports overdue, storage inadequate. Immediate corrective action required.',
+        previousRemarksComplianceStatus: 'Partially Complied',
+        newRemarksSuggestions: 'Malkhana in-charge to submit compliance report within 7 days.',
+      },
+    },
+  ];
+  for (const d of demo) {
+    await pool.query(
+      `INSERT INTO inspections
+         (inspection_id, inspection_date, inspection_time, police_station,
+          inspecting_officer_name, inspecting_officer_rank, malkhana_incharge_name,
+          previous_inspection_date, overall_status, report)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+       ON CONFLICT (inspection_id) DO NOTHING`,
+      [d.inspectionId, d.inspectionDate, d.inspectionTime, d.policeStation,
+       d.inspectingOfficerName, d.inspectingOfficerRank, d.malkhanaInchargeName,
+       null, d.overallStatus, JSON.stringify(d.report)]
+    );
+  }
+  console.log(`[db] seeded inspections with ${demo.length} demo report(s)`);
+}
+
 // Convenience: ensure everything is ready before any read or write.  Call
 // this at the top of every exported store function.
 export async function ensureReady() {
@@ -846,4 +1032,5 @@ export async function ensureReady() {
   await seedBnsSectionsIfEmpty();
   await seedItemTypesIfEmpty();
   await seedItemTypeFieldsIfEmpty();
+  await seedInspectionsIfEmpty();
 }

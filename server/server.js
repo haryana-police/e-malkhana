@@ -22,6 +22,8 @@ import {
 import {
   getSectionMeta, getItemTypeFields, upsertItemTypeField, deleteItemTypeField,
   getFirMaster, upsertFirMaster, getCaseProperty, upsertCaseProperty,
+  getInspections, getInspection, upsertInspection, deleteInspection,
+  nextInspectionId, getLastInspectionDate,
 } from './db.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
 import crypto from 'node:crypto';
@@ -1478,6 +1480,104 @@ app.patch('/api/alerts/config', async (req, res, next) => {
     res.json(result.config);
   } catch (e) { next(e); }
 });
+
+// =================== API: Inspection register ===================
+
+// GET /api/inspections  -> all inspection reports (latest first).
+app.get('/api/inspections', async (_req, res, next) => {
+  try {
+    res.json(await getInspections());
+  } catch (e) { next(e); }
+});
+
+// GET /api/inspections/:id  -> a single report (or 404).
+app.get('/api/inspections/:id', async (req, res, next) => {
+  try {
+    const id = decodeURIComponent(req.params.id).trim();
+    const rec = await getInspection(id);
+    if (!rec) { res.status(404).json({ error: 'not found' }); return; }
+    res.json(rec);
+  } catch (e) { next(e); }
+});
+
+// GET /api/inspections/meta/next-id  -> next sequential inspection id +
+// the previous inspection date (for the read-only "last record" link).
+app.get('/api/inspections/meta/next-id', async (_req, res, next) => {
+  try {
+    const [nextId, prevDate] = await Promise.all([nextInspectionId(), getLastInspectionDate()]);
+    res.json({ nextInspectionId: nextId, previousInspectionDate: prevDate || null });
+  } catch (e) { next(e); }
+});
+
+// POST|PUT /api/inspections  { inspectionId?, ... , report, status, signatureUrl? }
+//   create OR update a single inspection report.  If inspectionId is
+//   omitted, a fresh sequential id is minted server-side.  `status` is the
+//   authoritative overall_status (auto-calculated client-side or manual).
+app.post('/api/inspections', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    // Mint a fresh sequential id when none is supplied (client "new" flow).
+    const inspectionId = body.inspectionId ? String(body.inspectionId).trim() : await nextInspectionId();
+    const rec = sanitizeInspection({ ...body, inspectionId });
+    if (!rec) {
+      const e = new Error('inspection_date, inspection_time, inspecting_officer_name and police_station are required');
+      e.status = 400; throw e;
+    }
+    const saved = await upsertInspection(rec);
+    await auditMm(req, 'inspection.create', saved.inspectionId,
+      `Inspection ${saved.inspectionId} — ${saved.overallStatus} (officer: ${saved.inspectingOfficerName})`);
+    res.status(201).json(saved);
+  } catch (e) { next(e); }
+});
+
+app.patch('/api/inspections', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    if (!body.inspectionId) { const e = new Error('inspectionId is required to update'); e.status = 400; throw e; }
+    const rec = sanitizeInspection(body);
+    if (!rec) { const e = new Error('inspection_date, inspection_time, inspecting_officer_name and police_station are required'); e.status = 400; throw e; }
+    const saved = await upsertInspection(rec);
+    await auditMm(req, 'inspection.update', saved.inspectionId, `Inspection updated — ${saved.overallStatus}`);
+    res.json(saved);
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/inspections/:id  -> remove a report (admin/MM correction).
+app.delete('/api/inspections/:id', async (req, res, next) => {
+  try {
+    const id = decodeURIComponent(req.params.id).trim();
+    const existing = await getInspection(id);
+    if (!existing) { res.status(404).json({ error: 'not found' }); return; }
+    await deleteInspection(id);
+    await auditMm(req, 'inspection.delete', id, `Inspection ${id} deleted`);
+    res.json({ id, deleted: true });
+  } catch (e) { next(e); }
+});
+
+// Build a clean, snake_cased inspection record from the loose request body.
+// Returns null if any required field is missing.  isNew tells the caller
+// whether to mint a fresh id.
+function sanitizeInspection(b) {
+  const inspectionDate = String(b.inspectionDate || '').trim();
+  const inspectionTime = String(b.inspectionTime || '').trim();
+  const inspectingOfficerName = String(b.inspectingOfficerName || '').trim();
+  const policeStation = String(b.policeStation || '').trim();
+  if (!inspectionDate || !inspectionTime || !inspectingOfficerName || !policeStation) return null;
+  return {
+    inspectionId: b.inspectionId ? String(b.inspectionId).trim() : null,
+    inspectionDate,
+    inspectionTime,
+    policeStation,
+    inspectingOfficerName,
+    inspectingOfficerRank: String(b.inspectingOfficerRank || '').trim(),
+    malkhanaInchargeName: String(b.malkhanaInchargeName || '').trim(),
+    previousInspectionDate: b.previousInspectionDate || null,
+    status: String(b.status || 'Needs Follow-up').trim(),
+    report: b.report && typeof b.report === 'object' ? b.report : {},
+    signatureUrl: b.signatureUrl || null,
+    isNew: !b.inspectionId,
+  };
+}
 
 // =================== API: Reports (Excel + PDF) ===================
 // One source of truth for filtering the case list — used by the JSON list
