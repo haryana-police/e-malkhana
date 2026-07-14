@@ -281,11 +281,19 @@ function inspectionDueText() {
 }
 function recentMovements(limit = 8) {
   const db = getDb();
+  // Look up the case from the in-memory mirror SYNCHRONOUSLY.  getCase()
+  // is async (it awaits ensureReady()), so calling it without await here
+  // returned a Promise and `c?.itemType` was always undefined — which is
+  // why the Item column rendered as "—" forever.  The mirror is fully
+  // loaded by boot() before any handler runs, so a direct find is safe.
+  const caseById = (id) =>
+    (db.cases || []).find(x => x.id === id)
+    || (db.extraCasesForAlerts || []).find(x => x.id === id);
   return [...db.movements]
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, limit)
     .map(m => {
-      const c = getCase(m.caseId);
+      const c = caseById(m.caseId);
       const from = m.fromLocation === '—' ? 'New' : m.fromLocation;
       return {
         fir: m.caseId,
@@ -997,7 +1005,7 @@ app.post('/api/scan', async (req, res, next) => {
       if (b.setStatus && STATUSES.includes(b.setStatus)) {
         await mutate(d => { const x = d.cases.find(y => y.id === c.id); if (x) x.status = b.setStatus; });
       }
-      const finalCase = withFreshSectionName(getCase(c.id) || c, getDb());
+      const finalCase = withFreshSectionName(await getCase(c.id) || c, getDb());
       await auditMm(req, 'scan.record', c.id, `Scan + movement: ${movement.fromLocation} → ${movement.toLocation}${b.setStatus ? ` (status → ${b.setStatus})` : ''}`);
       res.status(201).json({ case: finalCase, movement });
       return;
@@ -1140,7 +1148,7 @@ app.post('/api/case-property', async (req, res, next) => {
     const body = req.body || {};
     const itemId = String(body.itemId || '').trim();
     if (!itemId) { const e = new Error('itemId is required'); e.status = 400; throw e; }
-    if (!getCase(itemId)) { const e = new Error(`unknown item: ${itemId}`); e.status = 404; throw e; }
+    if (!(await getCase(itemId))) { const e = new Error(`unknown item: ${itemId}`); e.status = 404; throw e; }
     const common = body.common || {};
     const fields = Array.isArray(body.fields) ? body.fields : [];
     await upsertCaseProperty(itemId, {
