@@ -177,7 +177,7 @@ export function CaseProperty({
       render: (c) => <td className="quant">{c.quantity || '1'}</td>,
     },
     section: {
-      key: 'section', label: 'Section',
+      key: 'section', label: 'Location',
       render: (c) => (
         <td>
           <span
