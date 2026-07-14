@@ -263,10 +263,13 @@ function dashboardStats() {
 
 // Matches the visual format the dashboard was designed around:
 //   "05 Jul 2026, 10:42 AM"
+// Pinned to Asia/Kolkata so the "As of …" stamp shows IST (the deployment
+// host — Vercel — runs in UTC, otherwise the time is off by 5h30m).
 function formatAsOf(d) {
   return d.toLocaleString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: true,
+    timeZone: 'Asia/Kolkata',
   });
 }
 function inspectionDueText() {
@@ -293,15 +296,27 @@ function recentMovements(limit = 8) {
       };
     });
 }
+// Format a movement timestamp for the dashboard's Recent Activity table.
+// Pinned to Asia/Kolkata so the "Today"/"Yesterday" boundary and the time
+// itself are correct for Indian users even though the host (Vercel) is UTC.
+// A movement logged at IST 02:00 is stored as UTC 20:30 the previous day,
+// so the midnight comparison MUST happen in IST or it gets mislabeled.
 function humanTime(iso) {
   const d = new Date(iso);
-  const today = new Date(); today.setHours(0,0,0,0);
-  const isToday = d >= today;
-  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-  if (isToday) return `Today, ${time}`;
-  const yest = new Date(today.getTime() - 86400000);
-  if (d >= yest) return `Yesterday, ${time}`;
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const istDate = (x) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(x); // "YYYY-MM-DD" in IST
+  const time = d.toLocaleTimeString('en-IN', {
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata',
+  });
+  const todayStr = istDate(new Date());
+  const movStr = istDate(d);
+  if (movStr === todayStr) return `Today, ${time}`;
+  const yest = new Date(Date.now() - 86400000);
+  if (istDate(yest) === movStr) return `Yesterday, ${time}`;
+  return d.toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata',
+  });
 }
 
 // =================== alert scan job ===================
