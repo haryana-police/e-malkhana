@@ -886,7 +886,7 @@ export async function upsertCaseProperty(itemId, common, fields) {
            place_of_seizure = EXCLUDED.place_of_seizure, physical_storage = EXCLUDED.physical_storage,
            photo_url = EXCLUDED.photo_url, remarks = EXCLUDED.remarks, status = EXCLUDED.status`,
     [itemId, common.firNo || null, common.seizedTime || null, common.witness1 || null,
-     common.witness2 || null, common.quantity || null, place,
+     common.witness2 || null, common.quantity || null, place, place,
      common.physicalStorage || null, common.photoUrl || null, common.remarks || null, common.status || 'Seized']
   );
   for (const f of fields) {
