@@ -8,6 +8,7 @@ interface Props {
   racks: RackItem[];
   onRacksChange: (racks: RackItem[]) => void;
   onOpenSettings: (tab?: 'thresholds' | 'fields' | 'backup' | 'log') => void;
+  onOpenSettingsFull: () => void;
   onOpenSectionsManager: () => void;
   onOpenItemTypeManager: () => void;
   activeSection: string | null;
@@ -27,7 +28,7 @@ const navItems: { view: ViewName; label: string }[] = [
   { view: 'inspection',    label: 'Inspection' },
 ];
 
-export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, onOpenSectionsManager, onOpenItemTypeManager, activeSection, onSectionFilter, user, onLogout, mobileOpen, onCloseMobile }: Props) {
+export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, onOpenSettingsFull, onOpenSectionsManager, onOpenItemTypeManager, activeSection, onSectionFilter, user, onLogout, mobileOpen, onCloseMobile }: Props) {
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries(racks.map(r => [r.letter, r.name]))
   );
@@ -96,9 +97,9 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
         <div className="side-section-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>Malkhana Locations</span>
           <span
-            onClick={() => onOpenSettings()}
+            onClick={() => onOpenSettingsFull()}
             style={{ cursor: 'pointer', color: 'var(--paper-dark)' }}
-            title="Alert & Compliance settings"
+            title="Open System Setting"
           >⚙</span>
         </div>
         <div className="rack-list">
@@ -138,7 +139,6 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
 
         <div className="system-setting-card">
           <div className="system-setting-head">
-            <span className="system-setting-icon">⚙</span>
             <span className="system-setting-title">System Setting</span>
           </div>
           <div className="system-setting-list">
@@ -146,29 +146,29 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
               type="button"
               className="sys-setting-item"
               onClick={() => onOpenSettings('fields')}
-            >🧩 Item Type Fields</button>
+            >Item Type Fields</button>
             <button
               type="button"
               className="sys-setting-item"
               onClick={() => onOpenSettings('backup')}
-            >☁ Backup &amp; Restore</button>
+            >Backup &amp; Restore</button>
             <button
               type="button"
               className="sys-setting-item"
               onClick={() => onOpenSettings('log')}
-            >📜 Activity log
+            >Activity log
               {auditCount != null && <span className="sys-setting-count">{auditCount}</span>}
             </button>
             <button
               type="button"
               className="sys-setting-item"
               onClick={() => { onOpenSettings(); onOpenSectionsManager(); }}
-            >✏ Edit Malkhana Sections</button>
+            >Edit Malkhana Sections</button>
             <button
               type="button"
               className="sys-setting-item"
               onClick={() => { onOpenSettings(); onOpenItemTypeManager(); }}
-            >✏ Edit Item Types</button>
+            >Edit Item Types</button>
           </div>
         </div>
 

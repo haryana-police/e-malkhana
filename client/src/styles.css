@@ -1967,3 +1967,85 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
   .form-grid{ grid-template-columns: 1fr; }
   .insp-status-row{ flex-direction:column; align-items:flex-start; }
 }
+
+/* ============================================================
+   Item Type Fields manager — was previously rendering with NO
+   css (classes itemtype-* had no rules), which is why the
+   buttons looked unstyled / "ajeeb".  Mirror the ledger aesthetic
+   of .sections-manager-* so the two System Setting editors match.
+   ============================================================ */
+.itemtype-tabs{
+  display:flex; flex-wrap:wrap; gap:6px; margin: 0 0 14px;
+}
+.itemtype-tab{
+  display:inline-flex; align-items:center; gap:7px;
+  background: var(--paper); border:1px solid var(--line); border-radius:5px;
+  padding: 6px 11px; cursor:pointer;
+  font-family:'IBM Plex Sans', sans-serif; font-size:12px; font-weight:600;
+  color: var(--slate-soft);
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.itemtype-tab:hover{ border-color: var(--khaki-light); color: var(--slate); }
+.itemtype-tab.active{
+  background: var(--khaki); border-color: var(--khaki); color: var(--ink-navy);
+}
+.itemtype-tab-letter{
+  font-family:'Rajdhani', sans-serif; font-weight:700; font-size:12px;
+  width:20px; height:20px; border-radius:4px;
+  background: var(--white-paper); color: var(--ink-navy);
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.itemtype-tab.active .itemtype-tab-letter{ background: var(--ink-navy); color: var(--paper); }
+.itemtype-tab-name{ white-space:nowrap; }
+
+.itemtype-section-head{
+  display:flex; align-items:center; gap:8px;
+  font-family:'Rajdhani', sans-serif; font-size:13px; font-weight:700;
+  color: var(--ink-navy); margin-bottom: 10px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.itemtype-count{
+  margin-left:auto; font-family:'IBM Plex Mono', monospace; font-size:11px;
+  font-weight:600; color: var(--slate-soft); background: var(--paper-dark);
+  padding: 2px 9px; border-radius: 999px;
+}
+
+.itemtype-list{ display:flex; flex-direction:column; gap:8px; }
+.itemtype-row{
+  display:grid; grid-template-columns: 1fr auto; align-items:center; gap:12px;
+  background: var(--paper); border:1px solid var(--line); border-radius:5px;
+  padding: 6px 10px;
+}
+.itemtype-row-name{ display:flex; align-items:center; gap:10px; min-width:0; }
+.itemtype-row-name input{
+  flex:1; min-width:0;
+  font-family:'IBM Plex Sans', sans-serif; font-size:13px; color: var(--slate);
+  background: var(--white-paper); border:1px solid var(--line); border-radius:4px;
+  padding: 7px 9px; outline:none;
+}
+.itemtype-row-name input:focus{ border-color: var(--ink-navy); }
+.itemtype-case-badge{
+  flex-shrink:0; font-family:'IBM Plex Mono', monospace; font-size:10.5px; font-weight:600;
+  color: var(--slate-soft); background: var(--paper-dark);
+  padding: 2px 7px; border-radius: 999px; white-space:nowrap;
+}
+.itemtype-row-actions{ display:flex; align-items:center; gap:5px; }
+
+.itemtype-add{
+  display:flex; align-items:center; gap:8px; margin-top:10px;
+}
+
+/* Single-part focused header (sidebar deep-link to one System Setting part) */
+.settings-focus-head{
+  display:flex; flex-direction:column; gap:2px;
+  padding-bottom:12px; margin-bottom:14px;
+  border-bottom:1px solid var(--line);
+}
+.settings-focus-eyebrow{
+  font-size:10px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase;
+  color: var(--khaki);
+}
+.settings-focus-title{
+  font-family:'Rajdhani', sans-serif; font-size:18px; font-weight:700; color: var(--ink-navy);
+}

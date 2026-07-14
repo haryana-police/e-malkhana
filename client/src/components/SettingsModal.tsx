@@ -9,7 +9,19 @@ interface Props {
   onOpenSectionsManager?: () => void;
   onOpenItemTypeManager?: () => void;
   initialTab?: 'thresholds' | 'fields' | 'backup' | 'log';
+  // When true, show ONLY the requested part (no tab bar). Used when the
+  // user clicks a specific System Setting part from the sidebar, so they
+  // land on that one part instead of the whole settings surface.
+  single?: boolean;
 }
+
+// Title shown in the focused (single-part) header strip.
+const FOCUS_TITLE: Record<string, string> = {
+  thresholds: 'Alert Thresholds',
+  fields: 'Item Type Fields',
+  backup: 'Backup & Restore',
+  log: 'Activity log',
+};
 
 const ACTION_LABELS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' | 'critical' }> = {
   'case.create':     { label: 'REGISTERED', tone: 'good' },
@@ -29,7 +41,7 @@ function fmtTime(iso: string) {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab }: Props) {
+export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab, single }: Props) {
   const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
@@ -60,10 +72,14 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
   }, [open, tab]);
 
   // Jump to the tab requested by the caller (e.g. a sidebar deep-link)
-  // whenever the modal is (re)opened with an `initialTab`.
+  // whenever the modal is (re)opened with an `initialTab`.  In single-part
+  // mode we focus that one part and hide the tab bar (see `showTabs`).
   useEffect(() => {
     if (open && initialTab) setTab(initialTab);
   }, [open, initialTab]);
+
+  const showTabs = !single;
+  const activeTab = single && initialTab ? initialTab : tab;
 
   if (!open) return null;
 
@@ -162,46 +178,52 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
     <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div className="form-card audit-card">
         <button className="tag-close" onClick={onClose} aria-label="Close">✕</button>
-        <h3>System Setting</h3>
-        <div className="sub">
-          Configure alert thresholds and review who made what changes —
-          <b> every action is logged with the MM Login ID</b>.
-        </div>
 
-        <div className="audit-tabs">
-          <button
-            className={`audit-tab${tab === 'thresholds' ? ' active' : ''}`}
-            onClick={() => setTab('thresholds')}
-          >⚙ Alert &amp; Compliance</button>
-          <button
-            className={`audit-tab${tab === 'fields' ? ' active' : ''}`}
-            onClick={() => setTab('fields')}
-          >🧩 Item Type Fields</button>
-          <button
-            className={`audit-tab${tab === 'backup' ? ' active' : ''}`}
-            onClick={() => setTab('backup')}
-          >☁ Backup &amp; Restore</button>
-          <button
-            className={`audit-tab${tab === 'log' ? ' active' : ''}`}
-            onClick={() => setTab('log')}
-          >📜 Activity log <span className="audit-tab-count">{(log ?? []).length}</span></button>
-          {onOpenSectionsManager && (
-            <button
-              className="audit-tab"
-              type="button"
-              onClick={() => { onOpenSectionsManager(); }}
-              style={{ marginLeft: 'auto' }}
-            >✏ Edit Malkhana Sections</button>
-          )}
-          {onOpenItemTypeManager && (
-            <button
-              className="audit-tab"
-              type="button"
-              onClick={() => { onOpenItemTypeManager(); }}
-              style={{ marginLeft: 8 }}
-            >✏ Edit Item Types</button>
-          )}
-        </div>
+        {showTabs ? (
+          <>
+            <h3>System Setting</h3>
+            <div className="sub">
+              Configure thresholds, per-item-type registration fields, backups, and review
+              who made what changes — <b>every action is logged with the MM Login ID</b>.
+            </div>
+
+            <div className="audit-tabs">
+              <button
+                className={`audit-tab${tab === 'fields' ? ' active' : ''}`}
+                onClick={() => setTab('fields')}
+              >Item Type Fields</button>
+              {onOpenItemTypeManager && (
+                <button
+                  className="audit-tab"
+                  type="button"
+                  onClick={() => { onOpenItemTypeManager(); }}
+                  style={{ marginLeft: 0 }}
+                >Item Types</button>
+              )}
+              <button
+                className={`audit-tab${tab === 'backup' ? ' active' : ''}`}
+                onClick={() => setTab('backup')}
+              >Backup &amp; Restore</button>
+              <button
+                className={`audit-tab${tab === 'log' ? ' active' : ''}`}
+                onClick={() => setTab('log')}
+              >Activity log <span className="audit-tab-count">{(log ?? []).length}</span></button>
+              {onOpenSectionsManager && (
+                <button
+                  className="audit-tab"
+                  type="button"
+                  onClick={() => { onOpenSectionsManager(); }}
+                  style={{ marginLeft: 'auto' }}
+                >Edit Malkhana Sections</button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="settings-focus-head">
+            <span className="settings-focus-eyebrow">System Setting</span>
+            <h3 className="settings-focus-title">{FOCUS_TITLE[activeTab] ?? 'Settings'}</h3>
+          </div>
+        )}
 
         {tab === 'thresholds' && cfg && (
           <>
@@ -292,11 +314,11 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
           </>
         )}
 
-        {tab === 'fields' && (
+        {activeTab === 'fields' && (
           <ItemTypeFieldsManager />
         )}
 
-        {tab === 'backup' && (
+        {activeTab === 'backup' && (
           <BackupTabContent
             backup={backup}
             backupLog={backupLog}
@@ -321,7 +343,7 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
             }}
           />
         )}
-        {tab === 'log' && (
+        {activeTab === 'log' && (
           <>
             {Object.keys(userSummary).length > 0 && (
               <div className="audit-summary">

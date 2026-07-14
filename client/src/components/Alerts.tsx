@@ -49,7 +49,7 @@ export function Alerts({ alerts, onOpenSettings, active }: Props) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn ghost" onClick={() => onOpenSettings('thresholds')}>Configure thresholds</button>
+          <button className="btn ghost" onClick={() => onOpenSettings('fields')}>Configure registration fields</button>
         </div>
       </div>
 

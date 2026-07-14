@@ -107,6 +107,7 @@ export default function App() {
   const [openScan, setOpenScan]                 = useState(false);
   const [openSettings, setOpenSettings]         = useState(false);
   const [settingsTab, setSettingsTab]           = useState<'thresholds' | 'fields' | 'backup' | 'log' | null>(null);
+  const [settingsSingle, setSettingsSingle]     = useState(false);
   const [openSectionsManager, setOpenSectionsManager] = useState(false);
   const [openItemTypeManager, setOpenItemTypeManager] = useState(false);
   const [changeCase, setChangeCase]             = useState<CaseRow | null>(null);
@@ -364,7 +365,8 @@ export default function App() {
           onNav={navWith}
           racks={data.racks}
           onRacksChange={onRacksChange}
-          onOpenSettings={(tab) => { if (tab) setSettingsTab(tab); setOpenSettings(true); }}
+          onOpenSettings={(tab) => { if (tab) setSettingsTab(tab); setSettingsSingle(true); setOpenSettings(true); }}
+          onOpenSettingsFull={() => { setSettingsSingle(false); setSettingsTab(null); setOpenSettings(true); }}
           onOpenSectionsManager={() => setOpenSectionsManager(true)}
           onOpenItemTypeManager={() => setOpenItemTypeManager(true)}
           activeSection={activeSection}
@@ -439,7 +441,7 @@ export default function App() {
             <Route path="/alerts" element={
               <Alerts
                 alerts={data.alerts}
-                onOpenSettings={(tab) => { if (tab) setSettingsTab(tab); setOpenSettings(true); }}
+                onOpenSettings={(tab) => { if (tab) setSettingsTab(tab); setSettingsSingle(true); setOpenSettings(true); }}
               />
             } />
             <Route path="*" element={
@@ -486,7 +488,8 @@ export default function App() {
       <SettingsModal
         open={openSettings}
         initialTab={settingsTab ?? undefined}
-        onClose={() => { setOpenSettings(false); setSettingsTab(null); }}
+        single={settingsSingle}
+        onClose={() => { setOpenSettings(false); setSettingsTab(null); setSettingsSingle(false); }}
         onUpdated={onAlertsUpdated}
         onOpenSectionsManager={() => { setOpenSettings(false); setOpenSectionsManager(true); }}
         onOpenItemTypeManager={() => { setOpenSettings(false); setOpenItemTypeManager(true); }}
