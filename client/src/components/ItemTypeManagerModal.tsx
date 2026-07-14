@@ -69,6 +69,21 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
   const [delTarget, setDelTarget] = useState<ItemType | null>(null);
   const [dirty, setDirty]       = useState<Record<string, boolean>>({});
 
+  // --- Section (Narcotics Rack / Weapons Almirah / …) CRUD, kept INDEPENDENT
+  //     from Malkhana Sections' A/B/C/D letter design.  The tabs above are the
+  //     same sections, but here the user can rename / add / remove them
+  //     directly without touching the sidebar's letter-coded manager. ---
+  const [sectionDraft, setSectionDraft]       = useState<Record<string, string>>({});
+  const [editSection, setEditSection]         = useState<string | null>(null);
+  const [newSectionName, setNewSectionName]   = useState('');
+  const [delSection, setDelSection]           = useState<RackItem | null>(null);
+
+  // local mirror of racks so tab edits (rename/add/delete) reflect immediately
+  // without a full reload.  Parent (App) holds the source of truth via onSaved.
+  const [rackMirror, setRackMirror] = useState<RackItem[] | null>(null);
+  const liveRacks = rackMirror ?? activeRacks;
+  function pushRacks(next: RackItem[]) { setRackMirror(next); }
+
   // Seed once when opened.
   useEffect(() => {
     if (!open) return;
@@ -82,7 +97,7 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sec = states[tab] || blankSection();
-  const rackName = activeRacks.find(r => r.letter === tab)?.name || `Part ${tab}`;
+  const rackName = liveRacks.find(r => r.letter === tab)?.name || `Part ${tab}`;
 
   // Ordered list of item-types for the active tab.  MUST be declared BEFORE
   // the `if (!open) return null;` below — calling a hook after an early
@@ -126,6 +141,71 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
       return { ...s, [tab]: { ...cur, activeMap: { ...cur.activeMap, [id]: next } } };
     });
     markDirty(tab);
+  }
+
+  // ===== Section CRUD (Narcotics Rack / Weapons Almirah / …) — independent of
+  //       the sidebar's A/B/C/D Malkhana Sections manager. =====
+  function startEditSection(letter: string) {
+    setEditSection(letter);
+    setSectionDraft(d => ({ ...d, [letter]: activeRacks.find(r => r.letter === letter)?.name ?? '' }));
+  }
+
+  async function commitSectionRename(letter: string) {
+    const name = (sectionDraft[letter] ?? '').trim();
+    const cur = activeRacks.find(r => r.letter === letter);
+    if (!name || !cur || name === cur.name) { setEditSection(null); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const updated = await api.renameSection(letter, name);
+      const nextRacks = activeRacks.map(r => r.letter === letter ? { ...r, name: updated.name } : r);
+      // also refresh the parent (sidebar) + this modal's tab list
+      onSaved?.(nextRacks);
+      pushRacks(nextRacks);
+      setEditSection(null);
+      setMsg({ kind: 'ok', text: `Renamed to "${updated.name}".` });
+    } catch (e) {
+      setMsg({ kind: 'error', text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addSection() {
+    const name = newSectionName.trim();
+    if (!name) { setMsg({ kind: 'error', text: 'Enter a name for the new section.' }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const created = await api.createSection(name);
+      const nextRacks = [...activeRacks, { ...created, active: true }];
+      onSaved?.(nextRacks);
+      pushRacks(nextRacks);
+      setNewSectionName('');
+      setTab(created.letter);
+      setMsg({ kind: 'ok', text: `Added section "${created.name}".` });
+    } catch (e) {
+      setMsg({ kind: 'error', text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDeleteSection() {
+    if (!delSection) return;
+    setBusy(true); setMsg(null);
+    try {
+      await api.deleteSection(delSection.letter);
+      const nextRacks = activeRacks.filter(r => r.letter !== delSection.letter);
+      onSaved?.(nextRacks);
+      pushRacks(nextRacks);
+      // if we deleted the tab we were viewing, jump to the first remaining one
+      if (tab === delSection.letter) setTab(nextRacks[0]?.letter || 'A');
+      setDelSection(null);
+      setMsg({ kind: 'ok', text: `Removed section "${delSection.name}".` });
+    } catch (e) {
+      setMsg({ kind: 'error', text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
   }
 
   // ---- Add ----
@@ -258,19 +338,86 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
         </div>
 
         {/* Section selector — plain section NAMES only (no A/B/C/D letter
-            badges, so this stays visually distinct from Malkhana Sections). */}
+            badges).  Each tab is also editable: click to select, the ✎
+            toggles an inline rename, × removes an empty section, and the final
+            “+ Add section” tab creates a new one.  This is the SAME data as
+            Malkhana Sections but edited here without the letter-coded UI. */}
         <div className="itemtype-tabs">
-          {activeRacks.map(r => (
-            <button
+          {liveRacks.map(r => (
+            <div
               key={r.letter}
-              type="button"
-              className={`itemtype-tab${tab === r.letter ? ' active' : ''}`}
-              onClick={() => setTab(r.letter)}
-              disabled={busy}
+              className={`itemtype-tab-wrap${tab === r.letter ? ' active' : ''}`}
             >
-              <span className="itemtype-tab-name">{r.name}</span>
-            </button>
+              {editSection === r.letter ? (
+                <input
+                  className="itemtype-tab-rename"
+                  autoFocus
+                  value={sectionDraft[r.letter] ?? r.name}
+                  onChange={e => setSectionDraft(d => ({ ...d, [r.letter]: e.target.value }))}
+                  onBlur={() => commitSectionRename(r.letter)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    if (e.key === 'Escape') setEditSection(null);
+                  }}
+                  disabled={busy}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className={`itemtype-tab${tab === r.letter ? ' active' : ''}`}
+                  onClick={() => setTab(r.letter)}
+                  disabled={busy}
+                >
+                  <span className="itemtype-tab-name">{r.name}</span>
+                </button>
+              )}
+              {editSection !== r.letter && (
+                <span className="itemtype-tab-edit">
+                  <button
+                    type="button" className="icon-btn tiny" title="Rename section"
+                    onClick={() => startEditSection(r.letter)} disabled={busy}
+                  >✎</button>
+                  <button
+                    type="button" className="icon-btn tiny" title={r.count > 0 ? `Cannot delete — ${r.count} case(s) here` : `Delete "${r.name}"`}
+                    onClick={() => setDelSection(r)} disabled={busy || r.count > 0}
+                    style={{
+                      marginLeft: 2,
+                      color: r.count > 0 ? 'var(--slate-soft)' : 'var(--seal-red)',
+                      borderColor: r.count > 0 ? 'var(--line)' : 'var(--seal-red)',
+                      cursor: r.count > 0 ? 'not-allowed' : 'pointer',
+                    }}
+                  >×</button>
+                </span>
+              )}
+            </div>
           ))}
+
+          {/* Add-section tab */}
+          <div className="itemtype-tab-wrap add">
+            {editSection === '__new__' ? (
+              <input
+                className="itemtype-tab-rename"
+                autoFocus
+                placeholder="New section name"
+                value={newSectionName}
+                onChange={e => setNewSectionName(e.target.value)}
+                onBlur={() => { if (!newSectionName.trim()) setEditSection(null); else addSection(); }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') addSection();
+                  if (e.key === 'Escape') setEditSection(null);
+                }}
+                disabled={busy}
+              />
+            ) : (
+              <button
+                type="button"
+                className="itemtype-tab add-tab"
+                onClick={() => { setEditSection('__new__'); }}
+                disabled={busy}
+                title="Add a new section"
+              >+ Add section</button>
+            )}
+          </div>
         </div>
 
         <div className="itemtype-section-head">
@@ -386,6 +533,37 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
                   style={{ background: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}
                 >
                   {busy ? 'Deleting…' : 'Delete type'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {delSection && (
+          <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !busy) setDelSection(null); }}>
+            <div className="form-card" style={{ maxWidth: 380 }}>
+              <h3>Delete section “{delSection.name}”?</h3>
+              <div className="sub" style={{ marginBottom: 16 }}>
+                The section <b>“{delSection.name}”</b> will be removed.
+                {delSection.count > 0 ? (
+                  <div style={{ color: 'var(--seal-red)', marginTop: 6 }}>
+                    {delSection.count} case(s) are still stored here — move or dispose them first.
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--olive)', marginTop: 6 }}>
+                    This section is empty, so it can be safely removed.
+                  </div>
+                )}
+              </div>
+              <div className="form-actions">
+                <button className="btn ghost" onClick={() => setDelSection(null)} disabled={busy}>Cancel</button>
+                <button
+                  className="btn"
+                  onClick={confirmDeleteSection}
+                  disabled={busy || delSection.count > 0}
+                  style={{ background: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}
+                >
+                  {busy ? 'Deleting…' : 'Delete section'}
                 </button>
               </div>
             </div>

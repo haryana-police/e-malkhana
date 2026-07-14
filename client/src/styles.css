@@ -1999,6 +1999,28 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .itemtype-tab.active .itemtype-tab-letter{ background: var(--ink-navy); color: var(--paper); }
 .itemtype-tab-name{ white-space:nowrap; }
 
+/* Editable section tabs: wrap holds the select-button + inline edit/delete
+   controls so a section can be renamed / removed without leaving the modal. */
+.itemtype-tab-wrap{
+  display:inline-flex; align-items:center; gap:2px; position:relative;
+}
+.itemtype-tab-wrap.active .itemtype-tab{ background: var(--khaki); border-color: var(--khaki); color: var(--ink-navy); }
+.itemtype-tab-rename{
+  font-family:'IBM Plex Sans', sans-serif; font-size:12px; font-weight:600;
+  padding: 6px 9px; border:1px solid var(--khaki); border-radius:5px;
+  min-width: 120px; outline: none; color: var(--ink-navy); background: var(--white-paper);
+}
+.itemtype-tab-edit{ display:inline-flex; align-items:center; }
+.itemtype-tab-edit .icon-btn.tiny{
+  width:20px; height:20px; font-size:11px; padding:0; border-radius:4px;
+  background: var(--white-paper); color: var(--slate-soft); border:1px solid var(--line);
+}
+.itemtype-tab.add-tab{
+  background: transparent; border:1px dashed var(--khaki); color: var(--olive);
+  font-style: italic;
+}
+.itemtype-tab.add-tab:hover{ background: var(--paper-dark); }
+
 .itemtype-section-label{
   font-family:'IBM Plex Sans', sans-serif; font-size:11px; font-weight:600;
   text-transform: uppercase; letter-spacing: 0.06em;
@@ -2011,6 +2033,7 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
   color: var(--ink-navy); margin-bottom: 10px;
   text-transform: uppercase; letter-spacing: 0.04em;
 }
+
 .itemtype-count{
   margin-left:auto; font-family:'IBM Plex Mono', monospace; font-size:11px;
   font-weight:600; color: var(--slate-soft); background: var(--paper-dark);
