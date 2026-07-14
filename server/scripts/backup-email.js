@@ -89,7 +89,10 @@ async function main() {
   const fileName = `malkhana-backup-${ts()}.json`;
 
   // Always write a local copy (also the safety net if SMTP is unset).
-  const outDir = join(ROOT, 'server', 'data', 'backups');
+  // On Vercel (serverless) the bundle is read-only except /tmp, so dump there.
+  const outDir = process.env.VERCEL
+    ? join('/tmp', 'emalkhana-backups')
+    : join(ROOT, 'server', 'data', 'backups');
   mkdirSync(outDir, { recursive: true });
   const outPath = join(outDir, fileName);
   writeFileSync(outPath, json, 'utf8');
