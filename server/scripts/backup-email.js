@@ -42,6 +42,23 @@ const RETENTION_DAYS = parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10);
 
 function fail(msg) { console.error('✗ ' + msg); process.exit(1); }
 
+// Pick the first dir we can actually create + write into. Tries each in order
+// and probes with a real write so read-only/serverless FS (e.g. Vercel's
+// read-only bundle) fails fast and we fall back to /tmp instead of EROFS.
+function pickWritableDir(dirs) {
+  for (const dir of dirs) {
+    try {
+      mkdirSync(dir, { recursive: true });
+      const probe = join(dir, '.write-test-' + Date.now());
+      writeFileSync(probe, 'ok');
+      unlinkSync(probe);
+      return dir;
+    } catch { /* try next */ }
+  }
+  // Last resort: OS temp; if even that fails the caller will get the error.
+  return dirs[dirs.length - 1];
+}
+
 // --- Postgres connection (mirrors db.js: HTTP transport, serverless-safe) ---
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) fail('DATABASE_URL is not set — cannot dump the register.');
@@ -89,10 +106,13 @@ async function main() {
   const fileName = `malkhana-backup-${ts()}.json`;
 
   // Always write a local copy (also the safety net if SMTP is unset).
-  // On Vercel (serverless) the bundle is read-only except /tmp, so dump there.
-  const outDir = process.env.VERCEL
-    ? join('/tmp', 'emalkhana-backups')
-    : join(ROOT, 'server', 'data', 'backups');
+  // Prefer server/data/backups locally; on read-only/serverless filesystems
+  // (e.g. Vercel: only /tmp is writable) fall back to /tmp automatically
+  // instead of hard-failing with EROFS.
+  const outDir = pickWritableDir([
+    join(ROOT, 'server', 'data', 'backups'),
+    '/tmp/emalkhana-backups',
+  ]);
   mkdirSync(outDir, { recursive: true });
   const outPath = join(outDir, fileName);
   writeFileSync(outPath, json, 'utf8');
