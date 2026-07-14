@@ -2,7 +2,7 @@ import type { AlertRow } from '../types';
 
 interface Props {
   alerts: AlertRow[];
-  onOpenSettings: () => void;
+  onOpenSettings: (tab?: 'thresholds' | 'fields' | 'backup' | 'log') => void;
   active?: boolean;
 }
 
@@ -49,7 +49,7 @@ export function Alerts({ alerts, onOpenSettings, active }: Props) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn ghost" onClick={onOpenSettings}>Configure thresholds</button>
+          <button className="btn ghost" onClick={() => onOpenSettings('thresholds')}>Configure thresholds</button>
         </div>
       </div>
 

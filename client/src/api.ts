@@ -16,6 +16,8 @@ import type {
   SectionMeta,
   FirMaster,
   CasePropertyData,
+  InspectionReport,
+  InspectionMeta,
 } from './types';
 
 const base = '/api';
@@ -200,5 +202,15 @@ export const api = {
   updateAlerts:  (cfg: Partial<AlertConfig>) => send<AlertConfig>('PATCH', '/alerts/config', cfg),
   createMovement: (input: ScanInput) => send<{ case: CaseRow; movement?: MovementLogRow }>('POST', '/movements', input),
   scan:           (input: ScanInput) => send<{ case: CaseRow; movement?: MovementLogRow }>('POST', '/scan', input),
+  // ---- Inspection register ----
+  inspections:        () => get<InspectionReport[]>('/inspections'),
+  inspection:         (id: string) => get<InspectionReport>(`/inspections/${encodeURIComponent(id)}`),
+  inspectionMeta:     () => get<InspectionMeta>('/inspections/meta/next-id'),
+  saveInspection:     (rec: Partial<InspectionReport> & { status: string; report: any }) =>
+    send<InspectionReport>('POST', '/inspections', rec),
+  updateInspection:   (rec: Partial<InspectionReport> & { inspectionId: string; status: string; report: any }) =>
+    send<InspectionReport>('PATCH', '/inspections', rec),
+  deleteInspection:   (id: string) => send<{ id: string; deleted: boolean }>('DELETE', `/inspections/${encodeURIComponent(id)}`, {}),
+
   upload:         (name: string, dataUrl: string) => send<UploadResult>('POST', '/upload', { name, dataUrl }),
 };

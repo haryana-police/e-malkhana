@@ -1094,6 +1094,44 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 }
 .system-setting-text .desc{ font-size: 10.5px; color: var(--khaki-light); }
 
+/* System Setting card (sidebar bottom) — lists each settings entry that
+   opens the matching System Setting tab / manager modal. */
+.system-setting-card{
+  width: calc(100% - 32px);
+  margin: 14px 16px 0;
+  background: linear-gradient(180deg, rgba(140,122,84,0.16), rgba(140,122,84,0.08));
+  border: 1px solid var(--khaki);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.system-setting-head{
+  display:flex; align-items:center; gap:8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(140,122,84,0.35);
+  background: rgba(140,122,84,0.10);
+}
+.system-setting-title{
+  font-family:'Rajdhani', sans-serif; font-size: 12px; font-weight: 700;
+  color: var(--white-paper); letter-spacing: 0.10em; text-transform: uppercase;
+}
+.system-setting-list{ display:flex; flex-direction:column; }
+.sys-setting-item{
+  display:flex; align-items:center; gap:8px;
+  width:100%; padding: 9px 12px;
+  background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: var(--paper); cursor: pointer; text-align: left;
+  font-family:'IBM Plex Sans', sans-serif; font-size: 13px;
+  transition: background 0.12s, color 0.12s;
+}
+.sys-setting-item:last-child{ border-bottom: none; }
+.sys-setting-item:hover{ background: rgba(140,122,84,0.22); color: var(--white-paper); }
+.sys-setting-count{
+  margin-left: auto; min-width: 20px; padding: 1px 7px;
+  border-radius: 999px; font-size: 11px; font-weight: 700;
+  background: var(--khaki); color: var(--ink-navy);
+  text-align: center;
+}
+
 /* Sidebar Sign-out button — same shape as System Setting but in seal-red */
 .sidebar-logout-btn{
   display:flex; align-items:center; gap:10px;
@@ -1831,3 +1869,101 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 /* Prefilled values also show inside the printable sheet lines. */
 .tmpl-line.filled{ font-weight:600; color:var(--ink-navy); padding:0 2px 2px; }
 .tmpl-sheet.hindi .tmpl-letter .tmpl-fill{ font-weight:700; }
+
+/* ============================================================
+   Inspection module (Malkhana compliance inspection register)
+   ============================================================ */
+.insp-filter-bar{
+  display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap;
+  padding:14px 18px;
+}
+.insp-filter-bar label{
+  display:flex; flex-direction:column; gap:5px;
+  font-size:11px; color:var(--slate-soft); text-transform:uppercase;
+  letter-spacing:0.06em; font-weight:600;
+}
+.insp-filter-bar input, .insp-filter-bar select{
+  font-family:'IBM Plex Sans', sans-serif; font-size:13px; color:var(--slate);
+  background: var(--paper); border:1px solid var(--line); border-radius:4px;
+  padding:7px 10px; outline:none; min-width:140px;
+}
+.insp-filter-bar input:focus, .insp-filter-bar select:focus{ border-color:var(--ink-navy); }
+
+.insp-table .col-actions{ width:160px; }
+.insp-table .col-actions .btn{ margin:1px 2px; }
+.insp-empty{ padding:22px 18px; font-size:13px; color:var(--slate-soft); }
+.insp-section{ margin-bottom:18px; }
+.insp-section .panel-body{ padding:16px 18px 20px; }
+.sec-num{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:24px; height:24px; border-radius:50%;
+  background:var(--ink-navy); color:var(--paper);
+  font-family:'Rajdhani',sans-serif; font-weight:700; font-size:13px;
+  margin-right:9px;
+}
+/* pair field = select + remarks textarea stacked */
+.pair-field{ display:flex; flex-direction:column; gap:12px; }
+.pair-field label, .form-grid label.has-err{
+  display:flex; flex-direction:column; gap:4px;
+  font-size:11px; color:var(--slate-soft); text-transform:uppercase;
+  letter-spacing:0.07em; font-weight:600;
+}
+.has-err input, .has-err select, .has-err textarea{ border-color:var(--seal-red); }
+.pair-field textarea{ min-height:48px; }
+
+/* overall status badge — reuse .stamp base, add colour variants */
+.stamp.insp-compliant{ color: var(--olive); background: var(--olive-bg); }
+.stamp.insp-noncompliant{ color:#fff; background: var(--seal-red); }
+.stamp.insp-followup{ color:#7a5a00; background: var(--amber-bg); }
+.stamp.insp-pending{ color: var(--slate-soft); background: var(--paper-dark); }
+.insp-status-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.insp-status-row .sub{ text-transform:none; letter-spacing:0; font-weight:500; }
+
+/* signature pad */
+.sig-pad-wrap{ display:flex; flex-direction:column; }
+.sig-pad{
+  width:100%; max-width:420px; height:140px;
+  background: var(--white-paper); border:1.5px dashed var(--khaki);
+  border-radius:6px; touch-action:none; cursor:crosshair;
+}
+
+/* ---- printable PDF sheet (HP crest + full report) ---- */
+.insp-sheet{
+  background:#fff; color:#1a1a1a; font-family:'IBM Plex Sans', sans-serif;
+  padding:28px 32px; width:760px; box-sizing:border-box;
+}
+.insp-sheet-head{ display:flex; align-items:center; gap:14px; border-bottom:3px solid #14243D; padding-bottom:12px; }
+.insp-sheet-head .emblem{
+  width:44px; height:44px; border-radius:50%;
+  background: radial-gradient(circle at 35% 30%, #A99968, #8C7A54 60%, #6e5f3f 100%);
+  border:2px solid #E4DCC5; display:flex; align-items:center; justify-content:center;
+  font-family:'Rajdhani',sans-serif; font-weight:700; font-size:16px; color:#14243D;
+}
+.insp-sheet-head .l1{ font-size:13px; letter-spacing:0.04em; color:#14243D; font-weight:600; }
+.insp-sheet-head .l2{ font-size:18px; font-family:'Rajdhani',sans-serif; font-weight:700; color:#14243D; }
+.insp-sheet-title{
+  text-align:center; font-family:'Rajdhani',sans-serif; font-weight:700;
+  font-size:20px; color:#14243D; margin:14px 0 8px; letter-spacing:0.03em;
+}
+.insp-sheet .sh-grid{
+  display:grid; grid-template-columns: 1fr 1fr; gap:4px 24px;
+  border:1px solid #c9bfa0; border-radius:6px; padding:10px 14px; margin-bottom:10px;
+}
+.insp-sheet .sh-row{ display:flex; gap:8px; font-size:12.5px; padding:3px 0; }
+.insp-sheet .sh-k{ font-weight:700; color:#14243D; min-width:170px; }
+.insp-sheet .sh-v{ color:#1a1a1a; }
+.insp-sheet h4{
+  font-family:'Rajdhani',sans-serif; font-size:14px; font-weight:700; color:#14243D;
+  text-transform:uppercase; letter-spacing:0.05em; margin:14px 0 4px;
+  border-bottom:1px solid #c9bfa0; padding-bottom:3px;
+}
+.insp-sheet .sh-sign{ margin-top:16px; font-size:12px; }
+.insp-sheet .sh-sign img{ display:block; max-width:220px; max-height:90px; margin-top:4px; border:1px solid #c9bfa0; border-radius:4px; }
+
+/* Mobile responsive: stack the filter bar + form grids */
+@media (max-width: 768px) {
+  .insp-filter-bar{ flex-direction:column; align-items:stretch; }
+  .insp-filter-bar input, .insp-filter-bar select{ min-width:0; }
+  .form-grid{ grid-template-columns: 1fr; }
+  .insp-status-row{ flex-direction:column; align-items:flex-start; }
+}

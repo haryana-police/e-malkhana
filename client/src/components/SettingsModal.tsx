@@ -8,6 +8,7 @@ interface Props {
   onUpdated: (cfg: AlertConfig) => void;
   onOpenSectionsManager?: () => void;
   onOpenItemTypeManager?: () => void;
+  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log';
 }
 
 const ACTION_LABELS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' | 'critical' }> = {
@@ -28,7 +29,7 @@ function fmtTime(iso: string) {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager }: Props) {
+export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab }: Props) {
   const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
@@ -57,6 +58,12 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
       }
     }
   }, [open, tab]);
+
+  // Jump to the tab requested by the caller (e.g. a sidebar deep-link)
+  // whenever the modal is (re)opened with an `initialTab`.
+  useEffect(() => {
+    if (open && initialTab) setTab(initialTab);
+  }, [open, initialTab]);
 
   if (!open) return null;
 
@@ -165,7 +172,7 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
           <button
             className={`audit-tab${tab === 'thresholds' ? ' active' : ''}`}
             onClick={() => setTab('thresholds')}
-          >⚙ Alert thresholds</button>
+          >⚙ Alert &amp; Compliance</button>
           <button
             className={`audit-tab${tab === 'fields' ? ' active' : ''}`}
             onClick={() => setTab('fields')}

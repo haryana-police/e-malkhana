@@ -3,6 +3,7 @@ import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router
 import { api, setCurrentMm } from './api';
 import type {
   ViewName, CaseRow, CaseStatus, MovementEvent, AlertConfig, RackItem, User,
+  InspectionReport,
 } from './types';
 import { Letterhead } from './components/Letterhead';
 import { Sidebar } from './components/Sidebar';
@@ -11,6 +12,7 @@ import { CaseProperty } from './components/CaseProperty';
 import { Alerts } from './components/Alerts';
 import { Movements } from './components/Movements';
 import { Templates } from './components/Templates';
+import { Inspection } from './components/Inspection';
 import { TagModal } from './components/TagModal';
 import { TimelineModal } from './components/TimelineModal';
 import { RegisterCaseModal } from './components/RegisterCaseModal';
@@ -48,6 +50,7 @@ function viewToPath(v: ViewName): string {
     case 'movements':    return '/movements';
     case 'templates':    return '/templates';
     case 'alerts':       return '/alerts';
+    case 'inspection':   return '/inspection';
   }
 }
 function pathToView(p: string): ViewName {
@@ -55,6 +58,7 @@ function pathToView(p: string): ViewName {
   if (p.startsWith('/movements'))    return 'movements';
   if (p.startsWith('/templates'))    return 'templates';
   if (p.startsWith('/alerts'))       return 'alerts';
+  if (p.startsWith('/inspection'))   return 'inspection';
   return 'dashboard';
 }
 
@@ -102,6 +106,7 @@ export default function App() {
   const [openRegister, setOpenRegister]         = useState(false);
   const [openScan, setOpenScan]                 = useState(false);
   const [openSettings, setOpenSettings]         = useState(false);
+  const [settingsTab, setSettingsTab]           = useState<'thresholds' | 'fields' | 'backup' | 'log' | null>(null);
   const [openSectionsManager, setOpenSectionsManager] = useState(false);
   const [openItemTypeManager, setOpenItemTypeManager] = useState(false);
   const [changeCase, setChangeCase]             = useState<CaseRow | null>(null);
@@ -156,12 +161,13 @@ export default function App() {
   // dashboard.coldStart → reject → caught → err set → UI shows red screen
   // even though cases() and alerts() would have succeeded individually.
   async function reload() {
-    const [dashR, casesR, alertsR] = [
+    const [dashR, casesR, alertsR, inspR] = [
       api.dashboard().catch(e => ({ __err: (e as Error).message })),
       api.cases().catch(e => ({ __err: (e as Error).message })),
       api.alerts().catch(e => ({ __err: (e as Error).message })),
+      api.inspections().catch(e => ({ __err: (e as Error).message })),
     ];
-    const [dash, cases, alerts] = await Promise.all([dashR, casesR, alertsR]);
+    const [dash, cases, alerts, insp] = await Promise.all([dashR, casesR, alertsR, inspR]);
     const dashErr  = (dash  as any).__err as string | undefined;
     const casesErr = (cases as any).__err as string | undefined;
     const alErr    = (alerts as any).__err as string | undefined;
@@ -169,6 +175,23 @@ export default function App() {
     const dashOk = !dashErr && dash ? (dash as any) : null;
     const casesOk = Array.isArray(cases) ? (cases as CaseRow[]) : null;
     const alOk = Array.isArray(alerts) ? (alerts as any) : null;
+    const inspOk = Array.isArray(insp) ? (insp as InspectionReport[]) : null;
+    // Merge non-compliant inspections into the Alerts & Compliance tab so a
+    // failing inspection automatically surfaces there (Part 5).
+    let mergedAlerts = alOk || [];
+    if (inspOk) {
+      const inspectionAlerts = inspOk
+        .filter(i => i.overallStatus === 'Non-Compliant')
+        .map(i => ({
+          level: 'urgent',
+          title: `Inspection ${i.inspectionId} — Non-Compliant (${i.policeStation})`,
+          desc: `Inspecting officer: ${i.inspectingOfficerName} (${i.inspectingOfficerRank}), ${i.inspectionDate}. Malkhana compliance failed — corrective action required.`,
+          days: i.inspectionDate,
+          category: 'inspection',
+          inspectionId: i.inspectionId,
+        }));
+      mergedAlerts = [...inspectionAlerts, ...mergedAlerts];
+    }
     setData(d => {
       const next = d ? { ...d } : ({} as BootData);
       if (dashOk) {
@@ -179,7 +202,7 @@ export default function App() {
         next.priorityAlerts  = dashOk.priorityAlerts;
       }
       if (casesOk) next.cases = casesOk;
-      if (alOk)    next.alerts = alOk;
+      if (alOk || inspOk) next.alerts = mergedAlerts;
       return next as BootData;
     });
     setErr(null);
@@ -341,8 +364,9 @@ export default function App() {
           onNav={navWith}
           racks={data.racks}
           onRacksChange={onRacksChange}
-          onOpenSettings={() => setOpenSettings(true)}
+          onOpenSettings={(tab) => { if (tab) setSettingsTab(tab); setOpenSettings(true); }}
           onOpenSectionsManager={() => setOpenSectionsManager(true)}
+          onOpenItemTypeManager={() => setOpenItemTypeManager(true)}
           activeSection={activeSection}
           onSectionFilter={setActiveSection}
           user={user}
@@ -406,10 +430,16 @@ export default function App() {
               />
             } />
             <Route path="/templates" element={<Templates />} />
+            <Route path="/inspection" element={
+              <Inspection
+                user={user}
+                onBack={navWith}
+              />
+            } />
             <Route path="/alerts" element={
               <Alerts
                 alerts={data.alerts}
-                onOpenSettings={() => setOpenSettings(true)}
+                onOpenSettings={(tab) => { if (tab) setSettingsTab(tab); setOpenSettings(true); }}
               />
             } />
             <Route path="*" element={
@@ -455,7 +485,8 @@ export default function App() {
       />
       <SettingsModal
         open={openSettings}
-        onClose={() => setOpenSettings(false)}
+        initialTab={settingsTab ?? undefined}
+        onClose={() => { setOpenSettings(false); setSettingsTab(null); }}
         onUpdated={onAlertsUpdated}
         onOpenSectionsManager={() => { setOpenSettings(false); setOpenSectionsManager(true); }}
         onOpenItemTypeManager={() => { setOpenSettings(false); setOpenItemTypeManager(true); }}

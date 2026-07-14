@@ -7,8 +7,9 @@ interface Props {
   onNav: (v: ViewName) => void;
   racks: RackItem[];
   onRacksChange: (racks: RackItem[]) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (tab?: 'thresholds' | 'fields' | 'backup' | 'log') => void;
   onOpenSectionsManager: () => void;
+  onOpenItemTypeManager: () => void;
   activeSection: string | null;
   onSectionFilter: (letter: string | null) => void;
   user?: { id: string; name: string } | null;
@@ -23,9 +24,10 @@ const navItems: { view: ViewName; label: string }[] = [
   { view: 'movements',     label: 'Movements' },
   { view: 'templates',     label: 'Templates' },
   { view: 'alerts',        label: 'Alerts & Compliance' },
+  { view: 'inspection',    label: 'Inspection' },
 ];
 
-export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, onOpenSectionsManager, activeSection, onSectionFilter, user, onLogout, mobileOpen, onCloseMobile }: Props) {
+export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, onOpenSectionsManager, onOpenItemTypeManager, activeSection, onSectionFilter, user, onLogout, mobileOpen, onCloseMobile }: Props) {
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries(racks.map(r => [r.letter, r.name]))
   );
@@ -50,6 +52,16 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
     onNav('caseproperty');
     onSectionFilter(activeSection === letter ? null : letter);
   }
+
+  // Live Activity-log entry count for the System Setting card badge.
+  const [auditCount, setAuditCount] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.audit({ limit: 1 })
+      .then(rows => { if (alive) setAuditCount(rows?.length ?? 0); })
+      .catch(() => { if (alive) setAuditCount(null); });
+    return () => { alive = false; };
+  }, []);
 
   return (
     <div className={`sidebar${mobileOpen ? ' mobile-open' : ''}`}>
@@ -84,9 +96,9 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
         <div className="side-section-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>Malkhana Locations</span>
           <span
-            onClick={onOpenSettings}
+            onClick={() => onOpenSettings()}
             style={{ cursor: 'pointer', color: 'var(--paper-dark)' }}
-            title="Configure alert thresholds"
+            title="Alert & Compliance settings"
           >⚙</span>
         </div>
         <div className="rack-list">
@@ -124,17 +136,41 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
           the Case Property list to that section.
         </div>
 
-        <button
-          className="system-setting-btn"
-          onClick={onOpenSectionsManager}
-          title="Open the system settings for Malkhana sections"
-        >
-          <span className="system-setting-icon">⚙</span>
-          <span className="system-setting-text">
-            <span className="lbl">System Setting</span>
-            <span className="desc">Edit Malkhana Sections</span>
-          </span>
-        </button>
+        <div className="system-setting-card">
+          <div className="system-setting-head">
+            <span className="system-setting-icon">⚙</span>
+            <span className="system-setting-title">System Setting</span>
+          </div>
+          <div className="system-setting-list">
+            <button
+              type="button"
+              className="sys-setting-item"
+              onClick={() => onOpenSettings('fields')}
+            >🧩 Item Type Fields</button>
+            <button
+              type="button"
+              className="sys-setting-item"
+              onClick={() => onOpenSettings('backup')}
+            >☁ Backup &amp; Restore</button>
+            <button
+              type="button"
+              className="sys-setting-item"
+              onClick={() => onOpenSettings('log')}
+            >📜 Activity log
+              {auditCount != null && <span className="sys-setting-count">{auditCount}</span>}
+            </button>
+            <button
+              type="button"
+              className="sys-setting-item"
+              onClick={() => { onOpenSettings(); onOpenSectionsManager(); }}
+            >✏ Edit Malkhana Sections</button>
+            <button
+              type="button"
+              className="sys-setting-item"
+              onClick={() => { onOpenSettings(); onOpenItemTypeManager(); }}
+            >✏ Edit Item Types</button>
+          </div>
+        </div>
 
         {user && onLogout && (
           <button

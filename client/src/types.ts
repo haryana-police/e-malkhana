@@ -1,6 +1,6 @@
 // Shared types between client and server (mirrored on the server side)
 
-export type ViewName = 'dashboard' | 'caseproperty' | 'movements' | 'templates' | 'alerts';
+export type ViewName = 'dashboard' | 'caseproperty' | 'movements' | 'templates' | 'alerts' | 'inspection';
 
 export type CaseStatus =
   | 'Seized'
@@ -232,4 +232,64 @@ export interface AuditEntry {
   action: string;           // "case.create" | "case.status" | "movement.record" | "section.rename" | "alerts.config" | "login" | "file.upload" | "scan.read" | "scan.record"
   target: string;           // e.g. "FIR 214/2026" or "thresholds"
   details: string;          // human-readable description
+}
+
+// ---- Inspection register (Malkhana compliance inspection) ------------
+// Mirrors the server's `inspections` table row.  `report` holds the full
+// structured body (all 8 form sections); summary fields are duplicated for
+// fast list rendering + filtering without parsing JSON on the client.
+export type InspectionStatus = 'Compliant' | 'Non-Compliant' | 'Needs Follow-up' | 'Pending';
+
+export interface InspectionReport {
+  id: number;
+  inspectionId: string;          // INS-2026-0001
+  inspectionDate: string;        // YYYY-MM-DD
+  inspectionTime: string;        // HH:MM
+  policeStation: string;
+  inspectingOfficerName: string;
+  inspectingOfficerRank: string; // SHO/DSP/SP/Other
+  malkhanaInchargeName: string;
+  previousInspectionDate?: string;
+  overallStatus: InspectionStatus;
+  report: InspectionBody;
+  signatureUrl?: string;
+  createdAt: string;
+}
+
+// Structured body — every field is optional so drafts / partial saves work.
+export interface InspectionBody {
+  registerVerification?: {
+    malkhanaRegisterUpdated?: string; malkhanaRegisterRemarks?: string;
+    casePropertyRegisterVerified?: string; casePropertyRegisterRemarks?: string;
+    generalDiaryCrosscheck?: string; generalDiaryRemarks?: string;
+  };
+  physicalVerification?: {
+    articlesCountMatch?: string; articlesCountRemarks?: string;
+    sealsPacketsStatus?: string; sealsPacketsRemarks?: string;
+    numberingLabelingCorrect?: string; numberingLabelingCorrectRemarks?: string;
+  };
+  casePropertyStatus?: {
+    courtDisposalPendingCount?: string; ndpsPropertiesDisposalStatus?: string; ndpsPropertiesDisposalRemarks?: string;
+    fslExhibitsPendingCount?: string; fslExhibitsRemarks?: string;
+    oldUnclaimedPropertyCount?: string; oldUnclaimedPropertyList?: string;
+  };
+  specialCategoryCheck?: {
+    cashGoldSilverVerified?: string; cashGoldSilverRemarks?: string;
+    armsAmmunitionChecked?: string; armsAmmunitionRemarks?: string;
+    perishableNarcoticsCondition?: string; perishableNarcoticsRemarks?: string;
+  };
+  malkhanaCondition?: {
+    securityLocksSeals?: string; securityLocksSealsRemarks?: string;
+    cleanlinessPestControl?: string; cleanlinessPestControlRemarks?: string;
+    fireSafety?: string; fireSafetyRemarks?: string;
+    storageSpaceAdequacy?: string; storageSpaceAdequacyRemarks?: string;
+  };
+  discrepanciesFound?: string;
+  previousRemarksComplianceStatus?: string; // Complied/Partially Complied/Not Complied
+  newRemarksSuggestions?: string;
+}
+
+export interface InspectionMeta {
+  nextInspectionId: string;
+  previousInspectionDate: string | null;
 }
