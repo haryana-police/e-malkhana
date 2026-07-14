@@ -410,8 +410,6 @@ export default function App() {
               <Alerts
                 alerts={data.alerts}
                 onOpenSettings={() => setOpenSettings(true)}
-                onDownloadReport={onDownloadReport}
-                onGenerateRegister={onGenerateRegister}
               />
             } />
             <Route path="*" element={
