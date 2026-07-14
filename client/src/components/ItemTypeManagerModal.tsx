@@ -257,7 +257,8 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
           dropdown immediately after you save.
         </div>
 
-        {/* Section tabs — one per rack (A–E + any added) */}
+        {/* Section selector — plain section NAMES only (no A/B/C/D letter
+            badges, so this stays visually distinct from Malkhana Sections). */}
         <div className="itemtype-tabs">
           {activeRacks.map(r => (
             <button
@@ -267,14 +268,14 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
               onClick={() => setTab(r.letter)}
               disabled={busy}
             >
-              <span className="itemtype-tab-letter">{r.letter}</span>
               <span className="itemtype-tab-name">{r.name}</span>
             </button>
           ))}
         </div>
 
         <div className="itemtype-section-head">
-          <b>Part {tab}</b> · {rackName}
+          <span className="itemtype-section-label">Section:</span>
+          {rackName}
           <span className="itemtype-count">{visible.length} type{visible.length === 1 ? '' : 's'}</span>
         </div>
 
@@ -297,7 +298,7 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
                   <input
                     value={sec.draft[t.id] ?? t.name}
                     onChange={e => setDraftName(t.id, e.target.value)}
-                    placeholder={`item type for Part ${tab}`}
+                    placeholder="item type name"
                     disabled={busy}
                   />
                   <span className="itemtype-case-badge" title={`${t.caseCount || 0} case(s) use this type`}>
@@ -345,7 +346,7 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
         </div>
 
         <div className="itemtype-add">
-          <div className="sub" style={{ margin: 0, flex: '0 0 auto', paddingRight: 8 }}>+ Add item type to Part {tab}</div>
+          <div className="sub" style={{ margin: 0, flex: '0 0 auto', paddingRight: 8 }}>+ Add item type to {rackName}</div>
           <input
             value={newName}
             onChange={e => setNewName(e.target.value)}

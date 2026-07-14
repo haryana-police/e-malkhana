@@ -1999,6 +1999,12 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .itemtype-tab.active .itemtype-tab-letter{ background: var(--ink-navy); color: var(--paper); }
 .itemtype-tab-name{ white-space:nowrap; }
 
+.itemtype-section-label{
+  font-family:'IBM Plex Sans', sans-serif; font-size:11px; font-weight:600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--slate-soft); margin-right: 2px;
+}
+.itemtype-section-head b{ font-weight:700; }
 .itemtype-section-head{
   display:flex; align-items:center; gap:8px;
   font-family:'Rajdhani', sans-serif; font-size:13px; font-weight:700;
