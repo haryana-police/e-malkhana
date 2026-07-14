@@ -81,15 +81,19 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
     }).catch(e => setMsg({ kind: 'error', text: (e as Error).message }));
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!open) return null;
-
   const sec = states[tab] || blankSection();
   const rackName = activeRacks.find(r => r.letter === tab)?.name || `Part ${tab}`;
 
-  // Ordered list of item-types for the active tab.
+  // Ordered list of item-types for the active tab.  MUST be declared BEFORE
+  // the `if (!open) return null;` below — calling a hook after an early
+  // return changes the hook order between open/closed renders and React
+  // throws ("change in the order of Hooks called"), which crashed the modal
+  // and left it blank when opened.
   const visible = useMemo(() => {
     return sec.order.map(id => sec.byId[id]).filter(Boolean);
   }, [sec]);
+
+  if (!open) return null;
 
   function markDirty(letter: string) {
     setDirty(d => ({ ...d, [letter]: true }));
