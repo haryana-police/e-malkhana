@@ -26,12 +26,11 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-interface BnsPick { sectionNo: string; title: string; category?: string; }
-
 // ---- Item Type -> section letter map (the spec's 5 categories) ----
 // The "Item Type" dropdown is the standardised item_types master; each
 // item type belongs to ONE Malkhana section (A–E).  Selecting an item type
-// opens the popup whose fields are defined for that section.
+// shows its category, auto-sets the Malkhana Part, and opens the popup
+// whose fields are defined for that section.
 export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const [step, setStep] = useState<'form' | 'popup'>('form');
@@ -48,7 +47,7 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
   // ---- item type + popup data ----
   const [itemTypeId, setItemTypeId]  = useState<number | null>(null);
   const [itemTypeName, setItemTypeName] = useState('');
-  const [sectionLetter, setSectionLetter] = useState<string>('A');
+  const [sectionLetter, setSectionLetter] = useState<string>(racks[0]?.letter ?? 'A');
   const [popupFields, setPopupFields]     = useState<ItemTypeField[]>([]);
   const [popupValues, setPopupValues]     = useState<Record<string, string>>({});
 
@@ -56,25 +55,28 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
   const [seizedOn, setSeizedOn]       = useState(today);
   const [seizedTime, setSeizedTime]   = useState('10:00');
   const [seizingOfficer, setOfficer]  = useState('SI Rakesh Sharma');
-  const [location, setLocation]       = useState(racks[0]?.letter ?? 'A');
   const [witness1, setWitness1]       = useState('');
   const [witness2, setWitness2]       = useState('');
   const [quantity, setQuantity]       = useState('1');
-  const [storageLocation, setStorage] = useState('');
+  // physical storage slot (rack / almirah / yard) inside the Malkhana room
+  const [physicalStorage, setPhysicalStorage] = useState('');
+  // where the article was seized
+  const [placeOfSeizure, setPlaceOfSeizure] = useState('');
   const [remarks, setRemarks]         = useState('');
   const [photo, setPhoto]             = useState<PendingFile | null>(null);
   const [busy, setBusy]               = useState(false);
   const [msg, setMsg]                 = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
-  // type options + bns typeahead
+  // type options + bns typeahead (multi-select)
   const [typeOptions, setTypeOptions] = useState<ItemTypeOption[]>([]);
   const [typesLoading, setTypesLoading] = useState(false);
   const [bnsQuery, setBnsQuery]      = useState('');
-  const [bnsPick, setBnsPick]        = useState<BnsPick | null>(null);
   const [bnsHits, setBnsHits]         = useState<BnsSection[]>([]);
   const [bnsOpen, setBnsOpen]         = useState(false);
   const [bnsLoading, setBnsLoading]   = useState(false);
   const [bnsActive, setBnsActive]     = useState<number>(-1);
+  // selected BNS sections (multi)
+  const [legalSections, setLegalSections] = useState<BnsSection[]>([]);
   const bnsBoxRef                     = useRef<HTMLLabelElement>(null);
   const photoRef                      = useRef<HTMLInputElement>(null);
 
@@ -85,21 +87,22 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
     setMsg(null); setTypeOptions([]); setFirExists(null);
   }, [open]);
 
-  // load item types for the chosen section/rack
+  // Load ALL item types (grouped by category below).  We no longer filter by
+  // the chosen Part first — the Part is derived from the picked item type.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setTypesLoading(true);
-    api.itemTypes(location).then(rows => {
+    api.itemTypes('all').then(rows => {
       if (!cancelled) {
         setTypeOptions(rows.map(r => ({ id: r.id, name: r.name, sectionLetter: r.sectionLetter })));
         setTypesLoading(false);
       }
     }).catch(() => { if (!cancelled) { setTypeOptions([]); setTypesLoading(false); } });
     return () => { cancelled = true; };
-  }, [open, location]);
+  }, [open]);
 
-  // BNS typeahead
+  // BNS typeahead (multi-select)
   useEffect(() => {
     if (!bnsOpen) return;
     let cancelled = false;
@@ -125,12 +128,12 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
   function reset() {
     setStep('form');
     setFirOrDd('FIR '); setFirExists(null); setPs(''); setFirDate(today); setUs(''); setIo('');
-    setItemTypeId(null); setItemTypeName(''); setSectionLetter('A');
+    setItemTypeId(null); setItemTypeName(''); setSectionLetter(racks[0]?.letter ?? 'A');
     setPopupFields([]); setPopupValues({});
     setSeizedOn(today); setSeizedTime('10:00'); setOfficer('SI Rakesh Sharma');
-    setLocation(racks[0]?.letter ?? 'A'); setWitness1(''); setWitness2('');
-    setQuantity('1'); setStorage(''); setRemarks(''); setPhoto(null);
-    setBnsQuery(''); setBnsPick(null); setTypeOptions([]); setMsg(null);
+    setWitness1(''); setWitness2('');
+    setQuantity('1'); setPhysicalStorage(''); setPlaceOfSeizure(''); setRemarks(''); setPhoto(null);
+    setBnsQuery(''); setLegalSections([]); setTypeOptions([]); setMsg(null);
   }
 
   // ---- FIR lookup ----
@@ -154,16 +157,20 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
     }
   }
 
-  function pickBns(s: BnsSection) {
-    setBnsPick({ sectionNo: s.sectionNo, title: s.title, category: s.category });
-    setBnsQuery(`BNS ${s.sectionNo} — ${s.title}`);
-    setBnsOpen(false); setBnsActive(-1);
+  function addBns(s: BnsSection) {
+    setLegalSections(prev => prev.find(x => x.sectionNo === s.sectionNo) ? prev : [...prev, s]);
+    setBnsQuery(''); setBnsOpen(true); setBnsActive(-1);
   }
-  function clearBns() { setBnsPick(null); setBnsQuery(''); setBnsOpen(true); setBnsActive(-1); }
+  function removeBns(no: string) {
+    setLegalSections(prev => prev.filter(x => x.sectionNo !== no));
+  }
   function onBnsKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'ArrowDown') { e.preventDefault(); setBnsOpen(true); setBnsActive(i => Math.min(i + 1, bnsHits.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setBnsActive(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Enter') { if (bnsOpen && bnsActive >= 0 && bnsHits[bnsActive]) { e.preventDefault(); pickBns(bnsHits[bnsActive]); } }
+    else if (e.key === 'Enter') {
+      if (bnsOpen && bnsActive >= 0 && bnsHits[bnsActive]) { e.preventDefault(); addBns(bnsHits[bnsActive]); }
+      else if (bnsHits.length === 1) { e.preventDefault(); addBns(bnsHits[0]); }
+    }
     else if (e.key === 'Escape') setBnsOpen(false);
   }
 
@@ -182,7 +189,7 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
-  // ---- open the per-item-type popup ----
+  // ---- open the per-item-type popup (auto-called on item-type select) ----
   async function openPopup() {
     if (itemTypeId == null) { setMsg({ kind: 'error', text: 'Select an Item Type first.' }); return; }
     const opt = typeOptions.find(t => t.id === itemTypeId);
@@ -191,7 +198,6 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
     try {
       const fields = await api.itemTypeFields(letter);
       setPopupFields(fields.filter(f => f.active !== false));
-      // seed empty values for any new keys
       setPopupValues(prev => {
         const next = { ...prev };
         for (const f of fields) if (next[f.key] == null) next[f.key] = '';
@@ -244,7 +250,7 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
         seizingOfficer: seizingOfficer.trim(),
         seizedOn,
         photo: photoUrl,
-        legalSection: bnsPick?.sectionNo,
+        legalSections: legalSections.map(s => s.sectionNo),
         itemTypeId: itemTypeId ?? null,
         description: popupValues['substance_type'] || popupValues['weapon_type'] || popupValues['doc_type'] || popupValues['vehicle_type'] || popupValues['sample_type'] || '',
       });
@@ -252,13 +258,14 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
 
       // 3) Upsert FIR master (once per FIR; reused for every item)
       await api.upsertFirMaster({
-        firNo, policeStation: ps, firDate, usSections: usSections, io,
+        firNo, policeStation: ps, firDate, usSections, io,
       });
 
       // 4) Save case_property (COMMON fields + type-specific popup values)
       const common: Record<string, string> = {
         seizedTime, witness1, witness2, quantity,
-        storageLocation, photoUrl: photoUrl || '', remarks,
+        placeOfSeizure, physicalStorage,
+        photoUrl: photoUrl || '', remarks,
         status: 'Seized',
       };
       const fields = popupFields
@@ -283,7 +290,7 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
         <form className="form-card" onSubmit={(e) => { e.preventDefault(); setStep('form'); }} style={{ maxWidth: 560 }}>
           <button type="button" className="tag-close" onClick={() => { setStep('form'); }} aria-label="Close">✕</button>
           <h3>{itemTypeName || 'Item'} — Specific Details</h3>
-          <div className="sub">Fill the fields for this item type. These are saved with the seizure.</div>
+          <div className="sub">Fill the fields for this item type ({itemTypeName}). These are saved with the seizure.</div>
           <div className="form-grid">
             {popupFields.length === 0 && (
               <div className="sub" style={{ padding: 12 }}>No specific fields defined for this item type.</div>
@@ -304,6 +311,14 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
     );
   }
 
+  // Group item types by their Malkhana Part for the <select> optgroups.
+  const grouped = racks
+    .map(r => ({
+      rack: r,
+      items: typeOptions.filter(t => t.sectionLetter === r.letter),
+    }))
+    .filter(g => g.items.length > 0);
+
   // ---- MAIN FORM VIEW ----
   return (
     <div className={`overlay${open ? ' open' : ''}`} onClick={e => {
@@ -313,8 +328,9 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
         <button type="button" className="tag-close" onClick={() => { reset(); onClose(); }} aria-label="Close">✕</button>
         <h3>Register New Case Property</h3>
         <div className="sub">
-          Enter the FIR/DD, then pick an Item Type to capture its specific details in a popup.
-          On registration a unique <b>Malkhana Sr. No.</b> and QR code are auto-generated and status is set to <b>Seized</b>.
+          Enter the FIR/DD, pick the legal <b>Sections</b> (multiple allowed), then choose an <b>Item Type</b> —
+          its category auto-sets the Malkhana Part and opens the specific-details popup. A unique <b>Malkhana Sr. No.</b>
+          and QR are auto-generated; status starts as <b>Seized</b>.
         </div>
 
         <div className="form-grid">
@@ -354,7 +370,56 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
 
           <hr style={{ width: '100%', border: 'none', borderTop: '1px solid var(--line)', margin: '4px 0' }} />
 
-          {/* ---- Item Type (loads popup) ---- */}
+          {/* ---- SECTION (BNS) — multi-select, at the TOP ---- */}
+          <label className="full" ref={bnsBoxRef}>
+            Section (U/S legal section) — multiple allowed
+            <div className="bns-typeahead">
+              <input
+                value={bnsQuery}
+                placeholder={legalSections.length ? 'Add another section…' : 'Type 101, "murder", "kidnapping"… (BNS, 2023)'}
+                onChange={e => { setBnsQuery(e.target.value); setBnsOpen(true); }}
+                onFocus={() => { setBnsOpen(true); }}
+                onKeyDown={onBnsKeyDown}
+                autoComplete="off" spellCheck={false}
+                role="combobox" aria-expanded={bnsOpen} aria-autocomplete="list" aria-controls="bns-hits"
+              />
+              {bnsOpen && (
+                <div className="bns-hits" id="bns-hits" role="listbox">
+                  {bnsLoading && bnsHits.length === 0 && <div className="bns-empty">searching…</div>}
+                  {!bnsLoading && bnsHits.length === 0 && <div className="bns-empty">No BNS section matches “{bnsQuery || '…'}”.</div>}
+                  {bnsHits.map((s, i) => {
+                    const picked = legalSections.some(x => x.sectionNo === s.sectionNo);
+                    return (
+                      <div key={s.sectionNo} role="option" aria-selected={i === bnsActive}
+                        className={`bns-hit${i === bnsActive ? ' active' : ''}${picked ? ' picked' : ''}`}
+                        onMouseDown={(e) => { e.preventDefault(); if (!picked) addBns(s); }}
+                        onMouseEnter={() => setBnsActive(i)}
+                        title={s.description || s.title}>
+                        <span className="bns-no">BNS&nbsp;{s.sectionNo}</span>
+                        <span className="bns-title">{s.title}</span>
+                        {s.category && <span className="bns-cat">{s.category}</span>}
+                        {picked && <span className="bns-tick">✓</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {legalSections.length > 0 && (
+              <div className="bns-chips">
+                {legalSections.map(s => (
+                  <span key={s.sectionNo} className="bns-chip">
+                    <b>BNS {s.sectionNo}</b> — {s.title}
+                    <button type="button" className="bns-chip-x" onClick={() => removeBns(s.sectionNo)} aria-label={`Remove BNS ${s.sectionNo}`}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </label>
+
+          <hr style={{ width: '100%', border: 'none', borderTop: '1px solid var(--line)', margin: '4px 0' }} />
+
+          {/* ---- Item Type (loads popup + auto-sets Part) ---- */}
           <label className="full">
             Item Type
             <div style={{ display: 'flex', gap: 8 }}>
@@ -367,14 +432,21 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
                   const opt = typeOptions.find(t => t.id === id);
                   setItemTypeId(id);
                   setItemTypeName(opt?.name || '');
-                  setSectionLetter(opt?.sectionLetter || location);
+                  // auto-set the Malkhana Part from this item type's category
+                  if (opt?.sectionLetter) setSectionLetter(opt.sectionLetter);
+                  // open the specific-fields popup immediately
+                  setTimeout(() => openPopup(), 0);
                 }}
                 disabled={busy || typesLoading}
-                title="Pick an item type to open its specific-details popup"
+                title="Pick an item type — its category sets the Malkhana Part and opens the specific-details popup"
               >
                 <option value="">— select item type —</option>
-                {typeOptions.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
+                {grouped.map(g => (
+                  <optgroup key={g.rack.letter} label={`Part ${g.rack.letter} — ${g.rack.name}`}>
+                    {g.items.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <button type="button" className="btn" onClick={openPopup} disabled={busy || itemTypeId == null}>
@@ -384,50 +456,13 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
             {typesLoading && <div className="sub" style={{ marginTop: 4 }}>Loading item types…</div>}
           </label>
 
+          {/* ---- Malkhana Part (category marker, auto-set from Item Type) ---- */}
           <label className="full">
-            Storage Location (Rack/Almirah/Yard)
-            <select value={location} onChange={e => setLocation(e.target.value)} title="Physical storage in the Malkhana room">
+            Malkhana Part (Category)
+            <select value={sectionLetter} onChange={e => setSectionLetter(e.target.value)} title="Auto-set from the Item Type; marks which Part this article belongs to">
               {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
             </select>
-          </label>
-
-          {/* BNS section typeahead */}
-          <label className="full" ref={bnsBoxRef}>
-            Section (U/S legal section)
-            <div className="bns-typeahead">
-              <input
-                value={bnsQuery}
-                placeholder={bnsPick ? '' : 'Type 101, "murder", "kidnapping"… (BNS, 2023)'}
-                onChange={e => { setBnsQuery(e.target.value); setBnsPick(null); setBnsOpen(true); }}
-                onFocus={() => { setBnsOpen(true); }}
-                onKeyDown={onBnsKeyDown}
-                autoComplete="off" spellCheck={false}
-                role="combobox" aria-expanded={bnsOpen} aria-autocomplete="list" aria-controls="bns-hits"
-              />
-              {bnsPick && (
-                <button type="button" className="bns-clear" onClick={clearBns} title="Clear the BNS section" aria-label="Clear BNS section">×</button>
-              )}
-              {bnsOpen && (
-                <div className="bns-hits" id="bns-hits" role="listbox">
-                  {bnsLoading && bnsHits.length === 0 && <div className="bns-empty">searching…</div>}
-                  {!bnsLoading && bnsHits.length === 0 && <div className="bns-empty">No BNS section matches “{bnsQuery || '…'}”.</div>}
-                  {bnsHits.map((s, i) => (
-                    <div key={s.sectionNo} role="option" aria-selected={i === bnsActive}
-                      className={`bns-hit${i === bnsActive ? ' active' : ''}`}
-                      onMouseDown={(e) => { e.preventDefault(); pickBns(s); }}
-                      onMouseEnter={() => setBnsActive(i)}
-                      title={s.description || s.title}>
-                      <span className="bns-no">BNS&nbsp;{s.sectionNo}</span>
-                      <span className="bns-title">{s.title}</span>
-                      {s.category && <span className="bns-cat">{s.category}</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            {bnsPick && (
-              <div className="bns-picked">✓ <b>BNS {bnsPick.sectionNo}</b> — {bnsPick.title}{bnsPick.category && <> · <span className="muted">{bnsPick.category}</span></>}</div>
-            )}
+            <div className="sub" style={{ marginTop: 4 }}>Auto-filled from the Item Type. This only marks the category — the physical slot is set below.</div>
           </label>
 
           {/* ---- COMMON fields ---- */}
@@ -446,7 +481,7 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
           </label>
           <label className="full">
             Place of Seizure
-            <input value={storageLocation} onChange={e => setStorage(e.target.value)} placeholder="e.g. Near bus stand, Panipat" />
+            <input value={placeOfSeizure} onChange={e => setPlaceOfSeizure(e.target.value)} placeholder="e.g. Near bus stand, Panipat" />
           </label>
           <label>
             Witness 1 Name
@@ -459,6 +494,16 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
           <label>
             Quantity
             <input value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="e.g. 1 or 2 kg" />
+          </label>
+          <label className="full">
+            Storage Location (Rack / Almirah / Yard)
+            <input
+              value={physicalStorage}
+              onChange={e => setPhysicalStorage(e.target.value)}
+              placeholder="e.g. Almirah No. 2, Shelf B / Rack 3, Bay 1"
+              title="The physical slot where the article is kept inside the Malkhana room"
+            />
+            <div className="sub" style={{ marginTop: 4 }}>Physical storage slot in the room (separate from the Part category above).</div>
           </label>
           <label className="full">
             Photo of the seized object (OPTIONAL)

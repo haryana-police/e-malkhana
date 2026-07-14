@@ -332,7 +332,7 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
           <div><span class="k">Section</span><span class="v">Part ${escapeHtml((caseRow.section || '').replace('PART ', ''))} · ${escapeHtml(caseRow.sectionName || '')}</span></div>
           <div><span class="k">Item ID</span><span class="v">${escapeHtml(caseRow.itemId || '—')}</span></div>
           <div><span class="k">Seized</span><span class="v">${escapeHtml(caseRow.seizedOn || '—')} · by ${escapeHtml(caseRow.seizingOfficer || '—')}</span></div>
-          <div><span class="k">BNS Section</span><span class="v">${caseRow.legalSection ? `BNS ${escapeHtml(caseRow.legalSection)}${caseRow.legalSectionTitle ? ' — ' + escapeHtml(caseRow.legalSectionTitle) : ''}` : '—'}</span></div>
+          <div><span class="k">BNS Section${caseRow.legalSections && caseRow.legalSections.length > 1 ? 's' : ''}</span><span class="v">${(caseRow.legalSections && caseRow.legalSections.length ? caseRow.legalSections.map((s, i) => `BNS ${escapeHtml(s)}${caseRow.legalSectionsTitles && caseRow.legalSectionsTitles[i] ? ' — ' + escapeHtml(caseRow.legalSectionsTitles[i]) : ''}`) : (caseRow.legalSection ? [`BNS ${escapeHtml(caseRow.legalSection)}${caseRow.legalSectionTitle ? ' — ' + escapeHtml(caseRow.legalSectionTitle) : ''}`] : ['—'])).join(' · ')}</span></div>
           <div><span class="k">Created</span><span class="v">${escapeHtml(fmtTime(caseRow.createdAt))}</span></div>
         </div>
         <div class="row">
@@ -433,7 +433,8 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
           <div className="case-detail-meta">
             <div><span className="k">Seized On</span><span className="v">{caseRow.seizedOn}{cp.seizedTime ? ` · ${cp.seizedTime}` : ''}</span></div>
             <div><span className="k">Seizing Officer</span><span className="v">{caseRow.seizingOfficer}</span></div>
-            <div><span className="k">Place of Seizure</span><span className="v">{cp.storageLocation || '—'}</span></div>
+            <div><span className="k">Place of Seizure</span><span className="v">{cp.placeOfSeizure || cp.storageLocation || '—'}</span></div>
+            <div><span className="k">Storage Location</span><span className="v">{cp.physicalStorage || '—'}</span></div>
             <div><span className="k">Witness 1</span><span className="v">{cp.witness1 || '—'}</span></div>
             <div><span className="k">Witness 2</span><span className="v">{cp.witness2 || '—'}</span></div>
             <div><span className="k">Quantity</span><span className="v">{cp.quantity || '—'}</span></div>
@@ -563,7 +564,7 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
           <div><span className="k">Section</span><span className="v">Part {caseRow.section?.replace('PART ', '')} · {caseRow.sectionName}</span></div>
           <div><span className="k">Item ID</span><span className="v">{caseRow.itemId}</span></div>
           <div><span className="k">Seized</span><span className="v">{caseRow.seizedOn} · by {caseRow.seizingOfficer}</span></div>
-          <div><span className="k">BNS section</span><span className="v">{caseRow.legalSection ? `BNS ${caseRow.legalSection}${caseRow.legalSectionTitle ? ' — ' + caseRow.legalSectionTitle : ''}` : '—'}</span></div>
+          <div><span className="k">BNS section{(caseRow.legalSections && caseRow.legalSections.length > 1) ? 's' : ''}</span><span className="v">{(caseRow.legalSections && caseRow.legalSections.length ? caseRow.legalSections.map((s, i) => `BNS ${s}${caseRow.legalSectionsTitles && caseRow.legalSectionsTitles[i] ? ' — ' + caseRow.legalSectionsTitles[i] : ''}`) : (caseRow.legalSection ? [`BNS ${caseRow.legalSection}${caseRow.legalSectionTitle ? ' — ' + caseRow.legalSectionTitle : ''}`] : ['—'])).join(' · ')}</span></div>
           <div><span className="k">Created</span><span className="v">{fmtTime(caseRow.createdAt)}</span></div>
         </div>
       )}

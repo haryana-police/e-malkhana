@@ -29,8 +29,10 @@ export interface CaseRow {
   itemId: string;             // "MK-2026-000214"
   imageUrl?: string;          // "/uploads/case-FIR-214-2026.svg"
   docRef?: string;            // "/uploads/doc-FIR-214-2026.pdf" (seizure memo)
-  legalSection?: string;      // "101" — BNS section no. (without "BNS " prefix)
+  legalSection?: string;      // "101" — primary BNS section no. (without "BNS " prefix)
   legalSectionTitle?: string; // "Murder" — denormalised title for offline render
+  legalSections?: string[];        // all booked section numbers (multi-select)
+  legalSectionsTitles?: string[];  // parallel titles (multi-select)
   createdAt: string;
 }
 
@@ -145,6 +147,7 @@ export interface NewCaseInput {
   photo?: string;            // OPTIONAL — URL of the uploaded photo of the seized object
   supportingDoc?: string;   // OPTIONAL — URL of the seizure memo / supporting document
   legalSection?: string;    // OPTIONAL — BNS section no. (e.g. "101" or "BNS 101"); server validates
+  legalSections?: string[]; // OPTIONAL — multiple BNS section numbers (multi-select)
   itemTypeId?: number | null; // OPTIONAL — FK to the item_types master row
   description?: string;       // OPTIONAL — free-text specifics, e.g. "80 grams, sealed poly bag"
 }
@@ -190,7 +193,9 @@ export interface CasePropertyData {
   witness1?: string;
   witness2?: string;
   quantity?: string;
-  storageLocation?: string;
+  placeOfSeizure?: string;     // where the article was seized
+  physicalStorage?: string;    // rack/almirah/yard slot in the Malkhana room
+  storageLocation?: string;    // legacy alias (place of seizure)
   photoUrl?: string;
   remarks?: string;
   status?: string;

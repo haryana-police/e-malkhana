@@ -327,6 +327,31 @@ CREATE INDEX IF NOT EXISTS cases_legal_section_idx ON cases (legal_section);
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS item_type_id BIGINT REFERENCES item_types (id);
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS description  TEXT;
 
+-- Multi-section support: a case can now be booked under several BNS
+-- sections at once (e.g. "BNS 101 — Murder" + "BNS 397 — Causing hurt").
+-- `legal_sections` / `legal_sections_titles` hold the full ordered list as a
+-- JSON array (TEXT).  The single `legal_section` / `legal_section_title`
+-- columns are retained as the *primary* (first) section for the register tag
+-- and legacy reports/templates, so no downstream UI breaks.
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS legal_sections        TEXT;  -- JSON array of section_no strings
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS legal_sections_titles TEXT;  -- JSON array of titles (parallel to legal_sections)
+
+-- Physical storage location: the actual rack / almirah / yard slot where the
+-- article is kept in the Malkhana room.  This is SEPARATE from `section`
+-- (which only marks the Malkhana Part / category, e.g. Part C = Documents &
+-- Cash, derived from the Item Type).  Previously the form mislabeled the
+-- Part dropdown as "Storage Location (Rack/Almirah/Yard)"; that field now
+-- captures the real physical slot.
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS place_of_seizure TEXT;  -- where the article was seized
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS physical_storage TEXT;  -- rack/almirah/yard slot in the room
+
+-- Backfill: the legacy `storage_location` column actually held the Place of
+-- Seizure text (the form mapped it that way).  Move it into the properly
+-- named column so the new `storage_location` column can hold the real
+-- physical storage going forward.
+UPDATE case_property SET place_of_seizure = storage_location
+ WHERE place_of_seizure IS NULL AND storage_location IS NOT NULL AND storage_location <> '';
+
 -- Bharatiya Nyaya Sanhita (BNS) sections — dummy reference table.  Used by
 -- the "Section" typeahead on Register New Case Property.  The MM types
 -- "302" or "murder" and gets the matching BNS section(s) to attach to the
@@ -829,7 +854,9 @@ export async function getCaseProperty(itemId) {
     witness1: r.witness1,
     witness2: r.witness2,
     quantity: r.quantity,
-    storageLocation: r.storage_location,
+    placeOfSeizure: r.place_of_seizure,
+    physicalStorage: r.physical_storage,
+    storageLocation: r.storage_location,   // legacy alias (== place of seizure, pre-migration)
     photoUrl: r.photo_url,
     remarks: r.remarks,
     status: r.status,
@@ -839,20 +866,22 @@ export async function getCaseProperty(itemId) {
 }
 
 // Write the COMMON case_property row + the per-item popup field values.
-// Common fields that are null/undefined are written as NULL; popup field
-// values are upserted individually so reordering/renaming keys never orphans
-// old data while still preserving history on key rename (old key kept).
+// `common.physicalStorage` = the real rack/almirah/yard slot; `common.placeOfSeizure`
+// = where the article was seized.  `common.storageLocation` (legacy) is kept
+// as an alias of place_of_seizure for backward compatibility.
 export async function upsertCaseProperty(itemId, common, fields) {
+  const place = common.placeOfSeizure ?? common.storageLocation ?? null;
   await pool.query(
-    `INSERT INTO case_property (item_id, fir_no, seized_time, witness1, witness2, quantity, storage_location, photo_url, remarks, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO case_property (item_id, fir_no, seized_time, witness1, witness2, quantity, storage_location, place_of_seizure, physical_storage, photo_url, remarks, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (item_id) DO UPDATE
        SET fir_no = EXCLUDED.fir_no, seized_time = EXCLUDED.seized_time, witness1 = EXCLUDED.witness1,
            witness2 = EXCLUDED.witness2, quantity = EXCLUDED.quantity, storage_location = EXCLUDED.storage_location,
+           place_of_seizure = EXCLUDED.place_of_seizure, physical_storage = EXCLUDED.physical_storage,
            photo_url = EXCLUDED.photo_url, remarks = EXCLUDED.remarks, status = EXCLUDED.status`,
     [itemId, common.firNo || null, common.seizedTime || null, common.witness1 || null,
-     common.witness2 || null, common.quantity || null, common.storageLocation || null,
-     common.photoUrl || null, common.remarks || null, common.status || 'Seized']
+     common.witness2 || null, common.quantity || null, place,
+     common.physicalStorage || null, common.photoUrl || null, common.remarks || null, common.status || 'Seized']
   );
   for (const f of fields) {
     if (f.key == null || f.key === '') continue;

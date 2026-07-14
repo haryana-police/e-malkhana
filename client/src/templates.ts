@@ -71,9 +71,11 @@ export function firValues(c: CaseRow): Record<string, string> {
     item: c.itemType || '',
     qty: c.quantity || '',
     desc: c.description || '',
-    bns: c.legalSection ? `BNS ${c.legalSection}` : '',
+    bns: (c.legalSections && c.legalSections.length ? c.legalSections : (c.legalSection ? [c.legalSection] : []))
+      .map(s => `BNS ${s}`).join(', '),
     // letters label the BNS section as "धारा / Section"
-    section: c.legalSection ? `BNS ${c.legalSection}` : '',
+    section: (c.legalSections && c.legalSections.length ? c.legalSections : (c.legalSection ? [c.legalSection] : []))
+      .map(s => `BNS ${s}`).join(', '),
     officer: c.seizingOfficer || '',
     ps: '',
   };

@@ -502,19 +502,32 @@ app.post('/api/cases', async (req, res, next) => {
       itemTypeName = it.name;
     }
 
-    // Look up the BNS legal section (OPTIONAL).  The user picks a section
-    // from the typeahead on Register New Case Property; we accept either
-    // a bare section number ("101") or a "BNS 101" prefix.  We validate
-    // it against the bns_sections table and persist BOTH the section_no
-    // and the denormalised title so the case row can render without a
-    // re-join (e.g. for the table view, evidence tag PDF, etc.).
+    // Multi-section support: the user can book a case under several BNS
+    // sections at once (e.g. "BNS 101 — Murder" + "BNS 397 — Causing hurt").
+    // `body.legalSections` is the ordered array of section numbers; each is
+    // validated against bns_sections.  We keep `legalSection`/`legalSectionTitle`
+    // as the *primary* (first) section for the register tag / legacy reports.
     let legalSection = null, legalSectionTitle = null;
-    if (body.legalSection) {
+    let legalSections = [], legalSectionsTitles = [];
+    if (Array.isArray(body.legalSections) && body.legalSections.length) {
+      for (const raw of body.legalSections) {
+        const secNo = String(raw).replace(/^BNS\s+/i, '').trim();
+        const hit = db_bnsSectionByNo(secNo);
+        if (!hit) { const e = new Error(`unknown BNS section: ${raw}`); e.status = 400; throw e; }
+        legalSections.push(hit.sectionNo);
+        legalSectionsTitles.push(hit.title);
+      }
+      legalSection = legalSections[0];
+      legalSectionTitle = legalSectionsTitles[0];
+    } else if (body.legalSection) {
+      // Backward-compat: single section still accepted.
       const secNo = String(body.legalSection).replace(/^BNS\s+/i, '').trim();
       const hit = db_bnsSectionByNo(secNo);
       if (!hit) { const e = new Error(`unknown BNS section: ${body.legalSection}`); e.status = 400; throw e; }
       legalSection = hit.sectionNo;
       legalSectionTitle = hit.title;
+      legalSections = [hit.sectionNo];
+      legalSectionsTitles = [hit.title];
     }
 
     // NOTE: sectionName is NOT stored on the case record. It's always
@@ -543,6 +556,8 @@ app.post('/api/cases', async (req, res, next) => {
       docRef:     body.supportingDoc || undefined,             // optional — seizure memo URL
       legalSection,
       legalSectionTitle,
+      legalSections,
+      legalSectionsTitles,
       itemTypeId: itemTypeId != null ? itemTypeId : undefined,
       description: body.description || undefined,
       createdAt,
@@ -627,7 +642,7 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     // dropped (avoids callers sneaking in `status` or `id` changes through
     // a different endpoint).
     const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'seizedOn', 'itemId', 'legalSection',
-                      'itemTypeId', 'description'];
+                      'legalSections', 'itemTypeId', 'description'];
     const patch = {};
     for (const k of ALLOWED) {
       if (Object.prototype.hasOwnProperty.call(body, k)) patch[k] = body[k];
@@ -662,7 +677,24 @@ app.patch('/api/cases/:id', async (req, res, next) => {
       }
     }
     let newLegalSectionTitle = undefined;
-    if (Object.prototype.hasOwnProperty.call(patch, 'legalSection')) {
+    let newLegalSections = undefined;        // undefined = no change requested
+    let newLegalSectionsTitles = undefined;
+    if (Object.prototype.hasOwnProperty.call(patch, 'legalSections')) {
+      // Multi-section edit: an array of section numbers.
+      const arr = Array.isArray(patch.legalSections) ? patch.legalSections : [];
+      const secs = [], tits = [];
+      for (const raw of arr) {
+        const secNo = String(raw).replace(/^BNS\s+/i, '').trim();
+        const hit = db_bnsSectionByNo(secNo);
+        if (!hit) { const e = new Error(`unknown BNS section: ${raw}`); e.status = 400; throw e; }
+        secs.push(hit.sectionNo);
+        tits.push(hit.title);
+      }
+      newLegalSections = secs;
+      newLegalSectionsTitles = tits;
+      newLegalSection = secs[0] || null;          // primary = first
+      newLegalSectionTitle = tits[0] || null;
+    } else if (Object.prototype.hasOwnProperty.call(patch, 'legalSection')) {
       const raw = patch.legalSection;
       if (raw == null || String(raw).trim() === '') {
         newLegalSection = null;
@@ -715,7 +747,8 @@ app.patch('/api/cases/:id', async (req, res, next) => {
       if (newLegalSection !== undefined) {
         const oldSec = c.legalSection || '';
         const oldTit = c.legalSectionTitle || '';
-        if (oldSec !== (newLegalSection || '')) {
+        if (oldSec !== (newLegalSection || '') ||
+            (newLegalSections !== undefined && JSON.stringify(c.legalSections || []) !== JSON.stringify(newLegalSections))) {
           if (newLegalSection) {
             changes.push(`BNS section: ${oldSec || '—'} → ${newLegalSection} (${newLegalSectionTitle})`);
           } else {
@@ -723,8 +756,13 @@ app.patch('/api/cases/:id', async (req, res, next) => {
           }
           c.legalSection = newLegalSection || undefined;
           c.legalSectionTitle = newLegalSectionTitle || undefined;
+          if (newLegalSections !== undefined) {
+            c.legalSections = newLegalSections;
+            c.legalSectionsTitles = newLegalSectionsTitles;
+          }
         }
       }
+
       if (newItemTypeId !== undefined) {
         const oldId = c.itemTypeId || null;
         if (oldId !== newItemTypeId) {
@@ -1161,7 +1199,9 @@ app.post('/api/case-property', async (req, res, next) => {
       witness1: common.witness1,
       witness2: common.witness2,
       quantity: common.quantity,
-      storageLocation: common.storageLocation,
+      storageLocation: common.placeOfSeizure ?? common.storageLocation,
+      placeOfSeizure: common.placeOfSeizure ?? common.storageLocation,
+      physicalStorage: common.physicalStorage,
       photoUrl: common.photoUrl,
       remarks: common.remarks,
       status: common.status || 'Seized',

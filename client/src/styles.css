@@ -369,6 +369,24 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
   max-width: 200px;
 }
 
+/* Multi-select BNS chips inside the Register form */
+.form-grid .bns-chips{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.form-grid .bns-chip{
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family:'IBM Plex Sans', sans-serif; font-size: 12px; line-height: 1.2;
+  background: rgba(15, 32, 68, 0.06); color: var(--ink-navy);
+  border: 1px solid rgba(15, 32, 68, 0.18);
+  padding: 4px 8px; border-radius: 999px;
+}
+.form-grid .bns-chip b{ font-family:'IBM Plex Mono', monospace; color: var(--seal-red); }
+.form-grid .bns-chip-x{
+  border: 0; background: transparent; color: var(--slate-soft);
+  cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.form-grid .bns-chip-x:hover{ color: var(--seal-red); }
+.bns-hit.picked{ opacity: 0.55; }
+.bns-tick{ margin-left: 4px; color: var(--seal-red); font-weight: 700; }
+
 .row-actions{ display:flex; gap:6px; }
 /* Whole row is clickable (PRD #7) — show pointer + soft hover.  Cursor
    on .icon-btn overrides to pointer naturally; we only restyle the row
