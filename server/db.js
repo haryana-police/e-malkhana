@@ -328,29 +328,23 @@ ALTER TABLE cases ADD COLUMN IF NOT EXISTS item_type_id BIGINT REFERENCES item_t
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS description  TEXT;
 
 -- Multi-section support: a case can now be booked under several BNS
--- sections at once (e.g. "BNS 101 — Murder" + "BNS 397 — Causing hurt").
--- `legal_sections` / `legal_sections_titles` hold the full ordered list as a
--- JSON array (TEXT).  The single `legal_section` / `legal_section_title`
--- columns are retained as the *primary* (first) section for the register tag
+-- sections at once (e.g. "BNS 101 Murder" + "BNS 397 Causing hurt").
+-- legal_sections / legal_sections_titles hold the full ordered list as a
+-- JSON array (TEXT).  The single legal_section / legal_section_title
+-- columns are retained as the primary (first) section for the register tag
 -- and legacy reports/templates, so no downstream UI breaks.
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS legal_sections        TEXT;  -- JSON array of section_no strings
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS legal_sections_titles TEXT;  -- JSON array of titles (parallel to legal_sections)
 
 -- Physical storage location: the actual rack / almirah / yard slot where the
--- article is kept in the Malkhana room.  This is SEPARATE from `section`
+-- article is kept in the Malkhana room.  This is SEPARATE from section
 -- (which only marks the Malkhana Part / category, e.g. Part C = Documents &
 -- Cash, derived from the Item Type).  Previously the form mislabeled the
--- Part dropdown as "Storage Location (Rack/Almirah/Yard)"; that field now
+-- Part dropdown as "Storage Location (Rack/Almirah/Yard)" — that field now
 -- captures the real physical slot.
-ALTER TABLE case_property ADD COLUMN IF NOT EXISTS place_of_seizure TEXT;  -- where the article was seized
-ALTER TABLE case_property ADD COLUMN IF NOT EXISTS physical_storage TEXT;  -- rack/almirah/yard slot in the room
-
--- Backfill: the legacy `storage_location` column actually held the Place of
--- Seizure text (the form mapped it that way).  Move it into the properly
--- named column so the new `storage_location` column can hold the real
--- physical storage going forward.
-UPDATE case_property SET place_of_seizure = storage_location
- WHERE place_of_seizure IS NULL AND storage_location IS NOT NULL AND storage_location <> '';
+-- NOTE: the ADD COLUMN + backfill UPDATE for case_property live further
+-- below, AFTER the case_property table is created (line ~426), so the
+-- UPDATE does not run against a not-yet-existing table.
 
 -- Bharatiya Nyaya Sanhita (BNS) sections — dummy reference table.  Used by
 -- the "Section" typeahead on Register New Case Property.  The MM types
@@ -437,6 +431,18 @@ CREATE TABLE IF NOT EXISTS case_property (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS case_property_fir_idx ON case_property (fir_no);
+
+-- Physical storage location columns on case_property (moved here so the
+-- table already exists when we touch it).
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS place_of_seizure TEXT;  -- where the article was seized
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS physical_storage TEXT;  -- rack/almirah/yard slot in the room
+
+-- Backfill: the legacy storage_location column actually held the Place of
+-- Seizure text (the form mapped it that way).  Move it into the properly
+-- named column so the new storage_location column can hold the real
+-- physical storage going forward.
+UPDATE case_property SET place_of_seizure = storage_location
+ WHERE place_of_seizure IS NULL AND storage_location IS NOT NULL AND storage_location <> '';
 
 -- item_type_fields: the DEFINITION of the dynamic popup fields, one row
 -- per field per Malkhana section (A–E).  Mirrors the spec's "Item Type
