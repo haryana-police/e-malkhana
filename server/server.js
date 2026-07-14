@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import {
-  getDb, mutate, getCase, getMovements, nextMovementId, rebuildSectionCounts,
+  getDb, mutate, getCase, getCaseByItemId, getMovements, nextMovementId, rebuildSectionCounts,
   appendAudit, boot as bootStore, ensureBoot,
 } from './store.js';
 import {
@@ -1148,7 +1148,11 @@ app.post('/api/case-property', async (req, res, next) => {
     const body = req.body || {};
     const itemId = String(body.itemId || '').trim();
     if (!itemId) { const e = new Error('itemId is required'); e.status = 400; throw e; }
-    if (!(await getCase(itemId))) { const e = new Error(`unknown item: ${itemId}`); e.status = 404; throw e; }
+    // The case_property tables are keyed by the Malkhana Sr. No. (item_id),
+    // not by the FIR id.  Look the case up by item_id so a valid item never
+    // 404s (the previous bug: it matched against the FIR id and rejected
+    // every save with "unknown item: MK-2026-000500").
+    if (!(await getCaseByItemId(itemId))) { const e = new Error(`unknown item: ${itemId}`); e.status = 404; throw e; }
     const common = body.common || {};
     const fields = Array.isArray(body.fields) ? body.fields : [];
     await upsertCaseProperty(itemId, {
@@ -2126,7 +2130,7 @@ app.get('/api/reports/malkhana-register', async (req, res, next) => {
 
 const BACKUP_CRON = process.env.BACKUP_CRON || '0 23 * * *';   // 23:00 daily
 const BACKUP_RETENTION_DAYS = parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10);
-const BACKUP_SCRIPT = join(__dirname, 'scripts', 'backup-to-drive.js');
+const BACKUP_SCRIPT = join(__dirname, 'scripts', 'backup-email.js');
 
 function appendBackupLog(entry) {
   mutate(d => {
@@ -2222,6 +2226,8 @@ app.get('/api/backups/status', async (req, res, next) => {
     res.json({
       cron: BACKUP_CRON,
       retentionDays: BACKUP_RETENTION_DAYS,
+      transport: 'email',
+      to: process.env.BACKUP_TO || null,
       scriptPath: BACKUP_SCRIPT,
       last,
       lastSuccess,
@@ -2257,7 +2263,7 @@ app.post('/api/backups/run', async (req, res, next) => {
       return res.status(503).json({ error: 'backup script not found', path: BACKUP_SCRIPT });
     }
     const result = await runBackup('manual');
-    await auditMm(req, 'backup.run', 'gdrive', `Manual backup: ${result.ok ? 'success' : 'failed'}${result.fileName ? ' → ' + result.fileName : ''}`);
+    await auditMm(req, 'backup.run', 'email', `Manual backup: ${result.ok ? 'success' : 'failed'}${result.fileName ? ' → ' + result.fileName : ''}`);
     res.json(result);
   } catch (e) { next(e); }
 });

@@ -446,11 +446,12 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
   return (
     <div>
       <div className="sub" style={{ marginBottom: 12 }}>
-        Daily Google Drive backup of the full case register.  Backups older
-        than <b>{backup?.retentionDays ?? 30} days</b> are auto-pruned from
-        the Drive folder.  Configure the cron / retention via the
-        <code> BACKUP_CRON </code> and <code> BACKUP_RETENTION_DAYS </code>
-        env vars.  See <code>docs/BACKUP_DAILY.md</code> for one-time setup.
+        Daily email backup of the full case register (PostgreSQL). A timestamped
+        JSON dump of every table is emailed to <b>{backup?.to || 'the configured address'}</b>.
+        Local dumps older than <b>{backup?.retentionDays ?? 30} days</b> are auto-pruned.
+        Configure the cron, retention, and SMTP recipients via the
+        <code> BACKUP_CRON</code>, <code>BACKUP_RETENTION_DAYS</code>, and
+        <code> BACKUP_TO</code> env vars. See <code>docs/BACKUP_EMAIL.md</code> for setup.
       </div>
 
       <div className="backup-card">
@@ -479,8 +480,8 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
             <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace' }}>{backup?.cron || '—'}</div>
           </div>
           <div>
-            <div className="k">Retention</div>
-            <div className="v">{backup?.retentionDays ?? 30} days</div>
+            <div className="k">Transport</div>
+            <div className="v">{backup?.transport || 'email'}</div>
           </div>
           <div>
             <div className="k">Total runs</div>
