@@ -208,7 +208,7 @@ export const formTemplates: FormTemplate[] = [
       { key: 'next_date', label: 'अगली तारीख / Next Court Date', type: 'date' },
     ],
     paragraphs: [
-      { blank: true, text: 'क्रमांक संख्या -दिनांक –' },
+      { blank: true, text: 'क्रमांक संख्या {{kr_number}} दिनांक {{kr_date}} –' },
       { blank: true, text: 'विषय – मुकदमा नंबर {{fir}} धारा {{section}} भारतीय न्याय संहिता' },
       { text: 'श्री मान जी ,' },
       {
@@ -276,7 +276,7 @@ export const formTemplates: FormTemplate[] = [
       { key: 'next_date', label: 'अगली तारीख / Next Court Date', type: 'date' },
     ],
     paragraphs: [
-      { blank: true, text: 'क्रमांक संख्या -दिनांक –' },
+      { blank: true, text: 'क्रमांक संख्या {{kr_number}} दिनांक {{kr_date}} –' },
       { blank: true, text: 'विषय – मुकदमा नंबर {{fir}} धारा {{section}} भारतीय न्याय संहिता' },
       { text: 'श्री मान जी ,' },
       {

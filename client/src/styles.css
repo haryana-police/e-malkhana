@@ -1840,7 +1840,7 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .tmpl-lh-row{ display:flex; justify-content:space-between; align-items:baseline; }
 .tmpl-lh-left, .tmpl-lh-right{ font-size:14px; font-weight:700; color:#14243D; }
 .tmpl-lh-service{ font-size:13px; margin-top:4px; color:#1a1a1a; }
-.tmpl-lh-authority{ font-size:13px; text-align:center; margin-top:8px; color:#1a1a1a; }
+.tmpl-lh-authority{ font-size:13px; text-align:center; margin-top:1.5em; color:#1a1a1a; }
 .tmpl-lh-city{ font-size:13px; margin-top:2px; color:#1a1a1a; }
 .tmpl-sheet.hindi .tmpl-letterhead .tmpl-lh-left,
 .tmpl-sheet.hindi .tmpl-letterhead .tmpl-lh-right{ font-size:16px; }
