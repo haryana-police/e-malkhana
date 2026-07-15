@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -217,7 +217,15 @@ export function Templates() {
     const sheet = document.querySelector<HTMLElement>('.tmpl-sheet');
     if (!sheet || pdfBusy) return;
     setPdfBusy(true);
+    // Capture the on-screen preview scale so we can restore it after export.
+    const prevT = sheet.style.transform;
+    const prevZoom = sheet.style.zoom;
+    const prevVar = sheet.style.getPropertyValue('--sheet-zoom');
     try {
+      // Strip the on-screen preview scale/transform/zoom so the PDF rasterizes
+      // the sheet at its TRUE A4 size (what actually prints) — never the
+      // shrunk-to-fit preview the officer sees on screen.
+      sheet.style.transform = 'none';
       sheet.style.zoom = '1';
       sheet.style.removeProperty('--sheet-zoom');
       const canvas = await html2canvas(sheet, {
@@ -242,23 +250,61 @@ export function Templates() {
       const x = (pw - w) / 2;
       const y = (ph - h) / 2;
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, w, h);
-      pdf.save(`${(active?.name || 'template').replace(/[^\w\-]+/g, '_')}.pdf`);
+      pdf.save(`${(active?.name || 'template').replace(/[^\\w\\-]+/g, '_')}.pdf`);
     } catch (e) {
       console.error('PDF export failed', e);
       alert('PDF export failed — try the Print button instead.');
     } finally {
+      // Restore the on-screen preview scale (cleared above for a clean raster).
+      const sheet = document.querySelector<HTMLElement>('.tmpl-sheet');
+      if (sheet) {
+        if (prevT) sheet.style.transform = prevT; else sheet.style.removeProperty('transform');
+        if (prevZoom) sheet.style.zoom = prevZoom; else sheet.style.removeProperty('zoom');
+        if (prevVar) sheet.style.setProperty('--sheet-zoom', prevVar); else sheet.style.removeProperty('--sheet-zoom');
+      }
       setPdfBusy(false);
     }
   }
 
+  // Scale the on-screen live preview so the sheet is shown at its TRUE A4
+  // size, shrunk to fit the narrow preview column.  This makes the preview
+  // WYSIWYG with the printed / PDF A4 sheet (previously the sheet was rendered
+  // at full size in a ~360px column, so the text looked "zoomed in").  The
+  // Print and Save-PDF paths reset this transform to rasterize the real A4.
+  const sheetWrapRef = useRef<HTMLDivElement | null>(null);
+  const fitPreviewRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    const wrap = sheetWrapRef.current;
+    if (!wrap) return;
+    const fit = () => {
+      const sheet = wrap.querySelector<HTMLElement>('.tmpl-sheet');
+      if (!sheet) return;
+      const avail = wrap.clientWidth - 24; // a little breathing room
+      const natural = sheet.offsetWidth;
+      if (!natural) return;
+      const scale = Math.min(1, avail / natural);
+      sheet.style.transform = `scale(${scale})`;
+      sheet.style.transformOrigin = 'top center';
+      // Collapse the wrapper so the scaled sheet doesn't leave a tall gap.
+      wrap.style.height = `${sheet.offsetHeight * scale}px`;
+    };
+    fitPreviewRef.current = fit;
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(wrap);
+    window.addEventListener('resize', fit);
+    return () => { ro.disconnect(); window.removeEventListener('resize', fit); };
+  }, [active]);
+
   // Fit the printable sheet onto ONE A4 page.  Measured from the sheet's
   // natural (unzoomed) height against the page's printable height; if it
   // overflows we scale it down via the `--sheet-zoom` CSS var so it never
-  // spills onto a second page.  Restore zoom after printing.
+  // spills onto a second page.  Restore zoom + preview scale after printing.
   useEffect(() => {
     function fitToPage() {
       const sheet = document.querySelector<HTMLElement>('.tmpl-sheet');
       if (!sheet) return;
+      sheet.style.transform = 'none';        // ignore on-screen preview scale
       sheet.style.zoom = '';                 // measure natural size
       const natural = sheet.getBoundingClientRect().height;
       // A4 portrait printable height = 297mm − 12mm top − 12mm bottom margins.
@@ -275,7 +321,9 @@ export function Templates() {
       if (sheet) {
         sheet.style.zoom = '';
         sheet.style.removeProperty('--sheet-zoom');
+        sheet.style.transform = '';          // let the preview effect re-fit
       }
+      fitPreviewRef.current();               // restore the shrunk preview
     }
     window.addEventListener('beforeprint', fitToPage);
     window.addEventListener('afterprint', resetZoom);
@@ -388,7 +436,9 @@ export function Templates() {
             {/* RIGHT — Template live preview */}
             <div className="tmpl-sheet-panel">
               <div className="tmpl-panel-head">Template (live preview)</div>
-              <Sheet tmpl={active} values={values} />
+              <div className="tmpl-sheet-scroll" ref={sheetWrapRef}>
+                <Sheet tmpl={active} values={values} />
+              </div>
             </div>
           </div>
         </div>

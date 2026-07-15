@@ -1755,14 +1755,30 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
   letter-spacing:0.08em; text-transform:uppercase; color:var(--khaki);
   margin-bottom:12px; padding-bottom:8px; border-bottom:1px dashed var(--line);
 }
-/* The sheet sits inside a narrower right column — drop the fixed max-width
-   and the auto-centering so it fills the panel. */
+/* The sheet sits inside the preview column; the .tmpl-sheet-scroll rule below
+   sets its true A4 width + shadow (supersedes this). */
 .tmpl-sheet-panel .tmpl-sheet{
-  max-width:none; margin:0; box-shadow:0 4px 14px rgba(20,36,61,0.08);
+  max-width: none;
 }
-/* On narrow screens, stack the two panels vertically. */
+
 @media (max-width: 900px){
   .tmpl-split{ grid-template-columns: 1fr; }
+}
+
+/* The live preview shows the sheet at its TRUE A4 width (210mm) and the JS
+   above shrinks it (transform: scale) to fit this column — so the officer
+   sees exactly what the printed / PDF A4 sheet will look like (WYSIWYG),
+   instead of oversized "zoomed-in" text filling a narrow column.  The
+   wrapper clips the scaled sheet and scrolls if it's ever taller than wide. */
+.tmpl-sheet-scroll{
+  overflow: auto;
+  padding: 4px 2px 10px;
+}
+.tmpl-sheet-scroll .tmpl-sheet{
+  width: 210mm;
+  max-width: 210mm;
+  margin: 0 auto;
+  box-shadow: 0 4px 14px rgba(20,36,61,0.10);
 }
 
 /* The printable sheet itself.  White "paper" on screen, scoped to print. */
