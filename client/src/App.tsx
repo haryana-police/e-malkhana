@@ -473,6 +473,7 @@ export default function App() {
       <RegisterCaseModal
         open={openRegister}
         racks={data.racks}
+        user={user}
         onClose={() => setOpenRegister(false)}
         onCreated={reload}
       />
