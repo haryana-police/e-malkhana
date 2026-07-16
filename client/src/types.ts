@@ -177,11 +177,17 @@ export interface SectionMeta {
 
 // The FIR's static master details, entered once and reused per item.
 export interface FirMaster {
-  firNo: string;            // "FIR 214/2026"
+  firNo: string;            // "FIR 214/2026" / "DD 41/2026"
+  recordType?: 'FIR' | 'DD'; // FIR or DD (Daily Diary)
   policeStation: string;
   firDate?: string;         // YYYY-MM-DD
   usSections?: string;      // "NDPS 21, 22" / "BNS 101"
   io?: string;              // Investigating Officer
+  // DD-specific
+  ddDate?: string;          // YYYY-MM-DD
+  natureOfDd?: string;      // UD / Lost Property / Other Misc
+  nameOfDeceased?: string;  // UD case
+  reportingPerson?: string; // lost property / misc reporter
   createdAt?: string;
 }
 
@@ -199,6 +205,14 @@ export interface CasePropertyData {
   photoUrl?: string;
   remarks?: string;
   status?: string;
+  // spec common block (Malkhana receipt event)
+  dateOfReceipt?: string;
+  receivedBy?: string;         // Malkhana Moharrir name
+  malkhanaLocation?: string;   // Malkhana location / placement
+  // per-item seal block
+  sealSealed?: string;         // Yes / No
+  sealNo?: string;             // Seal No. / Mark
+  sealBy?: string;             // Sealed By (officer)
   createdAt?: string;
   fields: { key: string; value: string }[];  // type-specific popup values
 }

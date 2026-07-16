@@ -660,6 +660,40 @@ export async function nextMovementId() {
   return Number(rows[0].id);
 }
 
+// Next unique Malkhana Sr. No. (Register Entry No.), e.g. MK-2026-000521.
+// Uses the `malkhana_seq` sequence so EVERY seized item — even multiple
+// items under one FIR — gets its own monotonic, collision-free number.
+// The caller formats the returned integer via formatMalkhanaSrNo().
+export async function nextMalkhanaSeq() {
+  await ensureReady();
+  const { rows } = await pool.query("SELECT nextval('malkhana_seq') AS n");
+  return Number(rows[0].n);
+}
+
+export function formatMalkhanaSrNo(n) {
+  const y = new Date().getFullYear();
+  return `MK-${y}-${String(n).padStart(6, '0')}`;
+}
+
+// On boot, fast-forward the sequence past any item_id values already in the
+// `cases` table (seed + prod data), so the next nextval() never collides
+// with an existing MK-YYYY-NNNNNN.  idempotent.
+export async function syncMalkhanaSeq() {
+  await ensureReady();
+  const { rows } = await pool.query(
+    `SELECT item_id FROM cases WHERE item_id IS NOT NULL AND item_id ~ '^MK-[0-9]{4}-[0-9]+$'`
+  );
+  let max = 0;
+  for (const r of rows) {
+    const m = /-(\d+)$/.exec(r.item_id);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  await pool.query(
+    `SELECT setval('malkhana_seq', GREATEST($1, 1))`,
+    [max]
+  );
+}
+
 export async function rebuildSectionCounts() {
   await ensureReady();
   await mutate(d => {

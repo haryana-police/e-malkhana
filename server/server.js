@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import {
   getDb, mutate, getCase, getCaseByItemId, getMovements, nextMovementId, rebuildSectionCounts,
+  nextMalkhanaSeq, formatMalkhanaSrNo, syncMalkhanaSeq,
   appendAudit, boot as bootStore, ensureBoot,
 } from './store.js';
 import {
@@ -137,10 +138,18 @@ function daysBetween(fromISO, toISO = nowISO()) {
   return Math.floor((b - a) / 86400000);
 }
 function makeItemId(seed) {
-  // MK-YYYY-NNNNNN  (NNNNNN = digits of caseId, padded)
-  const y = new Date().getFullYear();
-  const digits = (seed.match(/\d+/g) || []).join('').padStart(6, '0').slice(-6);
-  return `MK-${y}-${digits}`;
+  // DEPRECATED deterministic form (derived the number FROM the FIR/DD number
+  // -> collisions for multi-item FIRs).  Kept for callers that pass a seed
+  // but now delegates to the global sequence for a unique, monotonic number.
+  // The seed argument is ignored; the sequence owns the number.
+  throw new Error('makeItemId() is deprecated — use nextMalkhanaSrNo() (async sequence).');
+}
+// Returns the next unique Malkhana Sr. No. (Register Entry No.), e.g.
+// MK-2026-000521.  Each call consumes one sequence value, so even several
+// items registered under the same FIR each get a distinct Sr. No.
+async function nextMalkhanaSrNo() {
+  const n = await nextMalkhanaSeq();
+  return formatMalkhanaSrNo(n);
 }
 function findOrThrow(id) {
   const r = resolveCaseId(id);
@@ -476,95 +485,174 @@ app.get('/api/cases/:id', (req, res, next) => {
 
 app.post('/api/cases', async (req, res, next) => {
   try {
-    const body = req.body || {};
-    const required = ['firOrDd', 'itemType', 'section', 'seizingOfficer', 'seizedOn']; // photo is OPTIONAL
-    for (const k of required) if (!body[k]) { const e = new Error(`missing field: ${k}`); e.status = 400; throw e; }
+    const out = await createOneCase(req, req.body || {});
+    res.status(201).json(withFreshSectionName(out.newCase, getDb()));
+  } catch (e) { next(e); }
+});
 
-    const section = db_sectionByLetter(body.section);
-    const id = body.firOrDd.trim();
-    const itemId = body.itemId || makeItemId(id);
-    const createdAt = nowISO();
+// Shared case-creation logic used by POST /api/cases (single item) and
+// POST /api/cases/batch (multiple items under one FIR/DD).  Validates the
+// FIR/DD number, section, item type, and BNS legal sections; mints a UNIQUE
+// Malkhana Sr. No. (sequence) per item; returns the new case row + metadata
+// the caller needs to write the per-item case_property row.
+async function createOneCase(req, body) {
+  const required = ['firOrDd', 'itemType', 'section', 'seizingOfficer', 'seizedOn']; // photo is OPTIONAL
+  for (const k of required) if (!body[k]) { const e = new Error(`missing field: ${k}`); e.status = 400; throw e; }
 
-    // Item Type: optional controlled-vocabulary link.  The MM picks
-    // from the /api/item-types dropdown (per section).  If supplied we
-    // validate it exists + belongs to the chosen section; the free-text
-    // `description` (e.g. "80 grams, sealed poly bag") carries the
-    // case-specific specifics instead of overloading itemType.
-    let itemTypeId = null, itemTypeName = null;
-    if (body.itemTypeId != null && body.itemTypeId !== '' && body.itemTypeId !== 0) {
-      const it = db_itemTypeById(Number(body.itemTypeId));
-      if (!it) { const e = new Error(`unknown item type id: ${body.itemTypeId}`); e.status = 400; throw e; }
-      if (it.sectionLetter !== section.letter) {
-        const e = new Error(`item type "${it.name}" belongs to Part ${it.sectionLetter}, not Part ${section.letter}`);
-        e.status = 400; throw e;
-      }
-      itemTypeId = it.id;
-      itemTypeName = it.name;
+  const section = db_sectionByLetter(body.section);
+  const id = body.firOrDd.trim();
+  // Unique Malkhana Sr. No. for THIS item (sequence -> no collisions even
+  // when several items share one FIR/DD number).
+  const itemId = body.itemId || await nextMalkhanaSrNo();
+  const createdAt = nowISO();
+
+  // Item Type: optional controlled-vocabulary link.  The MM picks
+  // from /api/item-types dropdown (per section).  If supplied we
+  // validate it exists + belongs to the chosen section; the free-text
+  // `description` (e.g. "80 grams, sealed poly bag") carries the
+  // case-specific specifics instead of overloading itemType.
+  let itemTypeId = null, itemTypeName = null;
+  if (body.itemTypeId != null && body.itemTypeId !== '' && body.itemTypeId !== 0) {
+    const it = db_itemTypeById(Number(body.itemTypeId));
+    if (!it) { const e = new Error(`unknown item type id: ${body.itemTypeId}`); e.status = 400; throw e; }
+    if (it.sectionLetter !== section.letter) {
+      const e = new Error(`item type "${it.name}" belongs to Part ${it.sectionLetter}, not Part ${section.letter}`);
+      e.status = 400; throw e;
     }
+    itemTypeId = it.id;
+    itemTypeName = it.name;
+  }
 
-    // Multi-section support: the user can book a case under several BNS
-    // sections at once (e.g. "BNS 101 — Murder" + "BNS 397 — Causing hurt").
-    // `body.legalSections` is the ordered array of section numbers; each is
-    // validated against bns_sections.  We keep `legalSection`/`legalSectionTitle`
-    // as the *primary* (first) section for the register tag / legacy reports.
-    let legalSection = null, legalSectionTitle = null;
-    let legalSections = [], legalSectionsTitles = [];
-    if (Array.isArray(body.legalSections) && body.legalSections.length) {
-      for (const raw of body.legalSections) {
-        const secNo = String(raw).replace(/^BNS\s+/i, '').trim();
-        const hit = db_bnsSectionByNo(secNo);
-        if (!hit) { const e = new Error(`unknown BNS section: ${raw}`); e.status = 400; throw e; }
-        legalSections.push(hit.sectionNo);
-        legalSectionsTitles.push(hit.title);
-      }
-      legalSection = legalSections[0];
-      legalSectionTitle = legalSectionsTitles[0];
-    } else if (body.legalSection) {
-      // Backward-compat: single section still accepted.
-      const secNo = String(body.legalSection).replace(/^BNS\s+/i, '').trim();
+  // Multi-section support: the user can book a case under several BNS
+  // sections at once (e.g. "BNS 101 — Murder" + "BNS 397 — Causing hurt").
+  // `body.legalSections` is the ordered array of section numbers; each is
+  // validated against bns_sections.  We keep `legalSection`/`legalSectionTitle`
+  // as the *primary* (first) section for the register tag / legacy reports.
+  let legalSection = null, legalSectionTitle = null;
+  let legalSections = [], legalSectionsTitles = [];
+  if (Array.isArray(body.legalSections) && body.legalSections.length) {
+    for (const raw of body.legalSections) {
+      const secNo = String(raw).replace(/^BNS\s+/i, '').trim();
       const hit = db_bnsSectionByNo(secNo);
-      if (!hit) { const e = new Error(`unknown BNS section: ${body.legalSection}`); e.status = 400; throw e; }
-      legalSection = hit.sectionNo;
-      legalSectionTitle = hit.title;
-      legalSections = [hit.sectionNo];
-      legalSectionsTitles = [hit.title];
+      if (!hit) { const e = new Error(`unknown BNS section: ${raw}`); e.status = 400; throw e; }
+      legalSections.push(hit.sectionNo);
+      legalSectionsTitles.push(hit.title);
     }
+    legalSection = legalSections[0];
+    legalSectionTitle = legalSectionsTitles[0];
+  } else if (body.legalSection) {
+    // Backward-compat: single section still accepted.
+    const secNo = String(body.legalSection).replace(/^BNS\s+/i, '').trim();
+    const hit = db_bnsSectionByNo(secNo);
+    if (!hit) { const e = new Error(`unknown BNS section: ${body.legalSection}`); e.status = 400; throw e; }
+    legalSection = hit.sectionNo;
+    legalSectionTitle = hit.title;
+    legalSections = [hit.sectionNo];
+    legalSectionsTitles = [hit.title];
+  }
 
-    // NOTE: sectionName is NOT stored on the case record. It's always
-    // resolved from the live sections table at read time (see
-    // withFreshSectionName). This way section renames propagate to every
-    // existing case without a migration. Only the letter reference is
-    // persisted: c.section = "PART A".
-    //
-    // Likewise itemType / itemSub are the *free-text fallbacks* for
-    // legacy / unknown-type cases.  When itemTypeId is set we
-    // mirror the type name into itemType so the register table keeps
-    // rendering a readable label even before the JOIN; the canonical
-    // value is the foreign key.
-    const newCase = {
-      id,
-      firNo: body.firNo || id,                 // FIR number for register grouping (defaults to id)
-      itemType:   itemTypeName || body.itemType,
-      itemSub:    body.itemSub || '',
-      section:    `PART ${section.letter}`,
-      status:     body.status || 'Seized',
-      seizingOfficer: body.seizingOfficer,
-      seizedOn:   body.seizedOn,
-      itemId,
-      imageUrl:   body.photo || undefined,
-      skipAutoImage: !body.photo,                              // protect newly-registered cases from auto-dummy
-      docRef:     body.supportingDoc || undefined,             // optional — seizure memo URL
-      legalSection,
-      legalSectionTitle,
-      legalSections,
-      legalSectionsTitles,
-      itemTypeId: itemTypeId != null ? itemTypeId : undefined,
-      description: body.description || undefined,
-      createdAt,
-    };
-    await mutate(d => { d.cases.push(newCase); rebuildSectionCountsIn(d); });
-    await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer} on ${body.seizedOn}${legalSection ? ` — BNS ${legalSection} (${legalSectionTitle})` : ''}`);
-    res.status(201).json(withFreshSectionName(newCase, getDb()));
+  const newCase = {
+    id,
+    firNo: body.firNo || id,                 // FIR number for register grouping (defaults to id)
+    itemType:   itemTypeName || body.itemType,
+    itemSub:    body.itemSub || '',
+    section:    `PART ${section.letter}`,
+    status:     body.status || 'Seized',
+    seizingOfficer: body.seizingOfficer,
+    seizedOn:   body.seizedOn,
+    itemId,
+    imageUrl:   body.photo || undefined,
+    skipAutoImage: !body.photo,                              // protect newly-registered cases from auto-dummy
+    docRef:     body.supportingDoc || undefined,             // optional — seizure memo URL
+    legalSection,
+    legalSectionTitle,
+    legalSections,
+    legalSectionsTitles,
+    itemTypeId: itemTypeId != null ? itemTypeId : undefined,
+    description: body.description || undefined,
+    createdAt,
+  };
+  await mutate(d => { d.cases.push(newCase); rebuildSectionCountsIn(d); });
+  await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer} on ${body.seizedOn}${legalSection ? ` — BNS ${legalSection} (${legalSectionTitle})` : ''} — Sr. No. ${itemId}`);
+  return { newCase, itemId, legalSection, legalSectionTitle };
+}
+
+// POST /api/cases/batch  — register several items under one FIR/DD in a
+// single request.  Body:
+//   { firOrDd, firNo?, recordType?, ...firMaster,   // FIR/DD master upserted once
+//     common: { seizedTime, witness1, witness2, quantity, placeOfSeizure,
+//               physicalStorage, remarks, status, dateOfReceipt, receivedBy,
+//               malkhanaLocation, seizedOn?, seizingOfficer? },
+//     items: [ { itemType, section, sectionLetter, itemTypeId?, description?,
+//                category?, malkhanaSection?, legalSections?, photo?,
+//                popupFields:[{key,value}], sealSealed?, sealNo?, sealBy? } ] }
+// Each item gets its OWN unique Malkhana Sr. No.  The FIR master is upserted
+// once; the common block + per-item case_property rows are written under
+// each item's Sr. No.  Returns { items: [{ itemId, ... }], firNo }.
+app.post('/api/cases/batch', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const firNo = String(body.firOrDd || body.firNo || '').trim();
+    if (!firNo) { const e = new Error('firOrDd is required'); e.status = 400; throw e; }
+    if (!Array.isArray(body.items) || !body.items.length) {
+      const e = new Error('items[] is required (at least one)'); e.status = 400; throw e;
+    }
+    // 1) Upsert FIR/DD master once.
+    if (body.policeStation !== undefined || body.recordType || body.ddDate || body.natureOfDd) {
+      await upsertFirMaster({
+        firNo, recordType: body.recordType || 'FIR',
+        policeStation: body.policeStation || '', firDate: body.firDate || null,
+        usSections: body.usSections || null, io: body.io || null,
+        ddDate: body.ddDate || null, natureOfDd: body.natureOfDd || null,
+        nameOfDeceased: body.nameOfDeceased || null, reportingPerson: body.reportingPerson || null,
+      });
+    }
+    // 2) Common block (copied onto every item, with per-item overrides below).
+    const c = body.common || {};
+    const created = [];
+    for (const it of body.items) {
+      const one = await createOneCase(req, {
+        firOrDd: firNo,
+        firNo,
+        itemType: it.itemType,
+        itemSub: it.itemSub || '',
+        section: it.sectionLetter || it.section,   // accept either letter or "PART X"
+        seizingOfficer: it.seizingOfficer || c.seizingOfficer || '',
+        seizedOn: it.seizedOn || c.seizedOn || body.seizedOn || '',
+        itemTypeId: it.itemTypeId != null ? it.itemTypeId : null,
+        legalSections: it.legalSections || c.legalSections || [],
+        description: it.description || '',
+        photo: it.photo || undefined,
+        status: it.status || c.status || 'Seized',
+      });
+      // 3) Write the case_property (common + per-item specific + seal block).
+      const common = {
+        firNo,
+        seizedTime: it.seizedTime ?? c.seizedTime,
+        witness1: c.witness1, witness2: c.witness2,
+        quantity: it.quantity ?? c.quantity,
+        placeOfSeizure: it.placeOfSeizure ?? c.placeOfSeizure,
+        physicalStorage: it.physicalStorage ?? c.physicalStorage,
+        photoUrl: (it.photo ? (await apiUploadInline(it.photo)) : undefined) || c.photoUrl,
+        remarks: it.remarks ?? c.remarks,
+        status: it.status || c.status || 'Seized',
+        dateOfReceipt: it.dateOfReceipt ?? c.dateOfReceipt,
+        receivedBy: it.receivedBy ?? c.receivedBy,
+        malkhanaLocation: it.malkhanaLocation ?? c.malkhanaLocation,
+        sealSealed: it.sealSealed ?? null,
+        sealNo: it.sealNo ?? null,
+        sealBy: it.sealBy ?? null,
+      };
+      const fields = Array.isArray(it.popupFields)
+        ? it.popupFields.map(f => ({ key: f.key, value: f.value }))
+        : [];
+      // Persist the item's chosen Malkhana Section (placement) as a field too.
+      if (it.malkhanaSection) fields.push({ key: 'malkhana_section', value: it.malkhanaSection });
+      if (it.category) fields.push({ key: 'category', value: it.category });
+      await upsertCaseProperty(one.itemId, common, fields);
+      created.push({ itemId: one.itemId, itemType: one.newCase.itemType, section: one.newCase.section });
+    }
+    res.status(201).json({ firNo, items: created });
   } catch (e) { next(e); }
 });
 
@@ -590,6 +678,21 @@ function humanBytes(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// Upload a data: URL photo and return its public URL.  Used by the batch
+// registration endpoint so a per-item photo can be attached inline.  Returns
+// null if the value isn't a valid data URL (caller falls back to common).
+async function apiUploadInline(dataUrl) {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
+  const m = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
+  if (!m) return null;
+  const mime = m[1];
+  const ext = mime.split('/')[1] || 'bin';
+  const safeName = `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const buf = Buffer.from(m[2], 'base64');
+  if (buf.length > 10 * 1024 * 1024) return null;
+  return writeUpload(safeName, buf);
 }
 
 app.patch('/api/cases/:id/status', async (req, res, next) => {
@@ -1205,6 +1308,12 @@ app.post('/api/case-property', async (req, res, next) => {
       photoUrl: common.photoUrl,
       remarks: common.remarks,
       status: common.status || 'Seized',
+      dateOfReceipt: common.dateOfReceipt ?? null,
+      receivedBy: common.receivedBy ?? null,
+      malkhanaLocation: common.malkhanaLocation ?? null,
+      sealSealed: common.sealSealed ?? null,
+      sealNo: common.sealNo ?? null,
+      sealBy: common.sealBy ?? null,
     }, fields.map(f => ({ key: String(f.key), value: f.value == null ? null : String(f.value) })));
     await auditMm(req, 'case.property', itemId, `Saved case property for ${itemId} (${fields.length} type-specific field(s))`);
     res.status(201).json(await getCaseProperty(itemId));

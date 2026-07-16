@@ -438,6 +438,14 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
             <div><span className="k">Witness 1</span><span className="v">{cp.witness1 || '—'}</span></div>
             <div><span className="k">Witness 2</span><span className="v">{cp.witness2 || '—'}</span></div>
             <div><span className="k">Quantity</span><span className="v">{cp.quantity || '—'}</span></div>
+            <div className="case-detail-sub" style={{ margin: '10px 0 8px' }}>Malkhana Receipt</div>
+            <div><span className="k">Date of Receipt</span><span className="v">{cp.dateOfReceipt || '—'}</span></div>
+            <div><span className="k">Received By (Moharrir)</span><span className="v">{cp.receivedBy || '—'}</span></div>
+            <div><span className="k">Malkhana Location</span><span className="v">{cp.malkhanaLocation || '—'}</span></div>
+            <div className="case-detail-sub" style={{ margin: '10px 0 8px' }}>Seal</div>
+            <div><span className="k">Sealed / Unsealed</span><span className="v">{cp.sealSealed || '—'}</span></div>
+            <div><span className="k">Seal No. / Mark</span><span className="v">{cp.sealNo || '—'}</span></div>
+            <div><span className="k">Sealed By</span><span className="v">{cp.sealBy || '—'}</span></div>
             <div><span className="k">Status</span><span className="v">{cp.status || caseRow.status}</span></div>
             {cp.remarks && <div><span className="k">Remarks</span><span className="v">{cp.remarks}</span></div>}
             {cp.photoUrl && <div><span className="k">Photo</span><span className="v"><a href={cp.photoUrl} target="_blank" rel="noreferrer">view</a></span></div>}

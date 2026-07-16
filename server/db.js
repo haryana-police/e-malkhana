@@ -444,6 +444,42 @@ ALTER TABLE case_property ADD COLUMN IF NOT EXISTS physical_storage TEXT;  -- ra
 UPDATE case_property SET place_of_seizure = storage_location
  WHERE place_of_seizure IS NULL AND storage_location IS NOT NULL AND storage_location <> '';
 
+-- ---------------------------------------------------------------------------
+-- Case Property spec (expanded) — DD master + receipt/seal columns.
+-- ---------------------------------------------------------------------------
+
+-- Global sequential counter for the Malkhana Sr. No. (Register Entry No.).
+-- Replaces the old makeItemId() which derived the number deterministically
+-- FROM the FIR/DD number — that produced collisions when one FIR had
+-- multiple items (every item got MK-YYYY-<same digits>).  With a sequence
+-- each seized item gets a unique, monotonic Sr. No. regardless of FIR.
+CREATE SEQUENCE IF NOT EXISTS malkhana_seq START WITH 1;
+
+-- fir_master: extended for DD (Daily Diary) records.  A DD is NOT an FIR —
+-- it covers UD (unnatural death) cases, lost-property reports and other
+-- miscellaneous entries.  The form now branches on record_type:
+--   * FIR -> police_station / fir_date / us_sections / io (+ BNS sections)
+--   * DD  -> dd_date + nature_of_dd, and when nature = UD:
+--           name_of_deceased; when it needs a reporter: reporting_person.
+ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS record_type    TEXT NOT NULL DEFAULT 'FIR';
+ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS dd_date        TEXT;
+ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS nature_of_dd   TEXT;     -- UD / Lost Property / Other Misc
+ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS name_of_deceased TEXT;   -- UD case
+ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS reporting_person TEXT;   -- lost property / misc
+
+-- case_property: spec's per-FIR common block + per-item seal block.
+--   * date_of_receipt / received_by / malkhana_location -> the Malkhana
+--     receipt event (who logged it, where it was placed) — entered ONCE
+--     per FIR but copied onto every item.
+--   * seal_sealed / seal_no / seal_by -> per-item seal status (every
+--     article is either Sealed or Unsealed, with a seal mark + officer).
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS date_of_receipt TEXT;
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS received_by     TEXT;
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS malkhana_location TEXT;
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS seal_sealed     TEXT;  -- Yes / No
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS seal_no        TEXT;  -- Seal No. / Mark
+ALTER TABLE case_property ADD COLUMN IF NOT EXISTS seal_by        TEXT;  -- Sealed By (officer)
+
 -- item_type_fields: the DEFINITION of the dynamic popup fields, one row
 -- per field per Malkhana section (A–E).  Mirrors the spec's "Item Type
 -- Form Builder" — admins add/edit/delete/reorder these without coding.
@@ -822,26 +858,41 @@ export async function getFirMaster(firNo) {
   if (!rows[0]) return null;
   const r = rows[0];
   return {
-    firNo: r.fir_no, policeStation: r.police_station, firDate: r.fir_date,
-    usSections: r.us_sections, io: r.io, createdAt: r.created_at,
+    firNo: r.fir_no, recordType: r.record_type || 'FIR',
+    policeStation: r.police_station, firDate: r.fir_date,
+    usSections: r.us_sections, io: r.io,
+    ddDate: r.dd_date || null, natureOfDd: r.nature_of_dd || null,
+    nameOfDeceased: r.name_of_deceased || null, reportingPerson: r.reporting_person || null,
+    createdAt: r.created_at,
   };
 }
 
-// Insert or update a FIR master row.  Returns the upserted row.
+// Insert or update a FIR/DD master row.  Returns the upserted row.
+// `recordType` + DD-specific fields are only meaningful when recordType='DD'.
 export async function upsertFirMaster(fir) {
   const { rows } = await pool.query(
-    `INSERT INTO fir_master (fir_no, police_station, fir_date, us_sections, io)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO fir_master (fir_no, police_station, fir_date, us_sections, io,
+                             record_type, dd_date, nature_of_dd, name_of_deceased, reporting_person)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (fir_no) DO UPDATE
        SET police_station = EXCLUDED.police_station, fir_date = EXCLUDED.fir_date,
-           us_sections = EXCLUDED.us_sections, io = EXCLUDED.io
+           us_sections = EXCLUDED.us_sections, io = EXCLUDED.io,
+           record_type = EXCLUDED.record_type, dd_date = EXCLUDED.dd_date,
+           nature_of_dd = EXCLUDED.nature_of_dd, name_of_deceased = EXCLUDED.name_of_deceased,
+           reporting_person = EXCLUDED.reporting_person
      RETURNING *`,
-    [fir.firNo, fir.policeStation || '', fir.firDate || null, fir.usSections || null, fir.io || null]
+    [fir.firNo, fir.policeStation || '', fir.firDate || null, fir.usSections || null, fir.io || null,
+     fir.recordType || 'FIR', fir.ddDate || null, fir.natureOfDd || null,
+     fir.nameOfDeceased || null, fir.reportingPerson || null]
   );
   const r = rows[0];
   return {
-    firNo: r.fir_no, policeStation: r.police_station, firDate: r.fir_date,
-    usSections: r.us_sections, io: r.io, createdAt: r.created_at,
+    firNo: r.fir_no, recordType: r.record_type || 'FIR',
+    policeStation: r.police_station, firDate: r.fir_date,
+    usSections: r.us_sections, io: r.io,
+    ddDate: r.dd_date || null, natureOfDd: r.nature_of_dd || null,
+    nameOfDeceased: r.name_of_deceased || null, reportingPerson: r.reporting_person || null,
+    createdAt: r.created_at,
   };
 }
 
@@ -866,6 +917,14 @@ export async function getCaseProperty(itemId) {
     photoUrl: r.photo_url,
     remarks: r.remarks,
     status: r.status,
+    // spec common block
+    dateOfReceipt: r.date_of_receipt || null,
+    receivedBy: r.received_by || null,
+    malkhanaLocation: r.malkhana_location || null,
+    // per-item seal block
+    sealSealed: r.seal_sealed || null,
+    sealNo: r.seal_no || null,
+    sealBy: r.seal_by || null,
     createdAt: r.created_at,
     fields: fRes.rows.map((f) => ({ key: f.field_key, value: f.field_value })),
   };
@@ -874,20 +933,29 @@ export async function getCaseProperty(itemId) {
 // Write the COMMON case_property row + the per-item popup field values.
 // `common.physicalStorage` = the real rack/almirah/yard slot; `common.placeOfSeizure`
 // = where the article was seized.  `common.storageLocation` (legacy) is kept
-// as an alias of place_of_seizure for backward compatibility.
+// as an alias of place_of_seizure for backward compatibility.  `common` also
+// carries the spec's receipt event (date_of_receipt / received_by /
+// malkhana_location) and the per-item seal block (seal_sealed / seal_no /
+// seal_by).
 export async function upsertCaseProperty(itemId, common, fields) {
   const place = common.placeOfSeizure ?? common.storageLocation ?? null;
   await pool.query(
-    `INSERT INTO case_property (item_id, fir_no, seized_time, witness1, witness2, quantity, storage_location, place_of_seizure, physical_storage, photo_url, remarks, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO case_property (item_id, fir_no, seized_time, witness1, witness2, quantity, storage_location, place_of_seizure, physical_storage, photo_url, remarks, status,
+                                date_of_receipt, received_by, malkhana_location, seal_sealed, seal_no, seal_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
      ON CONFLICT (item_id) DO UPDATE
        SET fir_no = EXCLUDED.fir_no, seized_time = EXCLUDED.seized_time, witness1 = EXCLUDED.witness1,
            witness2 = EXCLUDED.witness2, quantity = EXCLUDED.quantity, storage_location = EXCLUDED.storage_location,
            place_of_seizure = EXCLUDED.place_of_seizure, physical_storage = EXCLUDED.physical_storage,
-           photo_url = EXCLUDED.photo_url, remarks = EXCLUDED.remarks, status = EXCLUDED.status`,
+           photo_url = EXCLUDED.photo_url, remarks = EXCLUDED.remarks, status = EXCLUDED.status,
+           date_of_receipt = EXCLUDED.date_of_receipt, received_by = EXCLUDED.received_by,
+           malkhana_location = EXCLUDED.malkhana_location, seal_sealed = EXCLUDED.seal_sealed,
+           seal_no = EXCLUDED.seal_no, seal_by = EXCLUDED.seal_by`,
     [itemId, common.firNo || null, common.seizedTime || null, common.witness1 || null,
      common.witness2 || null, common.quantity || null, place, place,
-     common.physicalStorage || null, common.photoUrl || null, common.remarks || null, common.status || 'Seized']
+     common.physicalStorage || null, common.photoUrl || null, common.remarks || null, common.status || 'Seized',
+     common.dateOfReceipt || null, common.receivedBy || null, common.malkhanaLocation || null,
+     common.sealSealed || null, common.sealNo || null, common.sealBy || null]
   );
   for (const f of fields) {
     if (f.key == null || f.key === '') continue;
@@ -1062,10 +1130,15 @@ export async function seedInspectionsIfEmpty() {
 
 // Convenience: ensure everything is ready before any read or write.  Call
 // this at the top of every exported store function.
+let _seqSynced = false;
 export async function ensureReady() {
   await seedIfEmpty();
   await seedBnsSectionsIfEmpty();
   await seedItemTypesIfEmpty();
   await seedItemTypeFieldsIfEmpty();
   await seedInspectionsIfEmpty();
+  if (!_seqSynced) {
+    _seqSynced = true;
+    try { await syncMalkhanaSeq(); } catch (e) { console.warn('[db] syncMalkhanaSeq failed (non-fatal):', e && e.message); }
+  }
 }

@@ -119,6 +119,21 @@ export const api = {
   caseProperty: (itemId: string) => get<CasePropertyData>(`/case-property/${encodeURIComponent(itemId)}`),
   saveCaseProperty: (payload: { itemId: string; firNo?: string; common: Record<string, string>; fields: { key: string; value: string }[] }) =>
     send<CasePropertyData>('POST', '/case-property', payload),
+  // Multi-item registration under one FIR/DD.  See server.js POST /api/cases/batch.
+  createCaseBatch: (payload: {
+    firOrDd: string; firNo?: string; recordType?: 'FIR' | 'DD';
+    policeStation?: string; firDate?: string | null; usSections?: string | null; io?: string | null;
+    ddDate?: string | null; natureOfDd?: string | null; nameOfDeceased?: string | null; reportingPerson?: string | null;
+    common: Record<string, any>;
+    items: Array<{
+      itemType: string; sectionLetter: string; itemTypeId?: number | null; description?: string;
+      category?: string; subType?: string; malkhanaSection?: string; legalSections?: string[];
+      seizedOn?: string; seizingOfficer?: string; photo?: string; status?: string;
+      quantity?: string; placeOfSeizure?: string; physicalStorage?: string; remarks?: string;
+      sealSealed?: string; sealNo?: string; sealBy?: string;
+      popupFields: { key: string; value: string }[];
+    }>;
+  }) => send<{ firNo: string; items: { itemId: string; itemType: string; section: string }[] }>('POST', '/cases/batch', payload),
   sections:    (active: 'true' | 'false' | 'all' = 'true') =>
     get<{ letter: string; name: string; count: number; active?: boolean }[]>(`/sections?active=${active}`),
   // manager CRUD (auth as the signed-in MM, like the sections API)
