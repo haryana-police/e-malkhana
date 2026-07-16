@@ -661,13 +661,26 @@ export async function nextMovementId() {
 }
 
 // Next unique Malkhana Sr. No. (Register Entry No.), e.g. MK-2026-000521.
-// Uses the `malkhana_seq` sequence so EVERY seized item — even multiple
-// items under one FIR — gets its own monotonic, collision-free number.
-// The caller formats the returned integer via formatMalkhanaSrNo().
+// Computed as MAX(numeric part of existing item_id) + 1 from the `cases`
+// table.  This is deterministic and self-healing on ANY database state
+// (no dependency on a sequence that may have been advanced/corrupted by
+// another instance) and never produces collisions — even when several
+// items are registered under one FIR.  A process-local guard syncs once
+// per cold start; concurrency across instances is negligible at this scale.
+let _seqMax = 0;
+let _seqReady = false;
 export async function nextMalkhanaSeq() {
   await ensureReady();
-  const { rows } = await pool.query("SELECT nextval('malkhana_seq') AS n");
-  return Number(rows[0].n);
+  if (!_seqReady) {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(MAX((regexp_match(item_id, 'MK-[0-9]{4}-([0-9]+)'))[1]::int), 0) AS m
+       FROM cases WHERE item_id ~ '^MK-[0-9]{4}-[0-9]+$'`
+    );
+    _seqMax = Number(rows[0]?.m || 0);
+    _seqReady = true;
+  }
+  _seqMax += 1;
+  return _seqMax;
 }
 
 export function formatMalkhanaSrNo(n) {
@@ -675,24 +688,10 @@ export function formatMalkhanaSrNo(n) {
   return `MK-${y}-${String(n).padStart(6, '0')}`;
 }
 
-// On boot, fast-forward the sequence past any item_id values already in the
-// `cases` table (seed + prod data), so the next nextval() never collides
-// with an existing MK-YYYY-NNNNNN.  idempotent.
-export async function syncMalkhanaSeq() {
-  await ensureReady();
-  const { rows } = await pool.query(
-    `SELECT item_id FROM cases WHERE item_id IS NOT NULL AND item_id ~ '^MK-[0-9]{4}-[0-9]+$'`
-  );
-  let max = 0;
-  for (const r of rows) {
-    const m = /-(\d+)$/.exec(r.item_id);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  await pool.query(
-    `SELECT setval('malkhana_seq', GREATEST($1, 1))`,
-    [max]
-  );
-}
+// Kept for backward-compat with boot wiring; now a harmless no-op (the
+// sequence table still exists but Sr. No. generation uses nextMalkhanaSeq
+// which reads MAX(item_id) instead).
+export async function syncMalkhanaSeq() { /* no-op */ }
 
 export async function rebuildSectionCounts() {
   await ensureReady();

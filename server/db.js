@@ -542,10 +542,18 @@ CREATE INDEX IF NOT EXISTS inspections_station_idx ON inspections (police_statio
 export async function initSchema() {
   if (_schemaReady) return _schemaReady;
   _schemaReady = (async () => {
+    // Strip SQL line comments (-- ...) BEFORE splitting on ';'.  Otherwise a
+    // comment line (e.g. one containing the word "when") can be mis-parsed as
+    // a statement fragment and throw "syntax error at or near ...".  Block
+    // comments (/* */) aren't used in SCHEMA_SQL, so a line-strip is enough.
+    const cleaned = SCHEMA_SQL
+      .split('\n')
+      .map(line => line.replace(/--.*$/, ''))
+      .join('\n');
     // Run each DDL statement separately so a parse error in one doesn't
     // abort the rest.  Postgres doesn't accept multi-statement queries
     // through the simple query protocol by default.
-    for (const stmt of SCHEMA_SQL.split(';').map(s => s.trim()).filter(Boolean)) {
+    for (const stmt of cleaned.split(';').map(s => s.trim()).filter(Boolean)) {
       await pool.query(stmt);
     }
   })();
@@ -1130,15 +1138,10 @@ export async function seedInspectionsIfEmpty() {
 
 // Convenience: ensure everything is ready before any read or write.  Call
 // this at the top of every exported store function.
-let _seqSynced = false;
 export async function ensureReady() {
   await seedIfEmpty();
   await seedBnsSectionsIfEmpty();
   await seedItemTypesIfEmpty();
   await seedItemTypeFieldsIfEmpty();
   await seedInspectionsIfEmpty();
-  if (!_seqSynced) {
-    _seqSynced = true;
-    try { await syncMalkhanaSeq(); } catch (e) { console.warn('[db] syncMalkhanaSeq failed (non-fatal):', e && e.message); }
-  }
 }

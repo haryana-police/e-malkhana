@@ -2483,6 +2483,9 @@ if (!IS_VERCEL) {
       console.error('[boot] failed to load store mirror:', e && e.message);
       console.error('[boot] start anyway — first request will retry and surface the real error');
     }
+    // Fast-forward malkhana_seq past existing item_id values so the next
+    // Sr. No. never collides with a seeded/prod MK-YYYY-NNNNNN.
+    try { await syncMalkhanaSeq(); } catch (e) { console.error('[boot] syncMalkhanaSeq failed (non-fatal):', e && e.message); }
     ensureUploadsDir();
     backfillImages();
     try { mutate(d => { rebuildSectionCountsIn(d); }); }
@@ -2523,6 +2526,8 @@ if (!IS_VERCEL) {
       // in store.js's _bootError so getDb() throws the real message.
       throw e;
     }
+    // Fast-forward malkhana_seq past existing item_id values.
+    try { await syncMalkhanaSeq(); } catch (e) { console.error('[boot] syncMalkhanaSeq failed (non-fatal):', e && e.message); }
     try {
       ensureUploadsDir();
       backfillImages();
