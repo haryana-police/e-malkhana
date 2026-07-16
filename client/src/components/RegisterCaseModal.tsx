@@ -430,10 +430,10 @@ export function RegisterCaseModal({ open, racks, onClose, onCreated }: Props) {
           <hr style={{ width: '100%', border: 'none', borderTop: '1px solid var(--line)', margin: '4px 0' }} />
 
           {/* ---- multi-item list ---- */}
-          <label className="full" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="full" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontWeight: 700 }}>Seized Items ({items.length})</span>
             <button type="button" className="btn" onClick={addItem} disabled={busy}>+ Add Item</button>
-          </label>
+          </div>
 
           {items.length === 0 && (
             <div className="sub" style={{ padding: 12 }}>No items yet — click “+ Add Item” to add each seized article.</div>
