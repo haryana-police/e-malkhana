@@ -37,19 +37,25 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     label: 'Narcotics / NDPS Article',
     sectionLetter: 'A',
     subTypeLabel: 'Narcotic Type',
+    // Sub-types mirror the official NDPS Quantity Classification Table exactly
+    // (so the Small / Intermediate / Commercial thresholds map 1:1 to a substance).
     subTypes: [
-      'Heroin (Smack)', 'Charas/Hashish', 'Ganja (Cannabis)', 'Opium (Afeem)',
-      'Cocaine', 'MDMA/Ecstasy', 'Ketamine', 'Poppy Husk (Doda/Post)',
-      'Pseudoephedrine/Precursor Chemical', 'Other Psychotropic Substance',
+      'Heroin (Diacetylmorphine)',
+      'Ganja (Cannabis)',
+      'Charas / Hashish',
+      'Opium',
+      'Poppy Straw',
+      'Cocaine',
+      'Alprazolam',
+      'Codeine (Cough Syrups)',
     ],
     fields: [
-      { key: 'quantity_seized', label: 'Quantity Seized', type: 'text', placeholder: 'e.g. 250 g / 1.2 kg', unit: 'g/kg' },
+      { key: 'quantity_seized', label: 'Quantity Seized (g/kg)', type: 'text', placeholder: 'e.g. 250 g / 1.2 kg', unit: 'g/kg' },
       { key: 'packing_type', label: 'Packing Type', type: 'select', options: ['Pouch', 'Packet', 'Loose', 'Bottle', 'Other'] },
       { key: 'no_of_packets', label: 'No. of Packets', type: 'number' },
       { key: 'sample_drawn', label: 'Sample Drawn', type: 'select', options: ['Yes', 'No'] },
       { key: 'sample_qty', label: 'Qty of Sample', type: 'text', placeholder: 'e.g. 10 g' },
       { key: 'fsl_seal_no', label: 'FSL Sample Sealed Packet No.', type: 'text' },
-      { key: 'quantity_class', label: 'Commercial / Intermediate / Small', type: 'select', options: ['Commercial', 'Intermediate', 'Small', 'Not Assessed'] },
       { key: 'market_value', label: 'Approx. Market Value', type: 'number', unit: 'Rs.' },
       { key: 'ncb_informed', label: 'NCB Informed', type: 'select', options: ['Yes', 'No'] },
     ],
@@ -60,8 +66,10 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     sectionLetter: 'B',
     subTypeLabel: 'Type',
     subTypes: [
-      'Country-made Pistol (Katta)', 'Revolver', 'Rifle', 'Sword/Knife/Sharp weapon',
-      'Live Cartridge', 'Empty Cartridge/Shell', 'Explosive/Bomb material',
+      'Firearms (Pistol, Revolver, Rifle, Gun)',
+      'Sharp weapons (Knife, Sword, Farsa, Gandasa)',
+      'Blunt weapons (Lathi, Danda, Iron rod)',
+      'Explosives/Bombs',
     ],
     fields: [
       { key: 'no_of_weapons', label: 'No. of Weapons', type: 'number' },
@@ -74,8 +82,10 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
   },
   {
     id: 'cash',
-    label: 'Cash / Currency',
+    label: 'Currency & Valuables',
     sectionLetter: 'C',
+    subTypeLabel: 'Type',
+    subTypes: ['Indian currency (genuine)', 'Fake/Counterfeit currency'],
     fields: [
       { key: 'denom_breakup', label: 'Denomination-wise breakup', type: 'text', placeholder: '₹2000: 100, ₹500: 80 …' },
       { key: 'total_amount', label: 'Total Amount', type: 'number', unit: 'Rs.' },
@@ -86,10 +96,10 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
   },
   {
     id: 'gold',
-    label: 'Gold / Silver / Jewellery',
+    label: 'Jewellery',
     sectionLetter: 'C',
     subTypeLabel: 'Type',
-    subTypes: ['Gold Ornament', 'Silver Ornament', 'Gold Coin/Biscuit', 'Diamond/Studded Jewellery'],
+    subTypes: ['Gold ornaments', 'Silver ornaments', 'Precious stones/jewellery'],
     fields: [
       { key: 'weight', label: 'Weight', type: 'text', unit: 'grams' },
       { key: 'purity', label: 'Purity', type: 'text', placeholder: 'Carat / Hallmark' },
@@ -103,7 +113,7 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     label: 'Vehicle',
     sectionLetter: 'D',
     subTypeLabel: 'Type',
-    subTypes: ['Two-Wheeler', 'Four-Wheeler', 'Commercial Vehicle', 'Tractor'],
+    subTypes: ['Two-wheeler', 'Four-wheeler', 'Commercial vehicle', 'Vehicle parts/spare parts'],
     fields: [
       { key: 'reg_no', label: 'Registration No.', type: 'text' },
       { key: 'chassis_no', label: 'Chassis No.', type: 'text' },
@@ -120,7 +130,7 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     label: 'Electronic / Digital Evidence',
     sectionLetter: 'C',
     subTypeLabel: 'Type',
-    subTypes: ['Mobile Phone', 'Laptop/Computer', 'Hard Disk/Pen Drive', 'SIM Card', 'CCTV DVR'],
+    subTypes: ['Mobile phones', 'Laptops/Computers', 'SIM cards/Memory cards', 'Other electronic devices'],
     fields: [
       { key: 'imei_no', label: 'IMEI No. (mobile)', type: 'text' },
       { key: 'brand_model', label: 'Brand / Model', type: 'text' },
@@ -161,7 +171,7 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     label: 'Liquor (Illicit / NDPS-Excise)',
     sectionLetter: 'A',
     subTypeLabel: 'Type',
-    subTypes: ['Country Liquor (Deshi Sharab)', 'Foreign Liquor (Without Permit)', 'Beer', 'Raw Material (Lahan/Wash)'],
+    subTypes: ['Country liquor (illicit)', 'Foreign/IMFL liquor', 'Empty bottles/manufacturing equipment'],
     fields: [
       { key: 'quantity2', label: 'Quantity', type: 'text', placeholder: 'Liters / Bottles / Pouches' },
       { key: 'no_of_bottles', label: 'No. of Bottles / Pouches', type: 'number' },
@@ -182,8 +192,10 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
   },
   {
     id: 'other',
-    label: 'Other',
+    label: 'Miscellaneous',
     sectionLetter: 'C',
+    subTypeLabel: 'Type',
+    subTypes: ['Other/Unclassified items'],
     fields: [
       { key: 'other_desc', label: 'Description', type: 'text', placeholder: 'Describe the article' },
     ],
@@ -193,4 +205,100 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
 export function getCategory(id: string | null | undefined): ItemCategory | undefined {
   if (!id) return undefined;
   return ITEM_CATEGORIES.find(c => c.id === id);
+}
+
+// =====================================================================
+// NDPS QUANTITY CLASSIFICATION TABLE (Small / Intermediate / Commercial)
+// ---------------------------------------------------------------------
+// Thresholds are the officially-notified quantities under the NDPS Act.
+// `small`      = Small Quantity threshold (≤)
+// `commercial` = Commercial Quantity threshold (≥)
+// Anything strictly between the two qualifies as Intermediate Quantity.
+// Weights are stored in GRAMS so the classifier can compare numerically.
+// =====================================================================
+export interface NdpsThreshold {
+  subType: string;     // EXACT match to a narcotics subType in ITEM_CATEGORIES
+  small: number;       // grams
+  commercial: number;  // grams
+}
+
+export const NDPS_THRESHOLDS: NdpsThreshold[] = [
+  { subType: 'Heroin (Diacetylmorphine)', small: 5,          commercial: 250 },
+  { subType: 'Ganja (Cannabis)',          small: 1000,       commercial: 20000 },
+  { subType: 'Charas / Hashish',          small: 100,        commercial: 1000 },
+  { subType: 'Opium',                     small: 25,         commercial: 2500 },
+  { subType: 'Poppy Straw',               small: 1000,       commercial: 50000 },
+  { subType: 'Cocaine',                   small: 2,          commercial: 100 },
+  { subType: 'Alprazolam',                small: 5,          commercial: 100 },
+  { subType: 'Codeine (Cough Syrups)',    small: 10,         commercial: 1000 },
+];
+
+// Human-readable threshold table rows (for help/legend UI).
+export interface NdpsTableRow {
+  name: string;
+  small: string;
+  commercial: string;
+  intermediate: string;
+}
+export const NDPS_TABLE: NdpsTableRow[] = [
+  { name: 'Heroin (Diacetylmorphine)', small: 'Up to 5 g',        commercial: 'Above 250 g',         intermediate: '> 5 g but < 250 g' },
+  { name: 'Ganja (Cannabis)',          small: 'Up to 1 kg',       commercial: 'Above 20 kg',          intermediate: '> 1 kg but < 20 kg' },
+  { name: 'Charas / Hashish',          small: 'Up to 100 g',      commercial: 'Above 1 kg',           intermediate: '> 100 g but < 1 kg' },
+  { name: 'Opium',                     small: 'Up to 25 g',       commercial: 'Above 2.5 kg',         intermediate: '> 25 g but < 2.5 kg' },
+  { name: 'Poppy Straw',               small: 'Up to 1 kg',       commercial: 'Above 50 kg',          intermediate: '> 1 kg but < 50 kg' },
+  { name: 'Cocaine',                   small: 'Up to 2 g',        commercial: 'Above 100 g',          intermediate: '> 2 g but < 100 g' },
+  { name: 'Alprazolam',                small: 'Up to 5 g',        commercial: 'Above 100 g',          intermediate: '> 5 g but < 100 g' },
+  { name: 'Codeine (Cough Syrups)',    small: 'Up to 10 g',       commercial: 'Above 1 kg',           intermediate: '> 10 g but < 1 kg' },
+];
+
+export type NdpsClass = 'Small' | 'Intermediate' | 'Commercial' | 'Unknown';
+
+/**
+ * Parse a weight string like "250 g", "1.2 kg", "1 kg 200 g", "500" (assumed g)
+ * into grams. Returns NaN when no number can be parsed.
+ */
+export function parseQuantityToGrams(raw: string): number {
+  if (!raw) return NaN;
+  const s = String(raw).toLowerCase().trim();
+  if (!s) return NaN;
+
+  let total = NaN;
+  // Combined "X kg Y g" form (e.g. "1 kg 200 g")
+  const combo = s.match(/([\d.]+)\s*kg\s*([\d.]+)\s*g/);
+  if (combo) {
+    total = parseFloat(combo[1]) * 1000 + parseFloat(combo[2]);
+  } else {
+    // Split by unit: sum every "<number> <unit>" token.
+    let sum = 0;
+    let found = false;
+    const re = /([\d.]+)\s*(kg|kilogram|kgs|g|gm|gram|grams|mg|milligram)?/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(s)) !== null) {
+      const num = parseFloat(m[1]);
+      if (Number.isNaN(num)) continue;
+      const unit = (m[2] || 'g').toLowerCase();
+      const mult = unit.startsWith('k') ? 1000 : unit.startsWith('m') ? 0.001 : 1;
+      sum += num * mult;
+      found = true;
+    }
+    if (found) total = sum;
+  }
+  return total;
+}
+
+/**
+ * Classify a seized narcotics quantity into Small / Intermediate / Commercial
+ * using the NDPS Quantity Classification Table for the given substance.
+ * Returns 'Unknown' when the substance has no threshold or the quantity
+ * cannot be parsed.
+ */
+export function classifyNdps(subType: string, quantityRaw: string): NdpsClass {
+  if (!subType) return 'Unknown';
+  const t = NDPS_THRESHOLDS.find(x => x.subType === subType);
+  if (!t) return 'Unknown';
+  const g = parseQuantityToGrams(quantityRaw);
+  if (Number.isNaN(g)) return 'Unknown';
+  if (g <= t.small) return 'Small';
+  if (g >= t.commercial) return 'Commercial';
+  return 'Intermediate';
 }
