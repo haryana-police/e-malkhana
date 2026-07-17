@@ -63,6 +63,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
   // ---------- record type + FIR/DD master ----------
   const [recordType, setRecordType] = useState<'FIR' | 'DD'>('FIR');
   const [firNo, setFirNo] = useState('');
+  const [ddNo, setDdNo] = useState('');            // secondary DD reference (optional)
   const [firChecking, setFirChecking] = useState(false);
   const [firExists, setFirExists] = useState<boolean | null>(null);
   const [firLoaded, setFirLoaded] = useState(false);
@@ -86,7 +87,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
   const [seizedTime, setSeizedTime] = useState('10:00');
   const [dateOfReceipt, setDateOfReceipt] = useState(today);
   const [receivedBy, setReceivedBy] = useState('');
-  const [malkhanaLocation, setMalkhanaLocation] = useState('');
 
   // ---------- multi-item list ----------
   const [items, setItems] = useState<DraftItem[]>([]);
@@ -124,14 +124,14 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
   }, [bnsOpen]);
 
   function reset() {
-    setStep(1); setRecordType('FIR'); setFirNo(''); setFirExists(null); setFirLoaded(false);
+    setStep(1); setRecordType('FIR'); setFirNo(''); setDdNo(''); setFirExists(null); setFirLoaded(false);
     setFirDate(today); setDdDate(today); setNatureOfDd(''); setNameOfDeceased(''); setReportingPerson('');
     setBnsQuery(''); setLegalSections([]);
-    setSeizedTime('10:00'); setDateOfReceipt(today); setReceivedBy(''); setMalkhanaLocation('');
+    setSeizedTime('10:00'); setDateOfReceipt(today); setReceivedBy('');
     setItems([]); setMsg(null); setErrors([]);
   }
 
-  // ---------- FIR/DD lookup ----------
+  // ---------- FIR/DD lookup (fetches existing data if present) ----------
   async function checkFir() {
     const no = firNo.trim();
     const prefix = recordType === 'DD' ? 'DD ' : 'FIR ';
@@ -209,7 +209,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
     const e: string[] = [];
     if (!firNo.trim()) e.push('FIR/DD number is required.');
     if (recordType === 'DD' && !natureOfDd) e.push('Select the Nature of DD.');
-    if (recordType === 'DD' && natureOfDd === 'UD Case (Unnatural Death)' && !nameOfDeceased.trim())
+    if (recordType === 'DD' && natureOfDd === 'UD Case (UnnaturalDeath)' && !nameOfDeceased.trim())
       e.push('Name of Deceased is required for a UD case.');
     if (!dateOfReceipt) e.push('Date of Receipt in Malkhana is required.');
     if (!receivedBy.trim()) e.push('Received By (Malkhana Moharrir) is required.');
@@ -252,12 +252,12 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
         io: defaultIo(user),               // auto from signed-in MM
         ddDate: recordType === 'DD' ? ddDate : null,
         natureOfDd: recordType === 'DD' ? natureOfDd : null,
-        nameOfDeceased: recordType === 'DD' && natureOfDd === 'UD Case (Unnatural Death)' ? nameOfDeceased : null,
+        nameOfDeceased: recordType === 'DD' && natureOfDd === 'UD Case (UnnaturalDeath)' ? nameOfDeceased : null,
         reportingPerson: recordType === 'DD' && (natureOfDd === 'Lost Property Report' || natureOfDd === 'Other Miscellaneous Entry') ? reportingPerson : null,
         common: {
           seizedTime,
           witness1: null, witness2: null,  // removed from form
-          dateOfReceipt, receivedBy, malkhanaLocation,
+          dateOfReceipt, receivedBy, malkhanaLocation: '',
           legalSections: legalSections.map(s => s.sectionNo),
           seizingOfficer: items[0]?.seizingOfficer || defaultIo(user),
           seizedOn: items[0]?.seizedOn || today,
@@ -266,11 +266,11 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
           const cat = getCategory(it.categoryId);
           const itemFields: { key: string; value: string }[] = [];
           if (cat?.subTypes && it.subType) itemFields.push({ key: 'sub_type', value: it.subType });
+          if (ddNo.trim()) itemFields.push({ key: 'dd_no', value: ddNo.trim() });   // persist optional DD ref
           for (const f of cat?.fields || []) {
             const val = it.catValues[f.key];
             if (val != null && val !== '') itemFields.push({ key: f.key, value: val });
           }
-          // sequential preview hint (real Sr. No assigned server-side)
           return {
             itemType: (cat?.subTypes && it.subType) ? `${cat.label} — ${it.subType}` : (cat?.label || 'Article'),
             sectionLetter: it.sectionLetter,
@@ -306,11 +306,29 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
 
   if (!open) return null;
 
+  const lookupPill = firChecking
+    ? <span className="lookup-pill checking">checking…</span>
+    : firExists === true
+      ? <span className="lookup-pill ok">✓ Fetched from records</span>
+      : firExists === false && firNo.trim()
+        ? <span className="lookup-pill neu">New — not on file</span>
+        : null;
+
   return (
     <div className={`overlay${open ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget && !busy) { reset(); onClose(); } }}>
-      <form className="form-card" onSubmit={submit} style={{ maxWidth: 760 }}>
+      <form
+        className="form-card rc"
+        onSubmit={submit}
+        style={step === 2
+          ? { width: 'min(1120px, 95vw)', maxWidth: 1120 }
+          : { width: 560, maxWidth: 560 }}
+      >
         <button type="button" className="tag-close" onClick={() => { reset(); onClose(); }} aria-label="Close">✕</button>
-        <h3>Register New Case Property</h3>
+
+        <div className="rc-head">
+          <h3>Register New Case Property</h3>
+          <p className="rc-sub">Step {step} of 2 — {step === 1 ? 'FIR / DD & Receipt' : 'Seized Items'}</p>
+        </div>
 
         {/* ----- stepper ----- */}
         <div className="stepper">
@@ -327,244 +345,266 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
           <div className="station-badge">📍 Station: <b>{station}</b> &nbsp;·&nbsp; Moharrir: <b>{user?.name}</b></div>
         )}
 
-        {step === 1 && (
-          <div className="form-grid">
-            <label>
-              Record Type
-              <select value={recordType} onChange={e => { setRecordType(e.target.value as 'FIR' | 'DD'); setFirExists(null); setFirLoaded(false); }}>
-                <option value="FIR">FIR</option>
-                <option value="DD">DD (Daily Diary)</option>
-              </select>
-            </label>
-            <label className="full">
-              {recordType === 'DD' ? 'DD No.' : 'FIR No.'}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  value={firNo}
-                  onChange={e => { setFirNo(e.target.value); setFirExists(null); setFirLoaded(false); }}
-                  placeholder={recordType === 'DD' ? 'e.g. DD 12/2026' : 'e.g. FIR 245/2026'}
-                  required
-                />
-                <button type="button" className="btn ghost" onClick={checkFir} disabled={busy || firChecking}>
-                  {firChecking ? '…' : 'Lookup'}
-                </button>
-              </div>
-            </label>
+        {/* ============ SCROLLABLE BODY ============ */}
+        <div className="rc-body">
 
-            {recordType === 'FIR' ? (
-              <label>FIR Date
-                <input type="date" value={firDate} max={today} onChange={e => setFirDate(e.target.value)} />
-              </label>
-            ) : (
-              <>
-                <label>DD Date
-                  <input type="date" value={ddDate} max={today} onChange={e => setDdDate(e.target.value)} />
-                </label>
-                <label>Nature of DD
-                  <select value={natureOfDd} onChange={e => setNatureOfDd(e.target.value)}>
-                    <option value="">— select —</option>
-                    <option value="UD Case (Unnatural Death)">UD Case (Unnatural Death)</option>
-                    <option value="Lost Property Report">Lost Property Report</option>
-                    <option value="Other Miscellaneous Entry">Other Miscellaneous Entry</option>
-                  </select>
-                </label>
-                {natureOfDd === 'UD Case (Unnatural Death)' && (
-                  <label className="full">Name of Deceased
-                    <input value={nameOfDeceased} onChange={e => setNameOfDeceased(e.target.value)} placeholder="Name of deceased" />
+          {step === 1 && (
+            <>
+              {/* --- Record group --- */}
+              <section className="rc-group">
+                <div className="rc-group-title">Record</div>
+                <div className="rc-grid">
+                  <label>Record Type
+                    <select value={recordType} onChange={e => { setRecordType(e.target.value as 'FIR' | 'DD'); setFirExists(null); setFirLoaded(false); }}>
+                      <option value="FIR">FIR</option>
+                      <option value="DD">DD (Daily Diary)</option>
+                    </select>
                   </label>
-                )}
-                {(natureOfDd === 'Lost Property Report' || natureOfDd === 'Other Miscellaneous Entry') && (
-                  <label className="full">Reporting Person Name &amp; Address
-                    <input value={reportingPerson} onChange={e => setReportingPerson(e.target.value)} placeholder="Name & address of reporter" />
+                  <label>DD No. <span className="rc-opt">(if any)</span>
+                    <input value={ddNo} onChange={e => setDdNo(e.target.value)} placeholder="e.g. DD 12/2026" />
                   </label>
-                )}
-              </>
-            )}
 
-            <hr style={{ width: '100%', border: 'none', borderTop: '1px solid var(--line)', margin: '4px 0' }} />
+                  <label className="full">FIR / DD No.
+                    <div className="rc-fir-row">
+                      <input
+                        value={firNo}
+                        onChange={e => { setFirNo(e.target.value); setFirExists(null); setFirLoaded(false); }}
+                        placeholder={recordType === 'DD' ? 'e.g. DD 12/2026' : 'e.g. FIR 245/2026'}
+                        required
+                      />
+                      <button type="button" className="btn ghost" onClick={checkFir} disabled={busy || firChecking}>
+                        {firChecking ? '…' : 'Lookup'}
+                      </button>
+                      {lookupPill}
+                    </div>
+                  </label>
 
-            {/* ---- BNS sections (multi) ---- */}
-            <label className="full" ref={bnsBoxRef}>
-              Section (U/S legal section) — multiple allowed
-              <div className="bns-typeahead">
-                <input
-                  value={bnsQuery}
-                  placeholder={legalSections.length ? 'Add another section…' : 'Type 101, "murder", "kidnapping"... (BNS, 2023)'}
-                  onChange={e => { setBnsQuery(e.target.value); setBnsOpen(true); }}
-                  onFocus={() => setBnsOpen(true)}
-                  onKeyDown={onBnsKeyDown}
-                  autoComplete="off" spellCheck={false}
-                  role="combobox" aria-expanded={bnsOpen} aria-autocomplete="list" aria-controls="bns-hits"
-                />
-                {bnsOpen && (
-                  <div className="bns-hits" id="bns-hits" role="listbox">
-                    {bnsLoading && bnsHits.length === 0 && <div className="bns-empty">searching…</div>}
-                    {!bnsLoading && bnsHits.length === 0 && <div className="bns-empty">No BNS section matches “{bnsQuery || '…'}”.</div>}
-                    {bnsHits.map((s, i) => {
-                      const picked = legalSections.some(x => x.sectionNo === s.sectionNo);
-                      return (
-                        <div key={s.sectionNo} role="option" aria-selected={i === bnsActive}
-                          className={`bns-hit${i === bnsActive ? ' active' : ''}${picked ? ' picked' : ''}`}
-                          onMouseDown={(e) => { e.preventDefault(); if (!picked) addBns(s); }}
-                          onMouseEnter={() => setBnsActive(i)} title={s.description || s.title}>
-                          <span className="bns-no">BNS&nbsp;{s.sectionNo}</span>
-                          <span className="bns-title">{s.title}</span>
-                          {s.category && <span className="bns-cat">{s.category}</span>}
-                          {picked && <span className="bns-tick">✓</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              {legalSections.length > 0 && (
-                <div className="bns-chips">
-                  {legalSections.map(s => (
-                    <span key={s.sectionNo} className="bns-chip">
-                      <b>BNS {s.sectionNo}</b> — {s.title}
-                      <button type="button" className="bns-chip-x" onClick={() => removeBns(s.sectionNo)} aria-label={`Remove BNS ${s.sectionNo}`}>×</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </label>
-
-            <hr style={{ width: '100%', border: 'none', borderTop: '1px solid var(--line)', margin: '4px 0' }} />
-
-            {/* ---- common receipt block (once) ---- */}
-            <label>FIR/DD Date of Receipt in Malkhana
-              <input type="date" value={dateOfReceipt} max={today} onChange={e => setDateOfReceipt(e.target.value)} required />
-            </label>
-            <label>Received By (Malkhana Moharrir)
-              <input value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Moharrir name" required />
-            </label>
-            <label className="full">Malkhana Location
-              <input value={malkhanaLocation} onChange={e => setMalkhanaLocation(e.target.value)} placeholder="e.g. Part A Shelf 2 / Almirah 1" />
-            </label>
-            <label>Seized On
-              <input type="date" value={items[0]?.seizedOn || today} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizedOn: e.target.value } : it))} required />
-            </label>
-            <label>Seized Time
-              <input type="time" value={seizedTime} onChange={e => setSeizedTime(e.target.value)} required />
-            </label>
-            <label className="full">Seizing Officer
-              <input value={items[0]?.seizingOfficer || defaultIo(user)} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizingOfficer: e.target.value } : it))} required />
-            </label>
-
-            <div className="form-actions">
-              <button type="button" className="btn ghost" onClick={() => { reset(); onClose(); }} disabled={busy}>Cancel</button>
-              <button type="button" className="btn" onClick={goNext} disabled={busy}>Next: Add Items →</button>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="form-grid">
-            <div className="full" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 700 }}>Seized Items ({items.length})</span>
-              <button type="button" className="btn" onClick={addItem} disabled={busy}>+ Add Item</button>
-            </div>
-
-            {items.length === 0 && (
-              <div className="sub" style={{ padding: 12 }}>No items yet — click “+ Add Item” to add each seized article.</div>
-            )}
-
-            {items.map((it, idx) => {
-              const cat = getCategory(it.categoryId);
-              const seqHint = `MK-2026-${(items.length ? String(idx + 1).padStart(6, '0') : '000001')} (server-assigned)`;
-              return (
-                <div key={it.localId} className="item-block" style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <b>Item {idx + 1}</b>
-                    <span className="sr-hint">Sr. No. → {seqHint}</span>
-                    <button type="button" className="bns-chip-x" onClick={() => removeItem(it.localId)} aria-label="Remove item">✕ remove</button>
-                  </div>
-                  <div className="form-grid">
-                    <label>Category of Item
-                      <select value={it.categoryId} onChange={e => {
-                        const c = getCategory(e.target.value);
-                        patchItem(it.localId, { categoryId: e.target.value, subType: '', sectionLetter: c?.sectionLetter || it.sectionLetter, catValues: {} });
-                      }} required>
-                        <option value="">— select category —</option>
-                        {ITEM_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                      </select>
+                  {recordType === 'FIR' ? (
+                    <label>FIR Date
+                      <input type="date" value={firDate} max={today} onChange={e => setFirDate(e.target.value)} />
                     </label>
-                    {cat?.subTypes && (
-                      <label>{cat.subTypeLabel || 'Type'}
-                        <select value={it.subType} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
+                  ) : (
+                    <>
+                      <label>DD Date
+                        <input type="date" value={ddDate} max={today} onChange={e => setDdDate(e.target.value)} />
+                      </label>
+                      <label>Nature of DD
+                        <select value={natureOfDd} onChange={e => setNatureOfDd(e.target.value)}>
                           <option value="">— select —</option>
-                          {cat.subTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                          <option value="UD Case (Unnatural Death)">UD Case (Unnatural Death)</option>
+                          <option value="Lost Property Report">Lost Property Report</option>
+                          <option value="Other Miscellaneous Entry">Other Miscellaneous Entry</option>
                         </select>
                       </label>
-                    )}
-                    <label>Malkhana Section (placement)
-                      <select value={it.sectionLetter} onChange={e => patchItem(it.localId, { sectionLetter: e.target.value })}>
-                        {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
-                      </select>
-                    </label>
-                    <label>Quantity
-                      <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
-                    </label>
-
-                    {cat?.fields.map(f => (
-                      <label key={f.key}>
-                        {f.label}{f.unit ? ` (${f.unit})` : ''}
-                        {renderCatField(it.localId, it, f)}
-                      </label>
-                    ))}
-
-                    <label className="full">Item Description (detailed — brand, colour, size, marks)
-                      <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" />
-                    </label>
-                    <label>Place of Seizure
-                      <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />
-                    </label>
-                    <label>Storage Location (Rack/Almirah/Yard)
-                      <input value={it.physicalStorage} onChange={e => patchItem(it.localId, { physicalStorage: e.target.value })} placeholder="e.g. Almirah No. 2" />
-                    </label>
-
-                    <hr style={{ width: '100%', border: 'none', borderTop: '1px solid var(--line)', margin: '4px 0' }} />
-
-                    <label>Sealed / Unsealed
-                      <select value={it.sealSealed} onChange={e => patchItem(it.localId, { sealSealed: e.target.value })}>
-                        <option value="Yes">Sealed</option>
-                        <option value="No">Unsealed</option>
-                      </select>
-                    </label>
-                    <label>Seal No. / Mark
-                      <input value={it.sealNo} onChange={e => patchItem(it.localId, { sealNo: e.target.value })} placeholder="Seal no. / mark" />
-                    </label>
-                    <label className="full">Sealed By (Officer)
-                      <input value={it.sealBy} onChange={e => patchItem(it.localId, { sealBy: e.target.value })} placeholder="Officer name" />
-                    </label>
-                    <label className="full">Photo of the seized object (optional)
-                      <div className="file-field">
-                        <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} />
-                        {it.photo && <span className="file-info">{it.photo.file.name}</span>}
-                      </div>
-                    </label>
-                  </div>
+                      {natureOfDd === 'UD Case (UnnaturalDeath)' && (
+                        <label className="full">Name of Deceased
+                          <input value={nameOfDeceased} onChange={e => setNameOfDeceased(e.target.value)} placeholder="Name of deceased" />
+                        </label>
+                      )}
+                      {(natureOfDd === 'Lost Property Report' || natureOfDd === 'Other Miscellaneous Entry') && (
+                        <label className="full">Reporting Person Name &amp; Address
+                          <input value={reportingPerson} onChange={e => setReportingPerson(e.target.value)} placeholder="Name & address of reporter" />
+                        </label>
+                      )}
+                    </>
+                  )}
                 </div>
-              );
-            })}
+              </section>
 
-            {msg && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
+              {/* --- Legal sections group --- */}
+              <section className="rc-group">
+                <div className="rc-group-title">Legal Sections</div>
+                <div className="rc-grid">
+                  <label className="full" ref={bnsBoxRef}>
+                    Section (U/S legal section) — multiple allowed
+                    <div className="bns-typeahead">
+                      <input
+                        value={bnsQuery}
+                        placeholder={legalSections.length ? 'Add another section…' : 'Type 101, "murder", "kidnapping"... (BNS, 2023)'}
+                        onChange={e => { setBnsQuery(e.target.value); setBnsOpen(true); }}
+                        onFocus={() => setBnsOpen(true)}
+                        onKeyDown={onBnsKeyDown}
+                        autoComplete="off" spellCheck={false}
+                        role="combobox" aria-expanded={bnsOpen} aria-autocomplete="list" aria-controls="bns-hits"
+                      />
+                      {bnsOpen && (
+                        <div className="bns-hits" id="bns-hits" role="listbox">
+                          {bnsLoading && bnsHits.length === 0 && <div className="bns-empty">searching…</div>}
+                          {!bnsLoading && bnsHits.length === 0 && <div className="bns-empty">No BNS section matches “{bnsQuery || '…'}”.</div>}
+                          {bnsHits.map((s, i) => {
+                            const picked = legalSections.some(x => x.sectionNo === s.sectionNo);
+                            return (
+                              <div key={s.sectionNo} role="option" aria-selected={i === bnsActive}
+                                className={`bns-hit${i === bnsActive ? ' active' : ''}${picked ? ' picked' : ''}`}
+                                onMouseDown={(e) => { e.preventDefault(); if (!picked) addBns(s); }}
+                                onMouseEnter={() => setBnsActive(i)} title={s.description || s.title}>
+                                <span className="bns-no">BNS&nbsp;{s.sectionNo}</span>
+                                <span className="bns-title">{s.title}</span>
+                                {s.category && <span className="bns-cat">{s.category}</span>}
+                                {picked && <span className="bns-tick">✓</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    {legalSections.length > 0 && (
+                      <div className="bns-chips">
+                        {legalSections.map(s => (
+                          <span key={s.sectionNo} className="bns-chip">
+                            <b>BNS {s.sectionNo}</b> — {s.title}
+                            <button type="button" className="bns-chip-x" onClick={() => removeBns(s.sectionNo)} aria-label={`Remove BNS ${s.sectionNo}`}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </label>
+                </div>
+              </section>
 
-            <div className="form-actions">
+              {/* --- Malkhana receipt group --- */}
+              <section className="rc-group">
+                <div className="rc-group-title">Malkhana Receipt</div>
+                <div className="rc-grid">
+                  <label>Date of Receipt in Malkhana
+                    <input type="date" value={dateOfReceipt} max={today} onChange={e => setDateOfReceipt(e.target.value)} required />
+                  </label>
+                  <label>Received By (Malkhana Moharrir)
+                    <input value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Moharrir name" required />
+                  </label>
+                  <label>Seized On
+                    <input type="date" value={items[0]?.seizedOn || today} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizedOn: e.target.value } : it))} required />
+                  </label>
+                  <label>Seized Time
+                    <input type="time" value={seizedTime} onChange={e => setSeizedTime(e.target.value)} required />
+                  </label>
+                  <label className="full">Seizing Officer
+                    <input value={items[0]?.seizingOfficer || defaultIo(user)} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizingOfficer: e.target.value } : it))} required />
+                  </label>
+                </div>
+              </section>
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <div className="rc-items-head">
+                <span className="rc-items-count">Seized Items <b>({items.length})</b></span>
+                <button type="button" className="btn add-item-btn" onClick={addItem} disabled={busy}>+ Add Item</button>
+              </div>
+
+              {items.length === 0 && (
+                <div className="rc-empty">
+                  <div className="rc-empty-ic">📦</div>
+                  <p>No items yet — click <b>“+ Add Item”</b> to add each seized article.</p>
+                </div>
+              )}
+
+              <div className="items-grid">
+                {items.map((it, idx) => {
+                  const cat = getCategory(it.categoryId);
+                  const seqHint = `MK-2026-${(items.length ? String(idx + 1).padStart(6, '0') : '000001')} (server-assigned)`;
+                  return (
+                    <div key={it.localId} className="item-card">
+                      <div className="item-card-head">
+                        <span className="item-no">Item {idx + 1}</span>
+                        <span className="sr-hint">Sr. No. → {seqHint}</span>
+                        <button type="button" className="item-remove" onClick={() => removeItem(it.localId)} aria-label="Remove item" title="Remove item">✕</button>
+                      </div>
+                      <div className="rc-grid">
+                        <label>Category of Item
+                          <select value={it.categoryId} onChange={e => {
+                            const c = getCategory(e.target.value);
+                            patchItem(it.localId, { categoryId: e.target.value, subType: '', sectionLetter: c?.sectionLetter || it.sectionLetter, catValues: {} });
+                          }} required>
+                            <option value="">— select category —</option>
+                            {ITEM_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                          </select>
+                        </label>
+                        {cat?.subTypes && (
+                          <label>{cat.subTypeLabel || 'Type'}
+                            <select value={it.subType} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
+                              <option value="">— select —</option>
+                              {cat.subTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </label>
+                        )}
+                        <label>Malkhana Section (placement)
+                          <select value={it.sectionLetter} onChange={e => patchItem(it.localId, { sectionLetter: e.target.value })}>
+                            {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
+                          </select>
+                        </label>
+                        <label>Quantity
+                          <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
+                        </label>
+
+                        {cat?.fields.map(f => (
+                          <label key={f.key}>
+                            {f.label}{f.unit ? ` (${f.unit})` : ''}
+                            {renderCatField(it.localId, it, f)}
+                          </label>
+                        ))}
+
+                        <label className="full">Item Description (detailed — brand, colour, size, marks)
+                          <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" />
+                        </label>
+                        <label>Place of Seizure
+                          <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />
+                        </label>
+                        <label>Storage Location (Rack/Almirah/Yard)
+                          <input value={it.physicalStorage} onChange={e => patchItem(it.localId, { physicalStorage: e.target.value })} placeholder="e.g. Almirah No. 2" />
+                        </label>
+
+                        <label>Sealed / Unsealed
+                          <select value={it.sealSealed} onChange={e => patchItem(it.localId, { sealSealed: e.target.value })}>
+                            <option value="Yes">Sealed</option>
+                            <option value="No">Unsealed</option>
+                          </select>
+                        </label>
+                        <label>Seal No. / Mark
+                          <input value={it.sealNo} onChange={e => patchItem(it.localId, { sealNo: e.target.value })} placeholder="Seal no. / mark" />
+                        </label>
+                        <label className="full">Sealed By (Officer)
+                          <input value={it.sealBy} onChange={e => patchItem(it.localId, { sealBy: e.target.value })} placeholder="Officer name" />
+                        </label>
+                        <label className="full">Photo of the seized object (optional)
+                          <div className="file-field">
+                            <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} />
+                            {it.photo && <span className="file-info">{it.photo.file.name}</span>}
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {msg && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
+          {errors.length > 1 && (
+            <ul className="form-errors">
+              {errors.map((er, i) => <li key={i}>{er}</li>)}
+            </ul>
+          )}
+        </div>
+
+        {/* ============ STICKY FOOTER ACTIONS ============ */}
+        <div className="rc-actions">
+          {step === 1 ? (
+            <>
+              <button type="button" className="btn ghost" onClick={() => { reset(); onClose(); }} disabled={busy}>Cancel</button>
+              <button type="button" className="btn" onClick={goNext} disabled={busy}>Next: Add Items →</button>
+            </>
+          ) : (
+            <>
               <button type="button" className="btn ghost" onClick={() => setStep(1)} disabled={busy}>← Back</button>
               <button type="submit" className="btn" disabled={busy || items.length === 0}>
                 {busy ? 'Saving…' : `Register ${items.length || ''} Item(s) & Generate Tags`}
               </button>
-            </div>
-          </div>
-        )}
-
-        {msg && step === 1 && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
-        {errors.length > 1 && (
-          <ul className="form-errors">
-            {errors.map((er, i) => <li key={i}>{er}</li>)}
-          </ul>
-        )}
+            </>
+          )}
+        </div>
       </form>
     </div>
   );

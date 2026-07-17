@@ -537,11 +537,103 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 
 /* Generic form modal card */
 .form-card{
-  background: var(--white-paper); width: 520px; max-height: 86vh; overflow-y:auto;
-  border-radius:10px; box-shadow:0 18px 40px rgba(20,36,61,0.35); padding:22px 24px; position:relative;
+  background: var(--white-paper); width: 560px; max-height: 90vh; overflow:hidden;
+  border-radius:12px; box-shadow:0 18px 40px rgba(20,36,61,0.35); position:relative;
+  display:flex; flex-direction:column;
 }
 .form-card h3{ font-family:'Rajdhani',sans-serif; font-size:18px; color:var(--ink-navy); margin-bottom:2px; }
 .form-card .sub{ font-size:11.5px; color:var(--slate-soft); margin-bottom:16px; }
+
+/* ---- redesigned Register New Case Property ---- */
+.rc-head{ padding:22px 24px 0; }
+.rc-head h3{ margin-bottom:1px; }
+.rc-sub{ font-size:11.5px; color:var(--slate-soft); }
+.rc-body{ padding:4px 24px 16px; overflow-y:auto; flex:1 1 auto; }
+
+/* scrollbar polish */
+.rc-body::-webkit-scrollbar{ width:9px; }
+.rc-body::-webkit-scrollbar-thumb{ background: var(--paper-darker); border-radius:8px; }
+.rc-body::-webkit-scrollbar-thumb:hover{ background: var(--khaki-light); }
+
+/* grouped sections */
+.rc-group{ margin:14px 0; padding:0 0 4px; }
+.rc-group-title{
+  font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:700; letter-spacing:0.14em;
+  text-transform:uppercase; color: var(--khaki); margin-bottom:8px;
+  display:flex; align-items:center; gap:8px;
+}
+.rc-group-title::after{ content:""; flex:1; height:1px; background: var(--line); }
+
+.rc-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px; }
+.rc-grid label{ display:flex; flex-direction:column; gap:4px; font-size:10.5px; color: var(--slate-soft); text-transform:uppercase; letter-spacing:0.06em; font-weight:600; }
+.rc-grid label.full{ grid-column: 1 / -1; }
+.rc-opt{ text-transform:none; letter-spacing:0; font-weight:500; color: var(--slate-soft); opacity:0.7; font-size:10px; }
+.rc-grid input, .rc-grid select, .rc-grid textarea{
+  font-family:'IBM Plex Sans', sans-serif; font-size:13px; color: var(--slate);
+  background: var(--white-paper); border:1px solid var(--line); border-radius:6px;
+  padding: 8px 10px; outline:none; transition: border-color .15s, box-shadow .15s, background .15s;
+  text-transform:none; letter-spacing:0; font-weight:500;
+}
+.rc-grid input:focus, .rc-grid select:focus, .rc-grid textarea:focus{ border-color: var(--ink-navy); background:#fff; box-shadow:0 0 0 3px rgba(20,36,61,0.08); }
+.rc-grid textarea{ min-height:52px; resize: vertical; }
+.rc-grid select{ appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' fill='none' stroke='%235C5A4E' stroke-width='1.6'/></svg>"); background-repeat:no-repeat; background-position:right 10px center; padding-right:28px; }
+
+/* FIR / DD row + lookup */
+.rc-fir-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.rc-fir-row input{ flex:1 1 180px; }
+.lookup-pill{
+  font-size:10.5px; font-weight:600; padding:3px 9px; border-radius:20px; white-space:nowrap;
+  letter-spacing:0.02em;
+}
+.lookup-pill.ok{ background: var(--olive-bg); color: var(--olive); }
+.lookup-pill.neu{ background: var(--amber-bg); color: var(--amber); }
+.lookup-pill.checking{ background: var(--paper-dark); color: var(--slate-soft); }
+
+/* sticky footer */
+.rc-actions{
+  display:flex; gap:8px; justify-content:flex-end; padding:12px 24px;
+  border-top:1px solid var(--line); background: var(--white-paper);
+}
+.rc-actions .btn{ min-width:120px; justify-content:center; }
+
+/* segmented stepper */
+.stepper{ display:flex; align-items:center; gap:10px; margin: 8px 0 6px; padding:0 24px; }
+.step{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color: var(--muted); cursor:default; padding:7px 12px; border-radius:8px; border:1px solid var(--line); background: var(--white-paper); }
+.step.active{ color: var(--ink-navy); border-color: var(--khaki); background: var(--paper); box-shadow:0 1px 0 rgba(20,36,61,0.04); }
+.step.done{ color: var(--olive); cursor:pointer; }
+.step-no{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background: var(--line); color:#fff; font-size:11px; font-weight:700; transition: background .15s; }
+.step.active .step-no{ background: var(--khaki); }
+.step.done .step-no{ background: var(--olive); }
+.step-sep{ flex:1; height:2px; background: var(--line); border-radius:2px; }
+.station-badge{ font-size:12px; color: var(--muted); background: var(--paper); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin:4px 24px 0; }
+.sr-hint{ font-size:11px; color: var(--muted); font-style:italic; }
+.form-errors{ margin: 10px 0 0; padding-left: 18px; font-size:12px; color: var(--seal-red); }
+.form-errors li{ margin: 2px 0; }
+
+/* Step 2 — items grid (single page, card layout) */
+.rc-items-head{ display:flex; align-items:center; justify-content:space-between; margin:8px 0 12px; }
+.rc-items-count{ font-size:13px; color: var(--slate-soft); }
+.rc-items-count b{ color: var(--ink-navy); font-family:'IBM Plex Mono',monospace; }
+.add-item-btn{ background: var(--ink-navy); border-color: var(--ink-navy); }
+.items-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap:14px; }
+.item-card{
+  border:1px solid var(--line); border-radius:10px; padding:12px 14px 14px;
+  background: var(--white-paper); box-shadow:0 1px 2px rgba(20,36,61,0.05);
+  display:flex; flex-direction:column;
+}
+.item-card-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px dashed var(--line); }
+.item-no{ font-family:'Rajdhani',sans-serif; font-weight:700; font-size:14px; color: var(--ink-navy); letter-spacing:0.03em; }
+.item-remove{
+  margin-left:auto; width:24px; height:24px; border-radius:6px; border:1px solid var(--line);
+  background: transparent; color: var(--slate-soft); cursor:pointer; font-size:13px; line-height:1;
+  display:inline-flex; align-items:center; justify-content:center; transition: all .15s;
+}
+.item-remove:hover{ background: var(--seal-red-bg); color: var(--seal-red); border-color: var(--seal-red); }
+.rc-empty{ text-align:center; padding:40px 20px; color: var(--slate-soft); border:1.5px dashed var(--line); border-radius:10px; background: var(--paper); }
+.rc-empty-ic{ font-size:30px; margin-bottom:8px; }
+.rc-empty p{ font-size:13px; }
+
+/* Inline "scan" bar at the top of Case Property view */
 .form-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:12px 16px; }
 .form-grid label{ display:flex; flex-direction:column; gap:4px; font-size:11px; color: var(--slate-soft); text-transform:uppercase; letter-spacing:0.07em; font-weight:600; }
 .form-grid label.full{ grid-column: 1 / -1; }
@@ -806,6 +898,16 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 
   .form-grid{ grid-template-columns: 1fr; }
 
+  /* Redesigned Register modal — step 2 inline width is set via style on the
+     element; override it on small screens so it never overflows. */
+  .form-card.rc{ width: auto !important; max-width: 520px; }
+  .rc-head{ padding: 18px 18px 0; }
+  .stepper, .station-badge{ padding-left:18px; padding-right:18px; margin-left:0; margin-right:0; }
+  .rc-body{ padding:4px 18px 14px; }
+  .rc-actions{ padding:12px 18px; }
+  .rc-grid{ grid-template-columns: 1fr; }
+  .items-grid{ grid-template-columns: 1fr; }
+
   .letterhead{ padding: 10px 14px; }
   .letterhead-title .line1{ font-size: 10px; }
   .letterhead-title .line2{ font-size: 16px; }
@@ -821,7 +923,7 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
   .login-card{ width: auto; max-width: 420px; padding: 22px 22px 18px; }
   .tag-card{ width: auto; max-width: 340px; }
   .timeline-card{ width: auto; max-width: 460px; padding: 18px 18px; }
-  .form-card{ width: auto; max-width: 520px; padding: 18px 18px; }
+  .form-card{ width: auto; max-width: 520px; }
   .audit-card{ width: auto; max-width: 720px; }
 
   /* (Quick-login list is already a single flex column, no special handling needed.) */
