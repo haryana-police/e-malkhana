@@ -608,7 +608,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         )}
 
                         {cat?.subTypes && cat.subTypeControl === 'radio' ? (
-                          <div className={`rc-radio req ${it.subType ? 'filled' : ''}`}>
+                          <div className={`rc-radio req${cat?.id === 'arms' ? ' inline' : ''}${it.subType ? ' filled' : ''}`}>
                             <span className="rc-field-label">{cat.subTypeLabel || 'Type'}</span>
                             <div className="rc-radio-row">
                               {cat.subTypes.map(t => (
