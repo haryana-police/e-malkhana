@@ -455,10 +455,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
               <section className="rc-group">
                 <div className="rc-group-title">Actual Seizure</div>
                 <div className="rc-grid">
-                  <label>DD No. (actual seizure)
+                  <label>DD No.
                     <input value={actualSeizureDdNo} onChange={e => setActualSeizureDdNo(e.target.value)} placeholder="e.g. DD 12/2026" />
                   </label>
-                  <label>Date of Actual Seizure
+                  <label>Date
                     <input type="date" value={actualSeizureDate} max={today} onChange={e => setActualSeizureDate(e.target.value)} />
                   </label>
                 </div>
