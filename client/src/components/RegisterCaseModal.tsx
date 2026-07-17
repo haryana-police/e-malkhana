@@ -583,7 +583,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         <span className="sr-hint">Sr. No. → {seqHint}</span>
                         <button type="button" className="item-remove" onClick={() => removeItem(it.localId)} aria-label="Remove item" title="Remove item">✕</button>
                       </div>
-                      <div className="rc-grid item-grid">
+                      <div className={`rc-grid item-grid${cat?.id === 'arms' ? ' arms-grid' : ''}`}>
                         <label className="req">Category of Item
                           <select value={it.categoryId} onChange={e => {
                             const c = getCategory(e.target.value);
@@ -599,9 +599,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </select>
                         </label>
 
-                        {/* Quantity is hidden for Narcotics / NDPS and for Arms & Ammunition
-                            (not a required column per the form markup). */}
-                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && (
+                        {/* Quantity is hidden for Narcotics / NDPS, Arms & Ammunition,
+                            and Cash & Valuables (not a highlighted column for cash). */}
+                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && (
                           <label>Quantity
                             <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
                           </label>
@@ -631,9 +631,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         )}
 
                         {/* The following common seizure fields are hidden for Narcotics / NDPS,
-                            and for Arms & Ammunition (only Category, Section, Type, Description,
-                            Photo are kept per the required form markup). */}
-                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && (
+                            Arms & Ammunition, and Cash & Valuables (only Category, Section,
+                            Total Amount, Description, Photo are kept per the required markup). */}
+                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && (
                           <>
                             <label>Place of Seizure
                               <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />

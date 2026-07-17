@@ -76,14 +76,14 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     id: 'cash',
     label: 'Currency & Valuables',
     sectionLetter: 'C',
-    subTypeLabel: 'Type',
-    subTypes: ['Indian currency (genuine)', 'Fake/Counterfeit currency', 'Foreign currency'],
+    // Only the highlighted Cash & Valuables columns are kept on the register:
+    // Category, Malkhana Section, Total Amount, Item Description, Photo.
+    // The non-highlighted columns (Type, Denomination breakup, Currency Type,
+    // Note Numbers, Suspected Counterfeit, plus the shared Place of Seizure /
+    // Sealed / Seal No. / Sealed By blocks) are deleted per request — they are
+    // hidden in RegisterCaseModal for the 'cash' category.
     fields: [
-      { key: 'denom_breakup', label: 'Denomination-wise breakup', type: 'text', placeholder: '₹2000: 100, ₹500: 80 …' },
       { key: 'total_amount', label: 'Total Amount', type: 'number', unit: 'Rs.' },
-      { key: 'currency_type', label: 'Currency Type', type: 'select', options: ['Indian', 'Foreign'] },
-      { key: 'note_numbers', label: 'Note Numbers (if recorded)', type: 'text', placeholder: 'esp. trap cases' },
-      { key: 'counterfeit', label: 'Suspected Counterfeit', type: 'select', options: ['Yes', 'No'] },
     ],
   },
   {
