@@ -25,7 +25,6 @@ const navItems: { view: ViewName; label: string }[] = [
   { view: 'movements',     label: 'Movements' },
   { view: 'templates',     label: 'Templates' },
   { view: 'alerts',        label: 'Alerts & Compliance' },
-  { view: 'inspection',    label: 'Inspection' },
 ];
 
 export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, onOpenSettingsFull, onOpenSectionsManager, onOpenItemTypeManager, activeSection, onSectionFilter, user, onLogout, mobileOpen, onCloseMobile }: Props) {
