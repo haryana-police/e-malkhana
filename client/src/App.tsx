@@ -413,6 +413,7 @@ export default function App() {
             <Route path="/movements" element={
               <Movements
                 cases={data.cases}
+                active={view === 'movements'}
                 onOpenScan={() => setOpenScan(true)}
                 onOpenChangeStatus={setChangeCase}
                 onOpenTag={setTagCase}
