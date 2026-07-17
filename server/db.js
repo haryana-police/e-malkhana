@@ -466,6 +466,8 @@ ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS dd_date        TEXT;
 ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS nature_of_dd   TEXT;     -- UD / Lost Property / Other Misc
 ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS name_of_deceased TEXT;   -- UD case
 ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS reporting_person TEXT;   -- lost property / misc
+ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS actual_seizure_dd_no TEXT;  -- DD under which property was ACTUALLY seized
+ALTER TABLE fir_master ADD COLUMN IF NOT EXISTS actual_seizure_date  TEXT;  -- date property was ACTUALLY seized
 
 -- case_property: spec's per-FIR common block + per-item seal block.
 --   * date_of_receipt / received_by / malkhana_location -> the Malkhana
@@ -562,29 +564,23 @@ export async function initSchema() {
 
 // ---------- seed (first boot only) ----------
 
+// The Malkhana uses exactly FIVE physical storage sections (A–E).  These map
+// to the five seeded racks/almirahs on the dashboard and the five letters the
+// registration form's "Section" picker offers.  Previously this seeded 49
+// forensic/evidence sub-categories (F → AW) that cluttered the "Malkhana
+// Locations" screen; an admin can still add more sections on demand via the
+// Item Types manager, but they are NOT part of the default seed.
+const DEFAULT_SECTIONS = [
+  { letter: 'A', name: 'Narcotics Rack' },
+  { letter: 'B', name: 'Weapons Almirah' },
+  { letter: 'C', name: 'Documents & Cash' },
+  { letter: 'D', name: 'Vehicles Yard' },
+  { letter: 'E', name: 'Biological / Viscera' },
+];
+
 function buildDefaultSections() {
-  const defaults = [
-    'Narcotics Rack', 'Weapons Almirah', 'Documents & Cash', 'Vehicles Yard',
-    'Biological / Viscera', 'Ammunition & Explosives', 'Stolen Vehicle Parts',
-    'Recovered Electronics', 'Mobile Phones & SIMs', 'Laptops & Hard Disks',
-    'Counterfeit Currency', 'Foreign Currency', 'Jewellery & Gold',
-    'Precious Stones', 'Alcohol & Illicit Liquor', 'Pharmaceuticals',
-    'Fake / Counterfeit Goods', 'Arms Accessories', 'Knives & Sharp Weapons',
-    'Firearms — Long Barrel', 'Firearms — Short Barrel', 'Country-made Pistols',
-    'Air Guns & Replicas', 'Clothing — Accused', 'Clothing — Victim',
-    'Footwear', 'Personal Documents', 'Passports & Visas', 'Vehicle Documents',
-    'Sealed Sample Packets', 'Drug Paraphernalia', 'Syringes & Vials',
-    'Blood Samples', 'Hair & Fibre Samples', 'Semen Samples', 'Saliva Swabs',
-    'Fingerprints — Lifts', 'Shoe Impressions', 'Tool Marks', 'Paint Chips',
-    'Glass Fragments', 'Soil Samples', 'Paint Smears', 'Document Forgeries',
-    'Banned Books / Material', 'Audio Recordings', 'Video Recordings',
-    'CCTV Footage — Media', 'Misc / Unclassified',
-  ];
-  const letters = [];
-  for (let i = 0; i < 26; i++) letters.push(String.fromCharCode(65 + i));
-  for (let i = 0; i < 26; i++) letters.push('A' + String.fromCharCode(65 + i));
-  return defaults.slice(0, letters.length).map((name, i) => ({
-    letter: letters[i], name, count: 0, active: true,
+  return DEFAULT_SECTIONS.map(({ letter, name }) => ({
+    letter, name, count: 0, active: true,
   }));
 }
 
@@ -861,18 +857,43 @@ export async function deleteItemTypeField(id) {
   await pool.query('DELETE FROM item_type_fields WHERE id = $1', [id]);
 }
 
-export async function getFirMaster(firNo) {
-  const { rows } = await pool.query('SELECT * FROM fir_master WHERE fir_no = $1', [firNo]);
-  if (!rows[0]) return null;
-  const r = rows[0];
+function mapFirMaster(r) {
   return {
     firNo: r.fir_no, recordType: r.record_type || 'FIR',
     policeStation: r.police_station, firDate: r.fir_date,
     usSections: r.us_sections, io: r.io,
     ddDate: r.dd_date || null, natureOfDd: r.nature_of_dd || null,
     nameOfDeceased: r.name_of_deceased || null, reportingPerson: r.reporting_person || null,
+    actualSeizureDdNo: r.actual_seizure_dd_no || null, actualSeizureDate: r.actual_seizure_date || null,
     createdAt: r.created_at,
   };
+}
+
+// Look up a FIR/DD master record.  Falls back to the live register
+// (cases) when there is no explicit fir_master row yet — this is the
+// common case for FIRs registered before the fir_master table existed, or
+// that simply haven't been "looked up" yet.  Without this fallback the
+// Lookup button always reports "New — not on file" even for FIRs that are
+// genuinely in the register, because fir_master starts empty (the existing
+// cases store the number only in their id column, with fir_no = NULL).
+export async function getFirMaster(firNo) {
+  const { rows } = await pool.query('SELECT * FROM fir_master WHERE fir_no = $1', [firNo]);
+  if (rows[0]) return mapFirMaster(rows[0]);
+  const { rows: c } = await pool.query(
+    'SELECT id, fir_no FROM cases WHERE id = $1 OR fir_no = $1 LIMIT 1',
+    [firNo]
+  );
+  if (c[0]) {
+    const no = c[0].fir_no || c[0].id;
+    const recordType = /^DD\b/i.test(no) ? 'DD' : 'FIR';
+    return {
+      firNo: no, recordType,
+      policeStation: null, firDate: null, usSections: null, io: null,
+      ddDate: null, natureOfDd: null, nameOfDeceased: null, reportingPerson: null,
+      actualSeizureDdNo: null, actualSeizureDate: null, createdAt: null,
+    };
+  }
+  return null;
 }
 
 // Insert or update a FIR/DD master row.  Returns the upserted row.
@@ -880,18 +901,22 @@ export async function getFirMaster(firNo) {
 export async function upsertFirMaster(fir) {
   const { rows } = await pool.query(
     `INSERT INTO fir_master (fir_no, police_station, fir_date, us_sections, io,
-                             record_type, dd_date, nature_of_dd, name_of_deceased, reporting_person)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                             record_type, dd_date, nature_of_dd, name_of_deceased, reporting_person,
+                             actual_seizure_dd_no, actual_seizure_date)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (fir_no) DO UPDATE
        SET police_station = EXCLUDED.police_station, fir_date = EXCLUDED.fir_date,
            us_sections = EXCLUDED.us_sections, io = EXCLUDED.io,
            record_type = EXCLUDED.record_type, dd_date = EXCLUDED.dd_date,
            nature_of_dd = EXCLUDED.nature_of_dd, name_of_deceased = EXCLUDED.name_of_deceased,
-           reporting_person = EXCLUDED.reporting_person
+           reporting_person = EXCLUDED.reporting_person,
+           actual_seizure_dd_no = EXCLUDED.actual_seizure_dd_no,
+           actual_seizure_date  = EXCLUDED.actual_seizure_date
      RETURNING *`,
     [fir.firNo, fir.policeStation || '', fir.firDate || null, fir.usSections || null, fir.io || null,
      fir.recordType || 'FIR', fir.ddDate || null, fir.natureOfDd || null,
-     fir.nameOfDeceased || null, fir.reportingPerson || null]
+     fir.nameOfDeceased || null, fir.reportingPerson || null,
+     fir.actualSeizureDdNo || null, fir.actualSeizureDate || null]
   );
   const r = rows[0];
   return {
@@ -900,6 +925,7 @@ export async function upsertFirMaster(fir) {
     usSections: r.us_sections, io: r.io,
     ddDate: r.dd_date || null, natureOfDd: r.nature_of_dd || null,
     nameOfDeceased: r.name_of_deceased || null, reportingPerson: r.reporting_person || null,
+    actualSeizureDdNo: r.actual_seizure_dd_no || null, actualSeizureDate: r.actual_seizure_date || null,
     createdAt: r.created_at,
   };
 }

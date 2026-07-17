@@ -85,7 +85,7 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     label: 'Currency & Valuables',
     sectionLetter: 'C',
     subTypeLabel: 'Type',
-    subTypes: ['Indian currency (genuine)', 'Fake/Counterfeit currency'],
+    subTypes: ['Indian currency (genuine)', 'Fake/Counterfeit currency', 'Foreign currency'],
     fields: [
       { key: 'denom_breakup', label: 'Denomination-wise breakup', type: 'text', placeholder: '₹2000: 100, ₹500: 80 …' },
       { key: 'total_amount', label: 'Total Amount', type: 'number', unit: 'Rs.' },
@@ -138,32 +138,6 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
       { key: 'data_extraction', label: 'Data Extraction Done', type: 'select', options: ['Yes', 'No'] },
       { key: 'forensic_sent', label: 'Forensic Lab Sent', type: 'select', options: ['Yes', 'No'] },
       { key: 'cloud_requested', label: 'Cloud / Call Data Requested', type: 'select', options: ['Yes', 'No'] },
-    ],
-  },
-  {
-    id: 'documents',
-    label: 'Documents',
-    sectionLetter: 'C',
-    subTypeLabel: 'Type',
-    subTypes: ['Original Document', 'Forged/Fake Document', 'Property Papers', 'Identity Documents (Aadhar/PAN/Passport)', 'Bank Documents/Cheque'],
-    fields: [
-      { key: 'no_of_pages', label: 'No. of Pages', type: 'number' },
-      { key: 'genuine_forged', label: 'Genuine / Suspected Forged', type: 'select', options: ['Genuine', 'Suspected Forged'] },
-      { key: 'handwriting_opinion', label: 'Handwriting Expert Opinion Needed', type: 'select', options: ['Yes', 'No'] },
-      { key: 'related_to', label: 'Related To', type: 'text', placeholder: 'Property Dispute / Fraud / Cheating' },
-    ],
-  },
-  {
-    id: 'blood',
-    label: 'Blood-stained Articles',
-    sectionLetter: 'E',
-    subTypeLabel: 'Type',
-    subTypes: ['Clothes', 'Weapon with blood', 'Soil/Sample with blood', 'Bedsheet/Cloth material'],
-    fields: [
-      { key: 'blood_origin', label: 'Human / Animal Blood', type: 'select', options: ['Human', 'Animal', 'Pending FSL'] },
-      { key: 'dna_sent', label: 'Sample Sent for DNA', type: 'select', options: ['Yes', 'No'] },
-      { key: 'blood_group', label: 'Blood Group (if tested)', type: 'text' },
-      { key: 'condition', label: 'Condition', type: 'select', options: ['Dry', 'Wet at seizure'] },
     ],
   },
   {

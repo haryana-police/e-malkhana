@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { RackItem, BnsSection, User } from '../types';
-import { ITEM_CATEGORIES, getCategory, type ItemCategory, type CategoryField } from '../categories';
+import { ITEM_CATEGORIES, getCategory, classifyNdps, type ItemCategory, type CategoryField } from '../categories';
 
 interface Props {
   open: boolean;
@@ -9,6 +9,8 @@ interface Props {
   user?: User | null;
   onClose: () => void;
   onCreated: () => void;
+  /** Render inline as a full page instead of a centered modal popup. */
+  asPage?: boolean;
 }
 
 interface PendingFile {
@@ -53,7 +55,7 @@ function defaultIo(user?: User | null) {
   return user?.name || user?.rank || 'SI (on duty)';
 }
 
-export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Props) {
+export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPage = false }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const station = user?.station || '';
 
@@ -73,6 +75,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
   const [natureOfDd, setNatureOfDd] = useState('');
   const [nameOfDeceased, setNameOfDeceased] = useState('');
   const [reportingPerson, setReportingPerson] = useState('');
+  // Actual seizure details — the DD under which the property was ACTUALLY seized
+  const [actualSeizureDdNo, setActualSeizureDdNo] = useState('');
+  const [actualSeizureDate, setActualSeizureDate] = useState('');
 
   // ---------- BNS legal sections (multi) ----------
   const [bnsQuery, setBnsQuery] = useState('');
@@ -96,9 +101,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
   const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !asPage) return;
     setMsg(null); setErrors([]); setStep(1); setFirExists(null); setFirLoaded(false);
-  }, [open]);
+  }, [open, asPage]);
 
   // BNS typeahead
   useEffect(() => {
@@ -126,6 +131,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
   function reset() {
     setStep(1); setRecordType('FIR'); setFirNo(''); setDdNo(''); setFirExists(null); setFirLoaded(false);
     setFirDate(today); setDdDate(today); setNatureOfDd(''); setNameOfDeceased(''); setReportingPerson('');
+    setActualSeizureDdNo(''); setActualSeizureDate('');
     setBnsQuery(''); setLegalSections([]);
     setSeizedTime('10:00'); setDateOfReceipt(today); setReceivedBy('');
     setItems([]); setMsg(null); setErrors([]);
@@ -145,7 +151,17 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
       setFirDate(fir.firDate || today);
       setDdDate(fir.ddDate || today); setNatureOfDd(fir.natureOfDd || '');
       setNameOfDeceased(fir.nameOfDeceased || ''); setReportingPerson(fir.reportingPerson || '');
-      setMsg({ kind: 'ok', text: `${full} already on file — details loaded. You can still edit them.` });
+      setActualSeizureDdNo(fir.actualSeizureDdNo || ''); setActualSeizureDate(fir.actualSeizureDate || '');
+      // The FIR's static details are now loaded — default the Malkhana
+      // receipt block (this-registration info) so the user can jump
+      // straight to item entry without step 1 blocking on empty required
+      // fields.  Received-By defaults to the signed-in Moharrir.
+      if (!receivedBy.trim()) setReceivedBy(defaultIo(user));
+      // Auto-advance to Step 2 (Seized Items) — the FIR is already on file,
+      // so there is nothing left to type in Step 1.  New (not-on-file) FIRs
+      // stay on Step 1 so the MM can fill the details first.
+      setStep(2);
+      setMsg({ kind: 'ok', text: `${full} already on file — details loaded. Add the seized item(s) below.` });
     } catch {
       setFirExists(false); setFirLoaded(false);
       setMsg({ kind: 'ok', text: `New ${full} — please fill the ${recordType === 'DD' ? 'DD' : 'FIR'} details below.` });
@@ -202,6 +218,24 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
     return <input type="text" value={v} placeholder={f.placeholder} onChange={e => set(e.target.value)} />;
   }
 
+  // Live NDPS quantity classification badge (Small / Intermediate / Commercial)
+  // shown when the item is a Narcotics article with a narcotic type + quantity.
+  function renderNdpsClassBadge(it: DraftItem) {
+    const cat = getCategory(it.categoryId);
+    if (!cat || cat.id !== 'narcotics') return null;
+    if (!it.subType) return null;
+    const cls = classifyNdps(it.subType, it.catValues['quantity_seized'] || '');
+    if (cls === 'Unknown') return null;
+    const tone = cls === 'Small' ? 'small' : cls === 'Intermediate' ? 'inter' : 'comm';
+    return (
+      <div className="ndps-class-badge">
+        <span className="ndps-class-label">NDPS Quantity Class</span>
+        <span className={`ndps-class ndps-${tone}`}>{cls} Quantity</span>
+        <span className="ndps-class-hint">(auto from NDPS table)</span>
+      </div>
+    );
+  }
+
   const prefix = recordType === 'DD' ? 'DD ' : 'FIR ';
 
   // ---------- validation ----------
@@ -254,6 +288,8 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
         natureOfDd: recordType === 'DD' ? natureOfDd : null,
         nameOfDeceased: recordType === 'DD' && natureOfDd === 'UD Case (UnnaturalDeath)' ? nameOfDeceased : null,
         reportingPerson: recordType === 'DD' && (natureOfDd === 'Lost Property Report' || natureOfDd === 'Other Miscellaneous Entry') ? reportingPerson : null,
+        actualSeizureDdNo: actualSeizureDdNo.trim() || null,
+        actualSeizureDate: actualSeizureDate.trim() || null,
         common: {
           seizedTime,
           witness1: null, witness2: null,  // removed from form
@@ -270,6 +306,12 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
           for (const f of cat?.fields || []) {
             const val = it.catValues[f.key];
             if (val != null && val !== '') itemFields.push({ key: f.key, value: val });
+          }
+          // Auto-classify the NDPS quantity (Small / Intermediate / Commercial)
+          // from the narcotic type + seized weight, using the official table.
+          if (cat?.id === 'narcotics' && it.subType) {
+            const cls = classifyNdps(it.subType, it.catValues['quantity_seized'] || '');
+            if (cls !== 'Unknown') itemFields.push({ key: 'quantity_class', value: cls });
           }
           return {
             itemType: (cat?.subTypes && it.subType) ? `${cat.label} — ${it.subType}` : (cat?.label || 'Article'),
@@ -304,7 +346,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
     }
   }
 
-  if (!open) return null;
+  if (!open && !asPage) return null;
 
   const lookupPill = firChecking
     ? <span className="lookup-pill checking">checking…</span>
@@ -314,18 +356,19 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
         ? <span className="lookup-pill neu">New — not on file</span>
         : null;
 
-  return (
-    <div className={`overlay${open ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget && !busy) { reset(); onClose(); } }}>
-      <form
-        className="form-card rc"
-        onSubmit={submit}
-        style={step === 2
+  const inner = (
+    <form
+      className={`form-card rc${asPage ? ' rc-page' : ''}`}
+      onSubmit={submit}
+      style={asPage
+        ? undefined
+        : step === 2
           ? { width: 'min(1120px, 95vw)', maxWidth: 1120 }
           : { width: 560, maxWidth: 560 }}
-      >
-        <button type="button" className="tag-close" onClick={() => { reset(); onClose(); }} aria-label="Close">✕</button>
+    >
+      <button type="button" className="tag-close" onClick={() => { reset(); onClose(); }} aria-label="Close">✕</button>
 
-        <div className="rc-head">
+      <div className="rc-head">
           <h3>Register New Case Property</h3>
           <p className="rc-sub">Step {step} of 2 — {step === 1 ? 'FIR / DD & Receipt' : 'Seized Items'}</p>
         </div>
@@ -354,14 +397,11 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
               <section className="rc-group">
                 <div className="rc-group-title">Record</div>
                 <div className="rc-grid">
-                  <label>Record Type
+                  <label className="full">Record Type
                     <select value={recordType} onChange={e => { setRecordType(e.target.value as 'FIR' | 'DD'); setFirExists(null); setFirLoaded(false); }}>
                       <option value="FIR">FIR</option>
                       <option value="DD">DD (Daily Diary)</option>
                     </select>
-                  </label>
-                  <label>DD No. <span className="rc-opt">(if any)</span>
-                    <input value={ddNo} onChange={e => setDdNo(e.target.value)} placeholder="e.g. DD 12/2026" />
                   </label>
 
                   <label className="full">FIR / DD No.
@@ -380,7 +420,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
                   </label>
 
                   {recordType === 'FIR' ? (
-                    <label>FIR Date
+                    <label className="full">FIR Date
                       <input type="date" value={firDate} max={today} onChange={e => setFirDate(e.target.value)} />
                     </label>
                   ) : (
@@ -408,6 +448,19 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
                       )}
                     </>
                   )}
+                </div>
+              </section>
+
+              {/* --- Actual Seizure group --- */}
+              <section className="rc-group">
+                <div className="rc-group-title">Actual Seizure</div>
+                <div className="rc-grid">
+                  <label>DD No. (actual seizure)
+                    <input value={actualSeizureDdNo} onChange={e => setActualSeizureDdNo(e.target.value)} placeholder="e.g. DD 12/2026" />
+                  </label>
+                  <label>Date of Actual Seizure
+                    <input type="date" value={actualSeizureDate} max={today} onChange={e => setActualSeizureDate(e.target.value)} />
+                  </label>
                 </div>
               </section>
 
@@ -511,7 +564,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
                         <span className="sr-hint">Sr. No. → {seqHint}</span>
                         <button type="button" className="item-remove" onClick={() => removeItem(it.localId)} aria-label="Remove item" title="Remove item">✕</button>
                       </div>
-                      <div className="rc-grid">
+                      <div className="rc-grid item-grid">
                         <label>Category of Item
                           <select value={it.categoryId} onChange={e => {
                             const c = getCategory(e.target.value);
@@ -521,14 +574,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
                             {ITEM_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                           </select>
                         </label>
-                        {cat?.subTypes && (
-                          <label>{cat.subTypeLabel || 'Type'}
-                            <select value={it.subType} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
-                              <option value="">— select —</option>
-                              {cat.subTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                          </label>
-                        )}
                         <label>Malkhana Section (placement)
                           <select value={it.sectionLetter} onChange={e => patchItem(it.localId, { sectionLetter: e.target.value })}>
                             {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
@@ -538,21 +583,16 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
                           <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
                         </label>
 
-                        {cat?.fields.map(f => (
-                          <label key={f.key}>
-                            {f.label}{f.unit ? ` (${f.unit})` : ''}
-                            {renderCatField(it.localId, it, f)}
+                        {cat?.subTypes && (
+                          <label>{cat.subTypeLabel || 'Type'}
+                            <select value={it.subType} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
+                              <option value="">— select —</option>
+                              {cat.subTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
                           </label>
-                        ))}
-
-                        <label className="full">Item Description (detailed — brand, colour, size, marks)
-                          <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" />
-                        </label>
+                        )}
                         <label>Place of Seizure
                           <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />
-                        </label>
-                        <label>Storage Location (Rack/Almirah/Yard)
-                          <input value={it.physicalStorage} onChange={e => patchItem(it.localId, { physicalStorage: e.target.value })} placeholder="e.g. Almirah No. 2" />
                         </label>
 
                         <label>Sealed / Unsealed
@@ -564,8 +604,21 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
                         <label>Seal No. / Mark
                           <input value={it.sealNo} onChange={e => patchItem(it.localId, { sealNo: e.target.value })} placeholder="Seal no. / mark" />
                         </label>
-                        <label className="full">Sealed By (Officer)
+                        <label>Sealed By (Officer)
                           <input value={it.sealBy} onChange={e => patchItem(it.localId, { sealBy: e.target.value })} placeholder="Officer name" />
+                        </label>
+
+                        {cat?.fields.map(f => (
+                          <label key={f.key}>
+                            {f.label}{f.unit ? ` (${f.unit})` : ''}
+                            {renderCatField(it.localId, it, f)}
+                          </label>
+                        ))}
+
+                        {renderNdpsClassBadge(it)}
+
+                        <label className="full">Item Description (detailed — brand, colour, size, marks)
+                          <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" />
                         </label>
                         <label className="full">Photo of the seized object (optional)
                           <div className="file-field">
@@ -606,6 +659,15 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated }: Pro
           )}
         </div>
       </form>
+  );
+
+  if (asPage) {
+    return <div className="rc-page-wrap">{inner}</div>;
+  }
+
+  return (
+    <div className={`overlay${open ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget && !busy) { reset(); onClose(); } }}>
+      {inner}
     </div>
   );
 }

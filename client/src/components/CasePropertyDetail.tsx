@@ -423,9 +423,16 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
             <>
               <div className="case-detail-sub" style={{ marginBottom: 8 }}>Item-type specific fields</div>
               <div className="case-detail-meta">
-                {cp.fields.filter(f => f.value).map(f => (
-                  <div key={f.key}><span className="k">{f.key.replace(/_/g, ' ')}</span><span className="v">{f.value}</span></div>
-                ))}
+                {cp.fields.filter(f => f.value).map(f => {
+                  if (f.key === 'quantity_class') {
+                    const tone = f.value === 'Small' ? 'small' : f.value === 'Intermediate' ? 'inter' : 'comm';
+                    return (
+                      <div key={f.key}><span className="k">NDPS Quantity Class</span>
+                        <span className={`ndps-class ndps-${tone}`}>{f.value} Quantity</span></div>
+                    );
+                  }
+                  return (<div key={f.key}><span className="k">{f.key.replace(/_/g, ' ')}</span><span className="v">{f.value}</span></div>);
+                })}
               </div>
             </>
           )}

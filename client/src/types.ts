@@ -188,6 +188,9 @@ export interface FirMaster {
   natureOfDd?: string;      // UD / Lost Property / Other Misc
   nameOfDeceased?: string;  // UD case
   reportingPerson?: string; // lost property / misc reporter
+  // Actual seizure details (the DD under which the property was ACTUALLY seized)
+  actualSeizureDdNo?: string; // e.g. "DD 12/2026"
+  actualSeizureDate?: string; // YYYY-MM-DD — date property was actually seized
   createdAt?: string;
 }
 

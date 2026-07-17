@@ -103,7 +103,6 @@ export default function App() {
   const [tlFir, setTlFir]         = useState<string | null>(null);
   const [tlEvents, setTlEvents]   = useState<MovementEvent[]>([]);
 
-  const [openRegister, setOpenRegister]         = useState(false);
   const [openScan, setOpenScan]                 = useState(false);
   const [openSettings, setOpenSettings]         = useState(false);
   const [settingsTab, setSettingsTab]           = useState<'thresholds' | 'fields' | 'backup' | 'log' | null>(null);
@@ -412,9 +411,19 @@ export default function App() {
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
                 onOpenScan={() => setOpenScan(true)}
-                onOpenRegister={() => setOpenRegister(true)}
+                onOpenRegister={() => navigate('/caseproperty/new')}
                 onChangeStatus={setChangeCase}
                 onDownloadReport={onDownloadReport}
+              />
+            } />
+            <Route path="/caseproperty/new" element={
+              <RegisterCaseModal
+                open
+                asPage
+                racks={data.racks}
+                user={user}
+                onClose={() => navigate('/caseproperty')}
+                onCreated={() => { reload(); navigate('/caseproperty'); }}
               />
             } />
             <Route path="/case-property/:item_id" element={
@@ -469,13 +478,6 @@ export default function App() {
         fir={tlFir}
         events={tlEvents}
         onClose={() => setTlFir(null)}
-      />
-      <RegisterCaseModal
-        open={openRegister}
-        racks={data.racks}
-        user={user}
-        onClose={() => setOpenRegister(false)}
-        onCreated={reload}
       />
       <ScanModal
         open={openScan}

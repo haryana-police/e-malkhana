@@ -124,6 +124,7 @@ export const api = {
     firOrDd: string; firNo?: string; recordType?: 'FIR' | 'DD';
     policeStation?: string; firDate?: string | null; usSections?: string | null; io?: string | null;
     ddDate?: string | null; natureOfDd?: string | null; nameOfDeceased?: string | null; reportingPerson?: string | null;
+    actualSeizureDdNo?: string | null; actualSeizureDate?: string | null;
     common: Record<string, any>;
     items: Array<{
       itemType: string; sectionLetter: string; itemTypeId?: number | null; description?: string;

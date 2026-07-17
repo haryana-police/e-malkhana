@@ -605,6 +605,7 @@ app.post('/api/cases/batch', async (req, res, next) => {
         usSections: body.usSections || null, io: body.io || null,
         ddDate: body.ddDate || null, natureOfDd: body.natureOfDd || null,
         nameOfDeceased: body.nameOfDeceased || null, reportingPerson: body.reportingPerson || null,
+        actualSeizureDdNo: body.actualSeizureDdNo || null, actualSeizureDate: body.actualSeizureDate || null,
       });
     }
     // 2) Common block (copied onto every item, with per-item overrides below).
@@ -1244,9 +1245,13 @@ app.delete('/api/item-type-fields/:id', async (req, res, next) => {
 });
 
 // GET /api/fir-master/:firNo  -> FIR master record (or 404 null).
-app.get('/api/fir-master/:firNo', async (req, res, next) => {
+// NOTE: the FIR/DD number contains a slash (e.g. "FIR 088/2026"), so the
+// `*` modifier on :firNo is REQUIRED — a plain :firNo param stops at the
+// first "/" and the route would never match, silently returning 404 (the
+// original bug: the Lookup button always reported "New — not on file").
+app.get('/api/fir-master/:firNo(*)', async (req, res, next) => {
   try {
-    const firNo = decodeURIComponent(req.params.firNo).trim();
+    const firNo = String(req.params.firNo || '').trim();
     const fir = await getFirMaster(firNo);
     if (!fir) { res.status(404).json({ error: 'not found' }); return; }
     res.json(fir);
@@ -1266,6 +1271,8 @@ app.post('/api/fir-master', async (req, res, next) => {
       firDate: body.firDate,
       usSections: body.usSections,
       io: body.io,
+      actualSeizureDdNo: body.actualSeizureDdNo || null,
+      actualSeizureDate: body.actualSeizureDate || null,
     });
     await auditMm(req, 'fir.master', firNo, `Saved FIR master for ${firNo}`);
     res.status(201).json(fir);
