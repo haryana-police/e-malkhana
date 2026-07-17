@@ -131,15 +131,17 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
   },
   {
     id: 'liquor',
-    label: 'Liquor (Illicit / NDPS-Excise)',
+    label: 'Excise',
     sectionLetter: 'A',
-    subTypeLabel: 'Type',
-    subTypes: ['Country liquor (illicit)', 'Foreign/IMFL liquor', 'Empty bottles/manufacturing equipment'],
+    // Only the highlighted Excise columns are kept on the register:
+    // Category, Malkhana Section, Quantity, Item Description, Photo.  The
+    // detailed liquor columns (Type, Place of Seizure, Sealed/Unsealed,
+    // Seal No./Mark, Sealed By, No. of Bottles/Pouches, Brand Name, Sample
+    // Sent) are removed per request — they are hidden in RegisterCaseModal
+    // for the 'liquor' category, matching the trimmed narcotics/arms/cash/
+    // vehicle layout (each item row stays a clean 3-column grid).
     fields: [
       { key: 'quantity2', label: 'Quantity', type: 'text', placeholder: 'Liters / Bottles / Pouches' },
-      { key: 'no_of_bottles', label: 'No. of Bottles / Pouches', type: 'number' },
-      { key: 'brand_name', label: 'Brand Name (if foreign liquor)', type: 'text' },
-      { key: 'sample_sent', label: 'Sample Sent', type: 'select', options: ['Yes', 'No'] },
     ],
   },
   {

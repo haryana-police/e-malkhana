@@ -601,8 +601,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
                         {/* Quantity is hidden for Narcotics / NDPS, Arms & Ammunition,
                             Cash & Valuables, Jewellery and Vehicle (not a highlighted
-                            column — only Category, Section, Type, Description, Photo are). */}
-                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && (
+                            column — only Category, Section, Type, Description, Photo are).
+                            For Liquor / Excise, a SEPARATE category-field Quantity is
+                            shown instead (below), so the common Quantity is suppressed. */}
+                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
                           <label>Quantity
                             <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
                           </label>
@@ -632,10 +634,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         )}
 
                         {/* The following common seizure fields are hidden for Narcotics / NDPS,
-                            Arms & Ammunition, Cash & Valuables, and Jewellery (only the
-                            highlighted columns — Category, Section, Type, Description, Photo —
-                            are kept per the required markup). */}
-                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && (
+                            Arms & Ammunition, Cash & Valuables, Jewellery, Liquor / Excise
+                            and Vehicle (only the highlighted columns — Category, Section,
+                            Type, Description, Photo — are kept per the required markup). */}
+                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
                           <>
                             <label>Place of Seizure
                               <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />
