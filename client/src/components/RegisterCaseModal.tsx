@@ -575,6 +575,11 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
               <div className="items-grid">
                 {items.map((it, idx) => {
                   const cat = getCategory(it.categoryId);
+                  // "Minimal" categories (Lost Items, Viscera, Miscellaneous) keep ONLY the
+                  // highlighted columns — Malkhana Section, Item Description and Photo (plus
+                  // the always-present Category selector).  All other common/per-category
+                  // fields are suppressed so the item row stays a clean 3-column block.
+                  const isMinimal = cat?.id === 'lost_items' || cat?.id === 'viscera' || cat?.id === 'other';
                   const seqHint = `MK-2026-${(items.length ? String(idx + 1).padStart(6, '0') : '000001')} (server-assigned)`;
                   return (
                     <div key={it.localId} className="item-card">
@@ -604,13 +609,13 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                             column — only Category, Section, Type, Description, Photo are).
                             For Liquor / Excise, a SEPARATE category-field Quantity is
                             shown instead (below), so the common Quantity is suppressed. */}
-                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
+                        {!isMinimal && cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
                           <label>Quantity
                             <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
                           </label>
                         )}
 
-                        {cat?.subTypes && cat.subTypeControl === 'radio' ? (
+                        {!isMinimal && cat?.subTypes && cat.subTypeControl === 'radio' ? (
                           <div className={`rc-radio req${cat?.id === 'arms' ? ' inline' : ''}${it.subType ? ' filled' : ''}`}>
                             <span className="rc-field-label">{cat.subTypeLabel || 'Type'}</span>
                             <div className="rc-radio-row">
@@ -624,7 +629,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                               ))}
                             </div>
                           </div>
-                        ) : cat?.subTypes && (
+                        ) : !isMinimal && cat?.subTypes && (
                           <label>{cat.subTypeLabel || 'Type'}
                             <select value={it.subType} required={cat?.id === 'gold'} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
                               <option value="">— select —</option>
@@ -637,7 +642,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                             Arms & Ammunition, Cash & Valuables, Jewellery, Liquor / Excise
                             and Vehicle (only the highlighted columns — Category, Section,
                             Type, Description, Photo — are kept per the required markup). */}
-                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
+                        {!isMinimal && cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
                           <>
                             <label>Place of Seizure
                               <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />
@@ -658,10 +663,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </>
                         )}
 
-                        {/* Jewellery (gold) keeps only the highlighted columns
-                            (Category, Section, Type, Description, Photo) — its 5 detail
-                            fields are suppressed, matching the restyled register. */}
-                        {cat?.id !== 'gold' && cat?.fields.map(f => (
+                        {/* Per-category detail fields are suppressed for the minimal
+                            categories (Lost Items, Viscera, Miscellaneous) — only the
+                            highlighted columns (Section, Description, Photo) are kept. */}
+                        {!isMinimal && cat?.id !== 'gold' && cat?.fields.map(f => (
                           <label key={f.key}>
                             {f.label}{f.unit ? ` (${f.unit})` : ''}
                             {renderCatField(it.localId, it, f)}

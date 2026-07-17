@@ -118,25 +118,10 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     id: 'lost_items',
     label: 'Lost Items',
     sectionLetter: 'C',
-    subTypeLabel: 'Type',
-    subTypes: [
-      'Lost mobile phone',
-      'Lost vehicle',
-      'Lost jewellery',
-      'Lost cash / valuables',
-      'Lost document',
-      'Other lost article',
-    ],
-    // Category, Malkhana Section, Item Description and Photo are rendered
-    // globally for every category in RegisterCaseModal.  These per-item fields
-    // capture the detailed description (brand, colour, size, marks) the user
-    // asked for; Section + Photo come from the shared global block.
-    fields: [
-      { key: 'brand', label: 'Brand', type: 'text', placeholder: 'e.g. Samsung / Honda / Titan' },
-      { key: 'colour', label: 'Colour', type: 'text', placeholder: 'e.g. Black / Red' },
-      { key: 'size', label: 'Size', type: 'text', placeholder: 'e.g. 6.1 inch / 42 mm / L' },
-      { key: 'marks', label: 'Distinguishing Marks', type: 'text', placeholder: 'Scratch, sticker, engraving, IMEI…' },
-    ],
+    // "Minimal" category: only the highlighted columns are rendered in the
+    // register modal — Category (selector), Malkhana Section, Item Description
+    // and Photo. No sub-types or extra fields.
+    fields: [],
   },
   {
     id: 'liquor',
