@@ -395,13 +395,30 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
             <>
               {/* --- Record group --- */}
               <section className="rc-group">
-                <div className="rc-group-title">Record</div>
                 <div className="rc-grid">
                   <label>Record Type
-                    <select value={recordType} onChange={e => { setRecordType(e.target.value as 'FIR' | 'DD'); setFirExists(null); setFirLoaded(false); }}>
-                      <option value="FIR">FIR</option>
-                      <option value="DD">DD (Daily Diary)</option>
-                    </select>
+                    <div className="rc-radio-row" role="radiogroup" aria-label="Record Type">
+                      <label className="rc-radio">
+                        <input
+                          type="radio"
+                          name="recordType"
+                          value="FIR"
+                          checked={recordType === 'FIR'}
+                          onChange={() => { setRecordType('FIR'); setFirExists(null); setFirLoaded(false); }}
+                        />
+                        <span>FIR</span>
+                      </label>
+                      <label className="rc-radio">
+                        <input
+                          type="radio"
+                          name="recordType"
+                          value="DD"
+                          checked={recordType === 'DD'}
+                          onChange={() => { setRecordType('DD'); setFirExists(null); setFirLoaded(false); }}
+                        />
+                        <span>DD (Daily Diary)</span>
+                      </label>
+                    </div>
                   </label>
 
                   <label>FIR / DD No.
@@ -453,7 +470,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
               {/* --- Actual Seizure group --- */}
               <section className="rc-group">
-                <div className="rc-group-title">Actual Seizure</div>
                 <div className="rc-grid">
                   <label>DD No.
                     <input value={actualSeizureDdNo} onChange={e => setActualSeizureDdNo(e.target.value)} placeholder="e.g. DD 12/2026" />
@@ -466,7 +482,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
               {/* --- Legal sections group --- */}
               <section className="rc-group">
-                <div className="rc-group-title">Legal Sections</div>
                 <div className="rc-grid">
                   <label className="full" ref={bnsBoxRef}>
                     Section (U/S legal section) — multiple allowed
@@ -517,7 +532,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
               {/* --- Malkhana receipt group --- */}
               <section className="rc-group">
-                <div className="rc-group-title">Malkhana Receipt</div>
                 <div className="rc-grid">
                   <label>Date of Receipt in Malkhana
                     <input type="date" value={dateOfReceipt} max={today} onChange={e => setDateOfReceipt(e.target.value)} required />
@@ -525,14 +539,14 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                   <label>Received By (Malkhana Moharrir)
                     <input value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Moharrir name" required />
                   </label>
-                  <label>Seized On
-                    <input type="date" value={items[0]?.seizedOn || today} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizedOn: e.target.value } : it))} required />
-                  </label>
                   <label>Seized Time
                     <input type="time" value={seizedTime} onChange={e => setSeizedTime(e.target.value)} required />
                   </label>
-                  <label className="full">Seizing Officer
+                  <label>Seizing Officer
                     <input value={items[0]?.seizingOfficer || defaultIo(user)} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizingOfficer: e.target.value } : it))} required />
+                  </label>
+                  <label>Seized On
+                    <input type="date" value={items[0]?.seizedOn || today} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizedOn: e.target.value } : it))} required />
                   </label>
                 </div>
               </section>
