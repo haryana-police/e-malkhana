@@ -584,7 +584,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         <button type="button" className="item-remove" onClick={() => removeItem(it.localId)} aria-label="Remove item" title="Remove item">✕</button>
                       </div>
                       <div className="rc-grid item-grid">
-                        <label className="req">Category of Item <span className="req-star">*</span>
+                        <label className="req">Category of Item
                           <select value={it.categoryId} onChange={e => {
                             const c = getCategory(e.target.value);
                             patchItem(it.localId, { categoryId: e.target.value, subType: '', sectionLetter: c?.sectionLetter || it.sectionLetter, catValues: {} });
@@ -593,7 +593,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                             {ITEM_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                           </select>
                         </label>
-                        <label className="req">Malkhana Section (placement) <span className="req-star">*</span>
+                        <label className="req">Malkhana Section (placement)
                           <select value={it.sectionLetter} onChange={e => patchItem(it.localId, { sectionLetter: e.target.value })}>
                             {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
                           </select>
@@ -609,7 +609,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
                         {cat?.subTypes && cat.subTypeControl === 'radio' ? (
                           <div className={`rc-radio req ${it.subType ? 'filled' : ''}`}>
-                            <span className="rc-field-label">{cat.subTypeLabel || 'Type'} <span className="req-star">*</span></span>
+                            <span className="rc-field-label">{cat.subTypeLabel || 'Type'}</span>
                             <div className="rc-radio-row">
                               {cat.subTypes.map(t => (
                                 <label key={t} className={`rc-radio-opt ${it.subType === t ? 'on' : ''}`}>
@@ -663,10 +663,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
                         {renderNdpsClassBadge(it)}
 
-                        <label className={cat?.id === 'arms' ? 'req' : 'full req'}>Item Description (detailed — brand, colour, size, marks) <span className="req-star">*</span>
+                        <label className={cat?.id === 'arms' ? 'req' : 'full req'}>Item Description (detailed — brand, colour, size, marks)
                           <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" required />
                         </label>
-                        <label className={cat?.id === 'arms' ? 'req' : 'full req'}>Photo of the seized object <span className="req-star">*</span>
+                        <label className={cat?.id === 'arms' ? 'req' : 'full req'}>Photo of the seized object
                           <div className="file-field">
                             <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} required={cat?.id === 'arms'} />
                             {it.photo && <span className="file-info">{it.photo.file.name}</span>}
