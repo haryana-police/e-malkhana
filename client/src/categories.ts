@@ -49,15 +49,10 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
       'Alprazolam',
       'Codeine (Cough Syrups)',
     ],
+    // Only the required narcotics columns are kept (Narcotic Type, Quantity Seized,
+    // Item Description, Photo) — remaining detailed columns were removed per request.
     fields: [
       { key: 'quantity_seized', label: 'Quantity Seized (g/kg)', type: 'text', placeholder: 'e.g. 250 g / 1.2 kg', unit: 'g/kg' },
-      { key: 'packing_type', label: 'Packing Type', type: 'select', options: ['Pouch', 'Packet', 'Loose', 'Bottle', 'Other'] },
-      { key: 'no_of_packets', label: 'No. of Packets', type: 'number' },
-      { key: 'sample_drawn', label: 'Sample Drawn', type: 'select', options: ['Yes', 'No'] },
-      { key: 'sample_qty', label: 'Qty of Sample', type: 'text', placeholder: 'e.g. 10 g' },
-      { key: 'fsl_seal_no', label: 'FSL Sample Sealed Packet No.', type: 'text' },
-      { key: 'market_value', label: 'Approx. Market Value', type: 'number', unit: 'Rs.' },
-      { key: 'ncb_informed', label: 'NCB Informed', type: 'select', options: ['Yes', 'No'] },
     ],
   },
   {

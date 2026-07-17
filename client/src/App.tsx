@@ -541,7 +541,7 @@ export default function App() {
         </div>
       )}
 
-      <Footer onHome={goHome} />
+      <Footer />
     </>
   );
 }

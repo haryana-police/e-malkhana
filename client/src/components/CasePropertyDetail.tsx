@@ -77,6 +77,14 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
   const [typeOptions, setTypeOptions] = useState<ItemTypeOption[]>([]);
   interface ItemTypeOption { id: number; name: string; }
 
+  // Current "Item Type Fields" (Form Builder) definitions for THIS case's
+  // section.  Used to filter the per-item specific fields so we ONLY render
+  // columns that still exist in the current registration form — legacy keys
+  // written by older schema versions (e.g. sub_type, fsl_seal_no,
+  // malkhana_section, category) are dropped instead of being shown as stale
+  // "previous type" columns.
+  const [sectionFieldKeys, setSectionFieldKeys] = useState<Set<string>>(new Set());
+
   // Edit-mode state.  `null` = read-only (default).  An object = the
   // form's working copy (dirty, unsaved).
   const [editDraft, setEditDraft] = useState<EditableCase | null>(null);
