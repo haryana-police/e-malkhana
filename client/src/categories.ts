@@ -106,16 +106,13 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     sectionLetter: 'D',
     subTypeLabel: 'Type',
     subTypes: ['Two-wheeler', 'Four-wheeler', 'Commercial vehicle', 'Vehicle parts/spare parts'],
-    fields: [
-      { key: 'reg_no', label: 'Registration No.', type: 'text' },
-      { key: 'chassis_no', label: 'Chassis No.', type: 'text' },
-      { key: 'engine_no', label: 'Engine No.', type: 'text' },
-      { key: 'make_model', label: 'Make / Model', type: 'text' },
-      { key: 'colour', label: 'Colour', type: 'text' },
-      { key: 'stolen_used', label: 'Stolen / Used in Crime', type: 'select', options: ['Stolen', 'Used in Crime', 'Both', 'No'] },
-      { key: 'owner_name', label: 'Owner Name', type: 'text' },
-      { key: 'vehicle_condition', label: 'Vehicle Condition', type: 'select', options: ['Running', 'Damaged', 'Non-functional'] },
-    ],
+    // Only the required (highlighted) Vehicle columns are kept on the register:
+    // Category, Malkhana Section, Type, Item Description, Photo.  The detailed
+    // vehicle spec columns (Registration / Chassis / Engine / Make-Model /
+    // Colour / Stolen-Used / Owner / Condition) are removed per request — they
+    // are hidden in RegisterCaseModal for the 'vehicle' category so each row
+    // stays a clean 3-column layout.
+    fields: [],
   },
   {
     id: 'electronic',

@@ -600,8 +600,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         </label>
 
                         {/* Quantity is hidden for Narcotics / NDPS, Arms & Ammunition,
-                            and Cash & Valuables (not a highlighted column for cash). */}
-                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && (
+                            Cash & Valuables, Jewellery and Vehicle (not a highlighted
+                            column — only Category, Section, Type, Description, Photo are). */}
+                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && (
                           <label>Quantity
                             <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
                           </label>
@@ -623,7 +624,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </div>
                         ) : cat?.subTypes && (
                           <label>{cat.subTypeLabel || 'Type'}
-                            <select value={it.subType} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
+                            <select value={it.subType} required={cat?.id === 'gold'} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
                               <option value="">— select —</option>
                               {cat.subTypes.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
@@ -631,9 +632,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         )}
 
                         {/* The following common seizure fields are hidden for Narcotics / NDPS,
-                            Arms & Ammunition, and Cash & Valuables (only Category, Section,
-                            Total Amount, Description, Photo are kept per the required markup). */}
-                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && (
+                            Arms & Ammunition, Cash & Valuables, and Jewellery (only the
+                            highlighted columns — Category, Section, Type, Description, Photo —
+                            are kept per the required markup). */}
+                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && (
                           <>
                             <label>Place of Seizure
                               <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />
@@ -654,7 +656,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </>
                         )}
 
-                        {cat?.fields.map(f => (
+                        {/* Jewellery (gold) keeps only the highlighted columns
+                            (Category, Section, Type, Description, Photo) — its 5 detail
+                            fields are suppressed, matching the restyled register. */}
+                        {cat?.id !== 'gold' && cat?.fields.map(f => (
                           <label key={f.key}>
                             {f.label}{f.unit ? ` (${f.unit})` : ''}
                             {renderCatField(it.localId, it, f)}

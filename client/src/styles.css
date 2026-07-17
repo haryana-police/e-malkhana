@@ -670,6 +670,12 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 }
 /* Item card fields: 3 columns on the wide form, collapsing to 2 then 1. */
 .item-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px 14px; }
+/* Arms & Ammunition: strict 3-across layout — the Type radio and the
+   Description / Photo fields flow inline (no full-width spans) so each
+   row holds three fields. */
+.arms-grid .rc-radio{ grid-column: auto; flex-direction: row; align-items: center; gap: 10px; }
+.arms-grid .rc-radio.inline{ grid-column: auto; display:flex; }
+.arms-grid label.full{ grid-column: auto; }
 @media (max-width: 860px){
   .item-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
