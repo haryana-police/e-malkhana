@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CaseRow, CaseStatus, MovementEvent } from '../types';
 import { api } from '../api';
 
@@ -74,7 +74,20 @@ export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, ac
       })));
     } catch (e) { setErr((e as Error).message); }
   }
-  useEffect(() => { if (active) loadSummaries(); }, [active, cases.length]);
+  // Keep the latest loader in a ref so the interval always calls the
+  // current closure (fresh `cases`) instead of a stale one.
+  const loadRef = useRef(loadSummaries);
+  loadRef.current = loadSummaries;
+
+  // Auto-refresh: while this view is open, keep the movement log in sync
+  // with the server every 15s so newly recorded movements / status changes
+  // show up on their own — no manual "Refresh" button needed.
+  useEffect(() => {
+    if (!active) return;
+    loadRef.current();
+    const t = setInterval(() => loadRef.current(), 15000);
+    return () => clearInterval(t);
+  }, [active, cases.length]);
 
   // Open the timeline (movement log) for a specific case
   async function openTimeline(caseId: string) {
@@ -137,7 +150,6 @@ export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, ac
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn ghost" onClick={loadSummaries}>↻ Refresh</button>
           <button className="btn" onClick={onOpenScan}>+ Scan / Record Movement</button>
         </div>
       </div>
