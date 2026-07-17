@@ -661,10 +661,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
                         {renderNdpsClassBadge(it)}
 
-                        <label className="full req">Item Description (detailed — brand, colour, size, marks) <span className="req-star">*</span>
+                        <label className={cat?.id === 'arms' ? 'req' : 'full req'}>Item Description (detailed — brand, colour, size, marks) <span className="req-star">*</span>
                           <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" required />
                         </label>
-                        <label className="full req">Photo of the seized object <span className="req-star">*</span>
+                        <label className={cat?.id === 'arms' ? 'req' : 'full req'}>Photo of the seized object <span className="req-star">*</span>
                           <div className="file-field">
                             <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} required={cat?.id === 'arms'} />
                             {it.photo && <span className="file-info">{it.photo.file.name}</span>}

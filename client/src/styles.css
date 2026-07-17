@@ -843,40 +843,6 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 }
 .letterhead-menu:hover{ background: rgba(255,255,255,0.20); }
 
-/* Manual refresh button in the letterhead.  Lives next to the officer
-   chip on desktop; on mobile (≤980px) it collapses to icon-only with the
-   HH:MM stamp hidden to save space.  White-on-navy so it matches the
-   letterhead palette.  Spinning SVG while `refreshing` is true. */
-.letterhead-refresh{
-  display: flex; align-items: center; gap: 8px;
-  margin-right: 2px;
-}
-.btn.icon-only{
-  padding: 7px;
-  width: 32px; height: 32px;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.letterhead .btn.ghost{
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.30);
-  color: var(--paper);
-}
-.letterhead .btn.ghost:hover{ background: rgba(255,255,255,0.20); border-color: rgba(255,255,255,0.45); }
-.letterhead .btn.ghost:disabled{ opacity: 0.7; cursor: progress; }
-.letterhead .btn.ghost.is-loading .refresh-icon{ animation: refresh-spin 0.9s linear infinite; }
-@keyframes refresh-spin{
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-.refresh-icon{ display: block; }
-.refresh-stamp{
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 10.5px;
-  color: rgba(255,255,255,0.62);
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 .sidebar-close-btn{
   display:none;
   background: transparent;
@@ -916,7 +882,6 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 /* --- Mobile (≤ 768px) — sidebar becomes a drawer --- */
 @media (max-width: 768px){
   .letterhead-menu{ display:flex; }
-  .refresh-stamp{ display: none; }  /* save space on mobile — the icon button is enough */
 
   .sidebar{
     display:flex;                       /* override the desktop shown state */
