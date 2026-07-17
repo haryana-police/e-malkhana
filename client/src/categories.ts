@@ -115,18 +115,27 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     fields: [],
   },
   {
-    id: 'electronic',
-    label: 'Electronic / Digital Evidence',
+    id: 'lost_items',
+    label: 'Lost Items',
     sectionLetter: 'C',
     subTypeLabel: 'Type',
-    subTypes: ['Mobile phones', 'Laptops/Computers', 'SIM cards/Memory cards', 'Other electronic devices'],
+    subTypes: [
+      'Lost mobile phone',
+      'Lost vehicle',
+      'Lost jewellery',
+      'Lost cash / valuables',
+      'Lost document',
+      'Other lost article',
+    ],
+    // Category, Malkhana Section, Item Description and Photo are rendered
+    // globally for every category in RegisterCaseModal.  These per-item fields
+    // capture the detailed description (brand, colour, size, marks) the user
+    // asked for; Section + Photo come from the shared global block.
     fields: [
-      { key: 'imei_no', label: 'IMEI No. (mobile)', type: 'text' },
-      { key: 'brand_model', label: 'Brand / Model', type: 'text' },
-      { key: 'password_pin', label: 'Password / PIN (if known)', type: 'text' },
-      { key: 'data_extraction', label: 'Data Extraction Done', type: 'select', options: ['Yes', 'No'] },
-      { key: 'forensic_sent', label: 'Forensic Lab Sent', type: 'select', options: ['Yes', 'No'] },
-      { key: 'cloud_requested', label: 'Cloud / Call Data Requested', type: 'select', options: ['Yes', 'No'] },
+      { key: 'brand', label: 'Brand', type: 'text', placeholder: 'e.g. Samsung / Honda / Titan' },
+      { key: 'colour', label: 'Colour', type: 'text', placeholder: 'e.g. Black / Red' },
+      { key: 'size', label: 'Size', type: 'text', placeholder: 'e.g. 6.1 inch / 42 mm / L' },
+      { key: 'marks', label: 'Distinguishing Marks', type: 'text', placeholder: 'Scratch, sticker, engraving, IMEI…' },
     ],
   },
   {
