@@ -28,6 +28,7 @@ export interface ItemCategory {
   sectionLetter: string;  // suggested Malkhana Part (A–E)
   subTypes?: string[];    // the inner type dropdown options
   subTypeLabel?: string;  // label for the sub-type dropdown, e.g. "Narcotic Type"
+  subTypeControl?: 'select' | 'radio';  // how subType is rendered (default: select)
   fields: CategoryField[];
 }
 
@@ -52,7 +53,7 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     // Only the required narcotics columns are kept (Narcotic Type, Quantity Seized,
     // Item Description, Photo) — remaining detailed columns were removed per request.
     fields: [
-      { key: 'quantity_seized', label: 'Quantity Seized (g/kg)', type: 'text', placeholder: 'e.g. 250 g / 1.2 kg', unit: 'g/kg' },
+      { key: 'quantity_seized', label: 'Quantity Seized', type: 'text', placeholder: 'e.g. 250 g / 1.2 kg', unit: 'g/kg' },
     ],
   },
   {
@@ -60,20 +61,16 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     label: 'Arms & Ammunition',
     sectionLetter: 'B',
     subTypeLabel: 'Type',
+    subTypeControl: 'radio',
     subTypes: [
-      'Firearms (Pistol, Revolver, Rifle, Gun)',
-      'Sharp weapons (Knife, Sword, Farsa, Gandasa)',
-      'Blunt weapons (Lathi, Danda, Iron rod)',
-      'Explosives/Bombs',
+      'Firearms',
+      'Other Weapons',
     ],
-    fields: [
-      { key: 'no_of_weapons', label: 'No. of Weapons', type: 'number' },
-      { key: 'caliber', label: 'Caliber / Bore', type: 'text', placeholder: 'e.g. .315 / 7.62 mm' },
-      { key: 'licensed', label: 'Licensed / Unlicensed', type: 'select', options: ['Licensed', 'Unlicensed', 'Not Known'] },
-      { key: 'working_condition', label: 'Working Condition', type: 'select', options: ['Yes', 'No'] },
-      { key: 'no_of_rounds', label: 'No. of Rounds', type: 'number' },
-      { key: 'ballistic_sent', label: 'Ballistic Report Sent', type: 'select', options: ['Yes', 'No'] },
-    ],
+    // Only the required Arms & Ammunition columns are kept on the register
+    // (Category, Malkhana Section, Type, Item Description, Photo).  The
+    // detailed weapon spec columns (caliber, rounds, ballistic report, …)
+    // are intentionally omitted — they are captured separately / later.
+    fields: [],
   },
   {
     id: 'cash',

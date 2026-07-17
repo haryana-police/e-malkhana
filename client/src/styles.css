@@ -601,6 +601,17 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .rc-grid textarea{ min-height:52px; resize: vertical; }
 .rc-grid select{ appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' fill='none' stroke='%235C5A4E' stroke-width='1.6'/></svg>"); background-repeat:no-repeat; background-position:right 10px center; padding-right:28px; }
 
+/* Required field marker (highlighted sections on the form) */
+.rc-grid label.req .req-star, .rc-radio.req .req-star{ color:#c0392b; font-weight:700; margin-left:2px; }
+
+/* TYPE radio group (Arms & Ammunition) */
+.rc-radio{ grid-column: 1 / -1; display:flex; flex-direction:column; gap:6px; }
+.rc-radio .rc-field-label{ font-size:10.5px; color: var(--slate-soft); text-transform:uppercase; letter-spacing:0.06em; font-weight:600; }
+.rc-radio-row{ display:flex; flex-wrap:wrap; gap:10px; }
+.rc-radio-opt{ display:inline-flex; align-items:center; gap:7px; padding:8px 14px; border:1px solid var(--line); border-radius:6px; background: var(--white-paper); cursor:pointer; font-size:13px; font-weight:500; color: var(--slate); text-transform:none; letter-spacing:0; transition: border-color .15s, background .15s, box-shadow .15s; }
+.rc-radio-opt input{ margin:0; accent-color: var(--ink-navy); width:15px; height:15px; }
+.rc-radio-opt.on{ border-color: var(--ink-navy); background:#eef2f8; box-shadow:0 0 0 2px rgba(20,36,61,0.08); }
+
 /* FIR / DD row + lookup */
 .rc-fir-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .rc-fir-row input{ flex:1 1 180px; }

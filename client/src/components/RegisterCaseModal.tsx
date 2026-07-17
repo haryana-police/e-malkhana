@@ -258,6 +258,11 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
       if (!it.seizedOn) e.push(`Item ${i + 1}: Seized On date is required.`);
       if (!it.seizingOfficer.trim()) e.push(`Item ${i + 1}: Seizing Officer is required.`);
       if (it.categoryId !== 'narcotics' && it.sealSealed === 'Yes' && !it.sealNo.trim()) e.push(`Item ${i + 1}: enter the Seal No. / Mark.`);
+      // Arms & Ammunition — only the highlighted sections are required.
+      if (it.categoryId === 'arms') {
+        if (!it.subType) e.push(`Item ${i + 1}: select Type (Firearms / Other Weapons).`);
+        if (!it.remarks.trim()) e.push(`Item ${i + 1}: Item Description is required.`);
+      }
     });
     return e;
   }
@@ -579,7 +584,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         <button type="button" className="item-remove" onClick={() => removeItem(it.localId)} aria-label="Remove item" title="Remove item">✕</button>
                       </div>
                       <div className="rc-grid item-grid">
-                        <label>Category of Item
+                        <label className="req">Category of Item <span className="req-star">*</span>
                           <select value={it.categoryId} onChange={e => {
                             const c = getCategory(e.target.value);
                             patchItem(it.localId, { categoryId: e.target.value, subType: '', sectionLetter: c?.sectionLetter || it.sectionLetter, catValues: {} });
@@ -588,16 +593,34 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                             {ITEM_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                           </select>
                         </label>
-                        <label>Malkhana Section (placement)
+                        <label className="req">Malkhana Section (placement) <span className="req-star">*</span>
                           <select value={it.sectionLetter} onChange={e => patchItem(it.localId, { sectionLetter: e.target.value })}>
                             {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
                           </select>
                         </label>
-                        <label>Quantity
-                          <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
-                        </label>
 
-                        {cat?.subTypes && (
+                        {/* Quantity is hidden for Narcotics / NDPS (not a required column); kept for all other categories. */}
+                        {cat?.id !== 'narcotics' && (
+                          <label>Quantity
+                            <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
+                          </label>
+                        )}
+
+                        {cat?.subTypes && cat.subTypeControl === 'radio' ? (
+                          <div className={`rc-radio req ${it.subType ? 'filled' : ''}`}>
+                            <span className="rc-field-label">{cat.subTypeLabel || 'Type'} <span className="req-star">*</span></span>
+                            <div className="rc-radio-row">
+                              {cat.subTypes.map(t => (
+                                <label key={t} className={`rc-radio-opt ${it.subType === t ? 'on' : ''}`}>
+                                  <input type="radio" name={`${it.localId}-subtype`} value={t}
+                                    checked={it.subType === t}
+                                    onChange={() => patchItem(it.localId, { subType: t })} />
+                                  <span>{t}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ) : cat?.subTypes && (
                           <label>{cat.subTypeLabel || 'Type'}
                             <select value={it.subType} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
                               <option value="">— select —</option>
@@ -638,12 +661,12 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
                         {renderNdpsClassBadge(it)}
 
-                        <label className="full">Item Description (detailed — brand, colour, size, marks)
-                          <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" />
+                        <label className="full req">Item Description (detailed — brand, colour, size, marks) <span className="req-star">*</span>
+                          <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" required />
                         </label>
-                        <label className="full">Photo of the seized object (optional)
+                        <label className="full req">Photo of the seized object <span className="req-star">*</span>
                           <div className="file-field">
-                            <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} />
+                            <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} required={cat?.id === 'arms'} />
                             {it.photo && <span className="file-info">{it.photo.file.name}</span>}
                           </div>
                         </label>

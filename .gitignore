@@ -49,3 +49,4 @@ server/secrets/
 
 # moved PHQ complaint dashboard out of this repo (lives in ~/Downloads)
 phq-complaint-dashboard-migrated/
+malkhana_sections_backup.json

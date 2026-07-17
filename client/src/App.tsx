@@ -216,25 +216,6 @@ export default function App() {
   const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => { if (user) reload(); }, [user, reloadKey]);
 
-  // Manual refresh state — Letterhead shows a spinning SVG button while
-  // the call is in flight, and a "last refreshed HH:MM" stamp after it
-  // finishes.  This is the belt-and-suspenders path for the rare case
-  // where the auto-reload on (re)login / write misses a beat (cold-start
-  // race, stale tab, sibling-tab edits).  Keeping it separate from the
-  // effect so the user always has a manual escape hatch.
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
-  async function manualRefresh() {
-    if (refreshing) return;
-    setRefreshing(true);
-    try {
-      await reload();
-      setLastRefreshedAt(new Date());
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
   async function openTimeline(fir: string) {
     setTlFir(fir); setTlEvents([]);
     try {
@@ -347,9 +328,6 @@ export default function App() {
         onMenuToggle={() => setSidebarOpen(o => !o)}
         menuOpen={sidebarOpen}
         onHome={goHome}
-        onRefresh={manualRefresh}
-        refreshing={refreshing}
-        lastRefreshedAt={lastRefreshedAt}
       />
       {sidebarOpen && (
         <div
