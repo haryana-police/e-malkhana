@@ -80,12 +80,12 @@ export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, ac
   loadRef.current = loadSummaries;
 
   // Auto-refresh: while this view is open, keep the movement log in sync
-  // with the server every 15s so newly recorded movements / status changes
+  // with the server every 2s so newly recorded movements / status changes
   // show up on their own — no manual "Refresh" button needed.
   useEffect(() => {
     if (!active) return;
     loadRef.current();
-    const t = setInterval(() => loadRef.current(), 15000);
+    const t = setInterval(() => loadRef.current(), 2000);
     return () => clearInterval(t);
   }, [active, cases.length]);
 
