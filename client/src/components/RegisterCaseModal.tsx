@@ -599,8 +599,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </select>
                         </label>
 
-                        {/* Quantity is hidden for Narcotics / NDPS (not a required column); kept for all other categories. */}
-                        {cat?.id !== 'narcotics' && (
+                        {/* Quantity is hidden for Narcotics / NDPS and for Arms & Ammunition
+                            (not a required column per the form markup). */}
+                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && (
                           <label>Quantity
                             <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
                           </label>
@@ -630,8 +631,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         )}
 
                         {/* The following common seizure fields are hidden for Narcotics / NDPS,
-                            where only Narcotic Type + Quantity Seized are required (per form markup). */}
-                        {cat?.id !== 'narcotics' && (
+                            and for Arms & Ammunition (only Category, Section, Type, Description,
+                            Photo are kept per the required form markup). */}
+                        {cat?.id !== 'narcotics' && cat?.id !== 'arms' && (
                           <>
                             <label>Place of Seizure
                               <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />
