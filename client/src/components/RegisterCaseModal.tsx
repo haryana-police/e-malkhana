@@ -397,14 +397,14 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
               <section className="rc-group">
                 <div className="rc-group-title">Record</div>
                 <div className="rc-grid">
-                  <label className="full">Record Type
+                  <label>Record Type
                     <select value={recordType} onChange={e => { setRecordType(e.target.value as 'FIR' | 'DD'); setFirExists(null); setFirLoaded(false); }}>
                       <option value="FIR">FIR</option>
                       <option value="DD">DD (Daily Diary)</option>
                     </select>
                   </label>
 
-                  <label className="full">FIR / DD No.
+                  <label>FIR / DD No.
                     <div className="rc-fir-row">
                       <input
                         value={firNo}
@@ -420,7 +420,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                   </label>
 
                   {recordType === 'FIR' ? (
-                    <label className="full">FIR Date
+                    <label>FIR Date
                       <input type="date" value={firDate} max={today} onChange={e => setFirDate(e.target.value)} />
                     </label>
                   ) : (
