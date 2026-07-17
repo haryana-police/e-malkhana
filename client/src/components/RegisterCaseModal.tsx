@@ -257,7 +257,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
       if (!it.categoryId) e.push(`Item ${i + 1}: choose a Category of Item.`);
       if (!it.seizedOn) e.push(`Item ${i + 1}: Seized On date is required.`);
       if (!it.seizingOfficer.trim()) e.push(`Item ${i + 1}: Seizing Officer is required.`);
-      if (it.sealSealed === 'Yes' && !it.sealNo.trim()) e.push(`Item ${i + 1}: enter the Seal No. / Mark.`);
+      if (it.categoryId !== 'narcotics' && it.sealSealed === 'Yes' && !it.sealNo.trim()) e.push(`Item ${i + 1}: enter the Seal No. / Mark.`);
     });
     return e;
   }
@@ -605,22 +605,29 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                             </select>
                           </label>
                         )}
-                        <label>Place of Seizure
-                          <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />
-                        </label>
 
-                        <label>Sealed / Unsealed
-                          <select value={it.sealSealed} onChange={e => patchItem(it.localId, { sealSealed: e.target.value })}>
-                            <option value="Yes">Sealed</option>
-                            <option value="No">Unsealed</option>
-                          </select>
-                        </label>
-                        <label>Seal No. / Mark
-                          <input value={it.sealNo} onChange={e => patchItem(it.localId, { sealNo: e.target.value })} placeholder="Seal no. / mark" />
-                        </label>
-                        <label>Sealed By (Officer)
-                          <input value={it.sealBy} onChange={e => patchItem(it.localId, { sealBy: e.target.value })} placeholder="Officer name" />
-                        </label>
+                        {/* The following common seizure fields are hidden for Narcotics / NDPS,
+                            where only Narcotic Type + Quantity Seized are required (per form markup). */}
+                        {cat?.id !== 'narcotics' && (
+                          <>
+                            <label>Place of Seizure
+                              <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />
+                            </label>
+
+                            <label>Sealed / Unsealed
+                              <select value={it.sealSealed} onChange={e => patchItem(it.localId, { sealSealed: e.target.value })}>
+                                <option value="Yes">Sealed</option>
+                                <option value="No">Unsealed</option>
+                              </select>
+                            </label>
+                            <label>Seal No. / Mark
+                              <input value={it.sealNo} onChange={e => patchItem(it.localId, { sealNo: e.target.value })} placeholder="Seal no. / mark" />
+                            </label>
+                            <label>Sealed By (Officer)
+                              <input value={it.sealBy} onChange={e => patchItem(it.localId, { sealBy: e.target.value })} placeholder="Officer name" />
+                            </label>
+                          </>
+                        )}
 
                         {cat?.fields.map(f => (
                           <label key={f.key}>
