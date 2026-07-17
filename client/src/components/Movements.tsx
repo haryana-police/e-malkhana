@@ -118,26 +118,30 @@ export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, ac
   const f = filter.trim().toLowerCase();
   const fNum = f.replace(/\D+/g, '');   // digits only ("" if none)
 
-  const visible = (summaries ?? []).filter(s => {
-    if (!f) return true;
-    const id   = s.case.id.toLowerCase();
-    const idN  = norm(s.case.id);                  // "214/2026"
-    const iid  = (s.case.itemId || '').toLowerCase();
+  // Show the most recently-updated (newest movement) cases on top.
+  const visible = (summaries ?? [])
+    .filter(s => {
+      if (!f) return true;
+      const id   = s.case.id.toLowerCase();
+      const idN  = norm(s.case.id);                  // "214/2026"
+      const iid  = (s.case.itemId || '').toLowerCase();
 
-    // 1) Direct substring on case id (with or without the FIR/DD prefix).
-    if (id.includes(f) || idN.includes(f)) return true;
-    if (iid.includes(f)) return true;
+      // 1) Direct substring on case id (with or without the FIR/DD prefix).
+      if (id.includes(f) || idN.includes(f)) return true;
+      if (iid.includes(f)) return true;
 
-    // 2) Number-only: typing "214" should match id "214" and itemId "000214".
-    //    Strip ALL non-digits from BOTH sides so incidental digits in the
-    //    item description ("2 live cartridges") never trip the filter.
-    if (fNum) {
-      const idDigits   = idN.replace(/\D+/g, '');  // "2142026"
-      const iidDigits  = iid.replace(/\D+/g, '');  // "2026000214"
-      if (idDigits.includes(fNum) || iidDigits.includes(fNum)) return true;
-    }
-    return false;
-  });
+      // 2) Number-only: typing "214" should match id "214" and itemId "000214".
+      //    Strip ALL non-digits from BOTH sides so incidental digits in the
+      //    item description ("2 live cartridges") never trip the filter.
+      if (fNum) {
+        const idDigits   = idN.replace(/\D+/g, '');  // "2142026"
+        const iidDigits  = iid.replace(/\D+/g, '');  // "2026000214"
+        if (idDigits.includes(fNum) || iidDigits.includes(fNum)) return true;
+      }
+      return false;
+    })
+    // Sort newest movement first; cases with no timestamp sink to the bottom.
+    .sort((a, b) => (b.lastMovementAt || '').localeCompare(a.lastMovementAt || ''));
 
   return (
     <div className={`view${active ? ' active' : ''}`} id="view-movements">
