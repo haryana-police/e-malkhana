@@ -101,9 +101,13 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
       }
     }
     // Police station name — same 3–80 char rule the server enforces.
-    const s = (c.station || '').trim();
-    if (s.length < 3 || s.length > 80) {
-      errs.station = 'Station name must be 3–80 characters';
+    // Skipped in focused "Configure threshold" mode, where the station
+    // field isn't shown and we only touch the day-count thresholds.
+    if (!single) {
+      const s = (c.station || '').trim();
+      if (s.length < 3 || s.length > 80) {
+        errs.station = 'Station name must be 3–80 characters';
+      }
     }
     return errs;
   }
@@ -228,6 +232,13 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
         {tab === 'thresholds' && cfg && (
           <>
             <div className="settings-list">
+              {single && (
+                <div className="sub" style={{ marginBottom: 12 }}>
+                  Set the day-count thresholds that drive the <b>Alerts &amp; Compliance</b> report.
+                  Changes apply on save and re-run the alert scan immediately.
+                </div>
+              )}
+              {!single && (
               <div className="settings-row">
                 <label>
                   Police Station name
@@ -250,6 +261,7 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
                   <div id="err-station" className="field-error" role="alert">{fieldErrors.station}</div>
                 )}
               </div>
+              )}
               <div className="settings-row">
                 <label>
                   FSL report overdue
@@ -294,6 +306,7 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
                 <span className="settings-unit">days</span>
                 {fieldErrors.inspectionCycleDays && <div id="err-inspectionCycleDays" className="field-error" role="alert">{fieldErrors.inspectionCycleDays}</div>}
               </div>
+              {!single && (
               <div className="settings-row">
                 <label>
                   Last inspection
@@ -304,6 +317,7 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
                   onChange={e => set('lastInspection', e.target.value)} />
                 {fieldErrors.lastInspection && <div id="err-lastInspection" className="field-error" role="alert">{fieldErrors.lastInspection}</div>}
               </div>
+              )}
             </div>
             {msg && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
             <div className="form-actions">
