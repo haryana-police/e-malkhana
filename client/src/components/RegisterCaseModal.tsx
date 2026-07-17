@@ -157,11 +157,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
       // straight to item entry without step 1 blocking on empty required
       // fields.  Received-By defaults to the signed-in Moharrir.
       if (!receivedBy.trim()) setReceivedBy(defaultIo(user));
-      // Auto-advance to Step 2 (Seized Items) — the FIR is already on file,
-      // so there is nothing left to type in Step 1.  New (not-on-file) FIRs
-      // stay on Step 1 so the MM can fill the details first.
-      setStep(2);
-      setMsg({ kind: 'ok', text: `${full} already on file — details loaded. Add the seized item(s) below.` });
+      // Fill the details in place and STAY on Step 1 (same page) — do NOT
+      // auto-advance to Step 2. The MM can review the loaded details and
+      // click "Next" when ready to add the seized item(s).
+      setMsg({ kind: 'ok', text: `${full} already on file — details loaded. Review below, then click Next.` });
     } catch {
       setFirExists(false); setFirLoaded(false);
       setMsg({ kind: 'ok', text: `New ${full} — please fill the ${recordType === 'DD' ? 'DD' : 'FIR'} details below.` });
