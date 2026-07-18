@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { RackItem, BnsSection, User } from '../types';
+import type { RackItem, BnsSection, User, FirMaster } from '../types';
 import { ITEM_CATEGORIES, getCategory, classifyNdps, type ItemCategory, type CategoryField } from '../categories';
 
 interface Props {
@@ -136,13 +136,14 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     setStep(1); setRecordType('FIR'); setFirNo(''); setDdNo(''); setFirExists(null); setFirLoaded(false);
     setFirDate(today); setDdDate(today); setNatureOfDd(''); setNameOfDeceased(''); setReportingPerson('');
     setActualSeizureDdNo(''); setActualSeizureDate('');
+    setFirHits([]); setFirOpen(false); setFirActive(-1);
     setBnsQuery(''); setLegalSections([]);
     setSeizedTime('10:00'); setReceivedBy('');
     setItems([]); setMsg(null); setErrors([]);
   }
 
   // ---------- FIR/DD lookup (fetches existing data if present) ----------
-  async // FIR/DD live typeahead search (debounced).  Triggers on every keystroke
+  // FIR/DD live typeahead search (debounced).  Triggers on every keystroke
  // in the FIR/DD No. field and shows matching records from the DB to
  // single-select, replacing the old "Lookup" button.
  useEffect(() => {
@@ -468,7 +469,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           name="recordType"
                           value="FIR"
                           checked={recordType === 'FIR'}
-                          onChange={() => { setRecordType('FIR'); setFirExists(null); setFirLoaded(false); }}
+                          onChange={() => { setRecordType('FIR'); setFirExists(null); setFirLoaded(false); setFirOpen(false); setFirHits([]); }}
                         />
                         <span>FIR</span>
                       </label>
@@ -478,7 +479,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           name="recordType"
                           value="DD"
                           checked={recordType === 'DD'}
-                          onChange={() => { setRecordType('DD'); setFirExists(null); setFirLoaded(false); }}
+                          onChange={() => { setRecordType('DD'); setFirExists(null); setFirLoaded(false); setFirOpen(false); setFirHits([]); }}
                         />
                         <span>DD (Daily Diary)</span>
                       </label>
@@ -486,17 +487,41 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                   </label>
 
                   <label>FIR / DD No.
-                    <div className="rc-fir-row">
+                    <div className="rc-fir-row fir-typeahead" ref={firBoxRef}>
                       <input
                         value={firNo}
-                        onChange={e => { setFirNo(e.target.value); setFirExists(null); setFirLoaded(false); }}
+                        onChange={e => { setFirNo(e.target.value); setFirExists(null); setFirLoaded(false); setFirOpen(true); }}
+                        onFocus={() => { if (firNo.trim()) setFirOpen(true); }}
+                        onKeyDown={onFirKeyDown}
                         placeholder={recordType === 'DD' ? 'e.g. DD 12/2026' : 'e.g. FIR 245/2026'}
                         required
+                        autoComplete="off" spellCheck={false}
+                        role="combobox" aria-expanded={firOpen} aria-autocomplete="list" aria-controls="fir-hits"
                       />
-                      <button type="button" className="btn ghost" onClick={checkFir} disabled={busy || firChecking}>
-                        {firChecking ? '…' : 'Lookup'}
-                      </button>
                       {lookupPill}
+                      {firOpen && (
+                        <div className="fir-hits" id="fir-hits" role="listbox">
+                          {firLoading && firHits.length === 0 && <div className="fir-empty">searching…</div>}
+                          {!firLoading && firHits.length === 0 && firNo.trim() &&
+                            <div className="fir-empty">No matching FIR/DD for “{firNo.trim()}”.</div>}
+                          {firHits.map((h, i) => (
+                            <div
+                              key={h.firNo}
+                              role="option" aria-selected={i === firActive}
+                              className={`fir-opt ${i === firActive ? 'active' : ''} ${h.recordType === 'DD' ? 'is-dd' : ''}`}
+                              onMouseDown={() => selectFir(h)}
+                              onMouseEnter={() => setFirActive(i)}
+                            >
+                              <span className="fir-opt-no">{h.firNo}</span>
+                              <span className="fir-opt-meta">
+                                {h.recordType === 'DD' ? 'DD' : 'FIR'}
+                                {h.policeStation ? ` · ${h.policeStation}` : ''}
+                                {h.itemCount != null ? ` · ${h.itemCount} item(s)` : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </label>
 

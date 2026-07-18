@@ -645,6 +645,23 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .lookup-pill.neu{ background: var(--amber-bg); color: var(--amber); }
 .lookup-pill.checking{ background: var(--paper-dark); color: var(--slate-soft); }
 
+/* FIR/DD live typeahead (single-select, replaces Lookup button) */
+.fir-typeahead{ position: relative; }
+.fir-hits{
+  position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:40;
+  background:var(--white-paper); border:1px solid var(--line); border-radius:10px;
+  box-shadow:0 10px 28px rgba(20,36,61,0.16); max-height:260px; overflow:auto; padding:6px;
+}
+.fir-empty{ padding:10px 12px; font-size:12px; color:var(--slate-soft); }
+.fir-opt{
+  display:flex; flex-direction:column; gap:2px; padding:8px 12px; border-radius:8px;
+  cursor:pointer; border:1px solid transparent;
+}
+.fir-opt.active{ background:rgba(20,36,61,0.06); border-color:rgba(20,36,61,0.12); }
+.fir-opt-no{ font-weight:700; font-size:13px; color:var(--ink-navy); letter-spacing:0.01em; }
+.fir-opt-meta{ font-size:11px; color:var(--slate-soft); }
+.fir-opt.is-dd .fir-opt-no{ color:var(--amber); }
+
 /* sticky footer */
 .rc-actions{
   display:flex; gap:8px; justify-content:flex-end; padding:12px 24px;
