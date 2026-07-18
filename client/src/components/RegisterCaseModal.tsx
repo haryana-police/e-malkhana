@@ -79,6 +79,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   const [firLoading, setFirLoading] = useState(false);
   const [firActive, setFirActive] = useState(-1);
   const firBoxRef = useRef<HTMLDivElement>(null);
+  // Per-item hidden camera inputs — keyed by draft item localId so each
+  // "Camera" button opens the phone's camera directly (capture=environment)
+  // instead of just the file/gallery picker.
+  const camRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [firDate, setFirDate] = useState(today);
   // DD-specific
   const [ddDate, setDdDate] = useState(today);
@@ -275,7 +279,8 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     const f = e.target.files?.[0];
     if (!f) return;
     fileToDataUrl(f).then(d => patchItem(localId, { photo: { file: f, dataUrl: d } }))
-      .catch(() => setMsg({ kind: 'error', text: 'Failed to read the photo file.' }));
+      .catch(() => setMsg({ kind: 'error', text: 'Failed to read the photo file.' }))
+      .finally(() => { e.target.value = ''; }); // reset so picking the same file again re-triggers onChange
   }
   function renderCatField(localId: string, it: DraftItem, f: CategoryField) {
     const v = it.catValues[f.key] ?? '';
@@ -797,8 +802,46 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         </label>
                         <label className="full">Photo of the seized object <span className="opt-tag">(optional)</span>
                           <div className="file-field">
-                            <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} />
-                            {it.photo && <span className="file-info">{it.photo.file.name}</span>}
+                            {/* Hidden camera input — opened directly by the Camera button so
+                                the phone's camera launches on Android instead of only the file
+                                picker. capture="environment" prefers the rear camera. */}
+                            <input
+                              ref={el => { camRefs.current[it.localId] = el; }}
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              style={{ display: 'none' }}
+                              onChange={e => onPickItemPhoto(it.localId, e)}
+                              disabled={busy}
+                            />
+                            {it.photo ? (
+                              <>
+                                <img className="file-thumb" src={it.photo.dataUrl} alt="preview" />
+                                <span className="file-info"><b>{it.photo.file.name}</b></span>
+                                <button
+                                  type="button"
+                                  className="btn small camera-btn"
+                                  onClick={() => camRefs.current[it.localId]?.click()}
+                                  disabled={busy}
+                                >📷 Retake</button>
+                                <button
+                                  type="button"
+                                  className="file-remove"
+                                  onClick={() => { patchItem(it.localId, { photo: null }); const c = camRefs.current[it.localId]; if (c) c.value = ''; }}
+                                  disabled={busy}
+                                >Remove</button>
+                              </>
+                            ) : (
+                              <>
+                                <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} />
+                                <button
+                                  type="button"
+                                  className="btn small camera-btn"
+                                  onClick={() => camRefs.current[it.localId]?.click()}
+                                  disabled={busy}
+                                >📷 Camera</button>
+                              </>
+                            )}
                           </div>
                         </label>
                       </div>
