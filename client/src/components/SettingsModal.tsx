@@ -159,12 +159,11 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
     api.alertConfig().then(setCfg).catch(() => {});
   }
 
-  function refreshLog() {
-    setLogError(null);
-    api.audit({ limit: 200 }).then(setLog).catch(e => setLogError((e as Error).message));
-  }
+  // Drop 'anonymous' system-trace entries — they carry no real MM Login ID
+  // and only add noise to the activity log (see also the user chips below).
+  const visibleLog = (log ?? []).filter(e => (e.userId || '').toLowerCase() !== 'anonymous');
 
-  const filteredLog = (log ?? []).filter(e => {
+  const filteredLog = visibleLog.filter(e => {
     if (!logFilter) return true;
     const f = logFilter.toLowerCase();
     return e.userId.toLowerCase().includes(f)
@@ -174,9 +173,9 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
         || e.details.toLowerCase().includes(f);
   });
 
-  // Summary counts per user (for the top-of-log strip)
+  // Summary counts per user (for the top-of-log strip) — excludes anonymous.
   const userSummary: Record<string, number> = {};
-  for (const e of (log ?? [])) userSummary[e.userId] = (userSummary[e.userId] || 0) + 1;
+  for (const e of visibleLog) userSummary[e.userId] = (userSummary[e.userId] || 0) + 1;
 
   return (
     <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
@@ -211,7 +210,7 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
               <button
                 className={`audit-tab${tab === 'log' ? ' active' : ''}`}
                 onClick={() => setTab('log')}
-              >Activity log <span className="audit-tab-count">{(log ?? []).length}</span></button>
+              >Activity log <span className="audit-tab-count">{visibleLog.length}</span></button>
               {onOpenSectionsManager && (
                 <button
                   className="audit-tab"
@@ -384,7 +383,6 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
                 value={logFilter}
                 onChange={e => setLogFilter(e.target.value)}
               />
-              <button className="btn ghost small" onClick={refreshLog}>↻ Refresh</button>
             </div>
 
             {logError && <div className="form-msg show error">{logError}</div>}
@@ -394,7 +392,7 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
                 ? <div className="sub" style={{ padding: 14 }}>Loading…</div>
                 : filteredLog.length === 0
                   ? <div className="sub" style={{ padding: 14, textAlign: 'center' }}>
-                      {log.length === 0
+                      {visibleLog.length === 0
                         ? 'No activity yet. Once any MM updates a case, the change will be logged here with their ID.'
                         : 'No entries match the current filter.'}
                     </div>
@@ -424,7 +422,6 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
 
             <div className="form-actions">
               <button className="btn ghost" onClick={onClose}>Close</button>
-              <button className="btn" onClick={refreshLog}>Refresh log</button>
             </div>
           </>
         )}
