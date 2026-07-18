@@ -205,19 +205,21 @@ export function CaseProperty({
       render: (c) => (
         <td>
           <div className="row-actions">
-            <Link
-              to={`/case-property/${encodeURIComponent(c.id)}?tab=tag`}
+            <div
               className="icon-btn"
-              onClick={(e) => e.stopPropagation()}
-              title="View evidence tag (real QR) on detail page"
-            >▦</Link>
-            <Link
-              to={`/case-property/${encodeURIComponent(c.id)}?tab=timeline`}
+              title="View evidence tag (real QR)"
+              onClick={(e) => { e.stopPropagation(); onOpenTag(c); }}
+            >▦</div>
+            <div
               className="icon-btn"
-              onClick={(e) => e.stopPropagation()}
-              title="View movement log on detail page"
-            >⏱</Link>
-            <div className="icon-btn" title="Change status (record a movement)" onClick={(e) => { e.stopPropagation(); onChangeStatus(c); }}>↻</div>
+              title="View movement log"
+              onClick={(e) => { e.stopPropagation(); onOpenTimeline(c.id); }}
+            >⏱</div>
+            <div
+              className="icon-btn"
+              title="Change status (record a movement)"
+              onClick={(e) => { e.stopPropagation(); onChangeStatus(c); }}
+            >↻</div>
           </div>
         </td>
       ),
