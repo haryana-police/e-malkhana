@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { RackItem, BnsSection, User, FirMaster } from '../types';
 import { ITEM_CATEGORIES, getCategory, classifyNdps, type ItemCategory, type CategoryField } from '../categories';
+import { CameraCaptureModal } from './CameraCaptureModal';
 
 interface Props {
   open: boolean;
@@ -105,6 +106,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   // ---------- multi-item list ----------
   const [items, setItems] = useState<DraftItem[]>([]);
   const [itemsCollapsed, setItemsCollapsed] = useState(false);
+
+  // In-app camera modal state (live getUserMedia capture). keyed by item localId.
+  const [camOpen, setCamOpen] = useState(false);
+  const [camItemId, setCamItemId] = useState<string | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -444,6 +449,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
         : null;
 
   const inner = (
+    <>
     <form
       className={`form-card rc${asPage ? ' rc-page' : ''}`}
       onSubmit={submit}
@@ -798,6 +804,15 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         </label>
                         <label className="full">Photo of the seized object <span className="opt-tag">(optional)</span>
                           <div className="file-field">
+                            {!it.photo && (
+                              <button
+                                type="button"
+                                className="btn small camera-btn"
+                                onClick={() => { setCamItemId(it.localId); setCamOpen(true); }}
+                                disabled={busy}
+                                title="Open camera"
+                              >📷 Camera</button>
+                            )}
                             <input
                               type="file"
                               accept="image/*"
@@ -809,6 +824,12 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                               <>
                                 <img className="file-thumb" src={it.photo.dataUrl} alt="preview" />
                                 <span className="file-info"><b>{it.photo.file.name}</b></span>
+                                <button
+                                  type="button"
+                                  className="btn small camera-btn"
+                                  onClick={() => { setCamItemId(it.localId); setCamOpen(true); }}
+                                  disabled={busy}
+                                >📷 Retake</button>
                                 <button
                                   type="button"
                                   className="file-remove"
@@ -852,6 +873,13 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
           )}
         </div>
       </form>
+      <CameraCaptureModal
+        open={camOpen}
+        title="Capture Photo of Seized Object"
+        onCapture={(dataUrl, file) => { if (camItemId) patchItem(camItemId, { photo: { file, dataUrl } }); }}
+        onClose={() => { setCamOpen(false); setCamItemId(null); }}
+      />
+    </>
   );
 
   if (asPage) {
