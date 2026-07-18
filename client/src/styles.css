@@ -548,11 +548,16 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 
 /* Generic form modal card */
 .form-card{
-  background: var(--white-paper); width: 560px; max-height: 90vh;
-  overflow-y:auto; min-height:0;
+  background: var(--white-paper); width: 560px; max-width: calc(100vw - 32px);
+  max-height: 90vh; overflow-y:auto; min-height:0;
   border-radius:12px; box-shadow:0 18px 40px rgba(20,36,61,0.35); position:relative;
   display:flex; flex-direction:column;
+  /* Inner padding so the title / fields never touch or spill past the box edges */
+  padding: 22px 24px 24px;
+  box-sizing:border-box;
 }
+/* Keep the absolutely-positioned close button clear of the new padding */
+.form-card .tag-close{ top:14px; right:14px; }
 .form-card h3{ font-family:'Rajdhani',sans-serif; font-size:18px; color:var(--ink-navy); margin-bottom:2px; }
 .form-card .sub{ font-size:11.5px; color:var(--slate-soft); margin-bottom:16px; }
 
