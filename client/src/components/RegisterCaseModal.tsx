@@ -99,6 +99,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
   // ---------- multi-item list ----------
   const [items, setItems] = useState<DraftItem[]>([]);
+  const [itemsCollapsed, setItemsCollapsed] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -139,7 +140,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     setFirHits([]); setFirOpen(false); setFirActive(-1);
     setBnsQuery(''); setLegalSections([]);
     setSeizedTime('10:00'); setReceivedBy('');
-    setItems([]); setMsg(null); setErrors([]);
+    setItems([]); setMsg(null); setErrors([]); setItemsCollapsed(false);
   }
 
   // ---------- FIR/DD lookup (fetches existing data if present) ----------
@@ -323,7 +324,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
       // Arms & Ammunition — only the highlighted sections are required.
       if (it.categoryId === 'arms') {
         if (!it.subType) e.push(`Item ${i + 1}: select Type (Firearms / Other Weapons).`);
-        if (!it.remarks.trim()) e.push(`Item ${i + 1}: Item Description is required.`);
       }
     });
     return e;
@@ -444,7 +444,14 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
             <span className="step-no">1</span> FIR / DD &amp; Receipt
           </div>
           <div className="step-sep" />
-          <div className={`step ${step === 2 ? 'active' : ''}`} onClick={() => step === 2 && !busy && setStep(2)}>
+          <div
+            className={`step ${step === 2 ? 'active clickable' : 'clickable'}`}
+            role="button"
+            tabIndex={busy ? -1 : 0}
+            aria-current={step === 2 ? 'step' : undefined}
+            onClick={() => { if (busy) return; if (step === 1) goNext(); else setStep(2); }}
+            onKeyDown={e => { if (busy) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (step === 1) goNext(); else setStep(2); } }}
+          >
             <span className="step-no">2</span> Seized Items ({items.length})
           </div>
         </div>
@@ -638,10 +645,14 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
           {step === 2 && (
             <>
-              <div className="rc-items-head">
-                <span className="rc-items-count">Seized Items <b>({items.length})</b></span>
-                <button type="button" className="btn add-item-btn" onClick={addItem} disabled={busy}>+ Add Item</button>
+              <div className={`rc-items-head${items.length ? ' clickable' : ''}`} onClick={() => items.length && !busy && setItemsCollapsed(c => !c)} role="button" tabIndex={items.length ? 0 : -1} aria-expanded={!itemsCollapsed} onKeyDown={e => { if (items.length && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setItemsCollapsed(c => !c); } }} title={items.length ? (itemsCollapsed ? 'Expand seized items' : 'Collapse seized items') : undefined}>
+                <span className="rc-items-count">Seized Items <b>({items.length})</b>{items.length > 0 && <span className="rc-collapse-caret">{itemsCollapsed ? '▸' : '▾'}</span>}</span>
+                <button type="button" className="btn add-item-btn" onClick={e => { e.stopPropagation(); addItem(); }} disabled={busy}>+ Add Item</button>
               </div>
+
+              {items.length > 0 && itemsCollapsed && (
+                <div className="rc-collapsed-note">Seized items hidden — click <b>“Seized Items ({items.length})”</b> to expand.</div>
+              )}
 
               {items.length === 0 && (
                 <div className="rc-empty">
@@ -650,7 +661,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                 </div>
               )}
 
-              <div className="items-grid">
+              <div className="items-grid" style={itemsCollapsed ? { display: 'none' } : undefined}>
                 {items.map((it, idx) => {
                   const cat = getCategory(it.categoryId);
                   // Before a category is selected, hide the highlighted columns — Quantity
@@ -681,7 +692,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                             {ITEM_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                           </select>
                         </label>
-                        <label className="req">Malkhana Section (placement)
+                        <label className="req">Location
                           <select value={it.sectionLetter} onChange={e => patchItem(it.localId, { sectionLetter: e.target.value })}>
                             {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
                           </select>
@@ -761,8 +772,8 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
                         {renderNdpsClassBadge(it)}
 
-                        <label className={cat?.id === 'arms' ? 'req' : 'full req'}>Item Description (detailed — brand, colour, size, marks)
-                          <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" required />
+                        <label className={cat?.id === 'arms' ? '' : 'full'}>Item Description (detailed — brand, colour, size, marks) <span className="opt-tag">(optional)</span>
+                          <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" />
                         </label>
                         <label className={cat?.id === 'arms' ? 'req' : 'full req'}>Photo of the seized object
                           <div className="file-field">
