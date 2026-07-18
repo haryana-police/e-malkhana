@@ -34,6 +34,11 @@ interface DraftItem {
   sealSealed: string;
   sealNo: string;
   sealBy: string;
+  // Manual NDPS quantity class override (Small / Intermediate / Commercial).
+  // When undefined the class tracks the auto value from the NDPS table; once
+  // the user picks a radio this locks the chosen class even if the quantity
+  // later changes.
+  ndpsOverride?: 'Small' | 'Intermediate' | 'Commercial';
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -257,7 +262,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
       categoryId: '', subType: '', sectionLetter: racks[0]?.letter ?? 'A',
       catValues: {}, seizingOfficer: defaultIo(user),
       quantity: '1', placeOfSeizure: '', physicalStorage: '', remarks: '',
-      photo: null, sealSealed: 'Yes', sealNo: '', sealBy: '',
+      photo: null, sealSealed: 'Yes', sealNo: '', sealBy: '', ndpsOverride: undefined,
     }]);
   }
   function removeItem(localId: string) {
@@ -286,18 +291,49 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
   // Live NDPS quantity classification badge (Small / Intermediate / Commercial)
   // shown when the item is a Narcotics article with a narcotic type + quantity.
+  // The auto-derived class is shown, and the user may override it via radio
+  // buttons (e.g. when the actual classification differs from the table value).
+  const NDPS_CLASSES: ('Small' | 'Intermediate' | 'Commercial')[] = ['Small', 'Intermediate', 'Commercial'];
   function renderNdpsClassBadge(it: DraftItem) {
     const cat = getCategory(it.categoryId);
     if (!cat || cat.id !== 'narcotics') return null;
     if (!it.subType) return null;
-    const cls = classifyNdps(it.subType, it.catValues['quantity_seized'] || '');
-    if (cls === 'Unknown') return null;
-    const tone = cls === 'Small' ? 'small' : cls === 'Intermediate' ? 'inter' : 'comm';
+    const auto = classifyNdps(it.subType, it.catValues['quantity_seized'] || '');
+    if (auto === 'Unknown') return null;
+    // Effective class = manual override if set, otherwise the auto value.
+    const effective = it.ndpsOverride ?? auto;
+    const tone = effective === 'Small' ? 'small' : effective === 'Intermediate' ? 'inter' : 'comm';
+    const overriden = it.ndpsOverride != null && it.ndpsOverride !== auto;
     return (
       <div className="ndps-class-badge">
         <span className="ndps-class-label">NDPS Quantity Class</span>
-        <span className={`ndps-class ndps-${tone}`}>{cls} Quantity</span>
-        <span className="ndps-class-hint">(auto from NDPS table)</span>
+        <span className={`ndps-class ndps-${tone}`}>{effective} Quantity</span>
+        {overriden
+          ? <span className="ndps-class-hint">(overridden — auto: {auto})</span>
+          : <span className="ndps-class-hint">(auto from NDPS table)</span>}
+
+        <div className="ndps-override" role="radiogroup" aria-label="Override NDPS quantity class">
+          <span className="ndps-override-cap">Change class:</span>
+          {NDPS_CLASSES.map(c => (
+            <label key={c} className={`ndps-radio ${it.ndpsOverride === c ? 'sel' : ''}`}>
+              <input
+                type="radio"
+                name={`ndps-class-${it.localId}`}
+                value={c}
+                checked={it.ndpsOverride === c}
+                onChange={() => patchItem(it.localId, { ndpsOverride: c })}
+              />
+              {c}
+            </label>
+          ))}
+          <button
+            type="button"
+            className="ndps-reset"
+            disabled={it.ndpsOverride == null}
+            onClick={() => patchItem(it.localId, { ndpsOverride: undefined })}
+            title="Revert to the auto value from the NDPS table"
+          >Auto</button>
+        </div>
       </div>
     );
   }
@@ -305,28 +341,13 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   const prefix = recordType === 'DD' ? 'DD ' : 'FIR ';
 
   // ---------- validation ----------
+  // All fields are optional — no compulsory inputs (per request). Returning []
+  // means nothing blocks submission.
   function validateStep1(): string[] {
-    const e: string[] = [];
-    if (!firNo.trim()) e.push('FIR/DD number is required.');
-    if (recordType === 'DD' && !natureOfDd) e.push('Select the Nature of DD.');
-    if (recordType === 'DD' && natureOfDd === 'UD Case (UnnaturalDeath)' && !nameOfDeceased.trim())
-      e.push('Name of Deceased is required for a UD case.');
-    if (!receivedBy.trim()) e.push('Received By (Malkhana Moharrir) is required.');
-    if (!seizedTime) e.push('Seized Time is required.');
-    return e;
+    return [];
   }
   function validateStep2(): string[] {
-    const e: string[] = [];
-    if (items.length === 0) e.push('Add at least one seized item.');
-    items.forEach((it, i) => {
-      if (!it.categoryId) e.push(`Item ${i + 1}: choose a Category of Item.`);
-      if (!it.seizingOfficer.trim()) e.push(`Item ${i + 1}: Seizing Officer is required.`);
-      // Arms & Ammunition — only the highlighted sections are required.
-      if (it.categoryId === 'arms') {
-        if (!it.subType) e.push(`Item ${i + 1}: select Type (Firearms / Other Weapons).`);
-      }
-    });
-    return e;
+    return [];
   }
 
   function goNext() {
@@ -376,7 +397,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
           // Auto-classify the NDPS quantity (Small / Intermediate / Commercial)
           // from the narcotic type + seized weight, using the official table.
           if (cat?.id === 'narcotics' && it.subType) {
-            const cls = classifyNdps(it.subType, it.catValues['quantity_seized'] || '');
+            const cls = it.ndpsOverride ?? classifyNdps(it.subType, it.catValues['quantity_seized'] || '');
             if (cls !== 'Unknown') itemFields.push({ key: 'quantity_class', value: cls });
           }
           return {
@@ -501,7 +522,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         onFocus={() => { if (firNo.trim()) setFirOpen(true); }}
                         onKeyDown={onFirKeyDown}
                         placeholder={recordType === 'DD' ? 'e.g. DD 12/2026' : 'e.g. FIR 245/2026'}
-                        required
                         autoComplete="off" spellCheck={false}
                         role="combobox" aria-expanded={firOpen} aria-autocomplete="list" aria-controls="fir-hits"
                       />
@@ -630,13 +650,13 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
               <section className="rc-group">
                 <div className="rc-grid">
                   <label>Received By (Malkhana Moharrir)
-                    <input value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Moharrir name" required />
+                    <input value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Moharrir name" />
                   </label>
                   <label>Seized Time
-                    <input type="time" value={seizedTime} onChange={e => setSeizedTime(e.target.value)} required />
+                    <input type="time" value={seizedTime} onChange={e => setSeizedTime(e.target.value)} />
                   </label>
                   <label>Seizing Officer
-                    <input value={items[0]?.seizingOfficer || defaultIo(user)} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizingOfficer: e.target.value } : it))} required />
+                    <input value={items[0]?.seizingOfficer || defaultIo(user)} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizingOfficer: e.target.value } : it))} />
                   </label>
                 </div>
               </section>
@@ -683,16 +703,16 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         <button type="button" className="item-remove" onClick={() => removeItem(it.localId)} aria-label="Remove item" title="Remove item">✕</button>
                       </div>
                       <div className={`rc-grid item-grid${cat?.id === 'arms' ? ' arms-grid' : ''}`}>
-                        <label className="req">Category of Item
+                        <label>Category of Item
                           <select value={it.categoryId} onChange={e => {
                             const c = getCategory(e.target.value);
                             patchItem(it.localId, { categoryId: e.target.value, subType: '', sectionLetter: c?.sectionLetter || it.sectionLetter, catValues: {} });
-                          }} required>
+                          }} >
                             <option value="">— select category —</option>
                             {ITEM_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                           </select>
                         </label>
-                        <label className="req">Location
+                        <label>Location
                           <select value={it.sectionLetter} onChange={e => patchItem(it.localId, { sectionLetter: e.target.value })}>
                             {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
                           </select>
@@ -726,7 +746,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </div>
                         ) : !isMinimal && cat?.subTypes && (
                           <label>{cat.subTypeLabel || 'Type'}
-                            <select value={it.subType} required={cat?.id === 'gold'} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
+                            <select value={it.subType} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
                               <option value="">— select —</option>
                               {cat.subTypes.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
@@ -772,12 +792,12 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
                         {renderNdpsClassBadge(it)}
 
-                        <label className={cat?.id === 'arms' ? '' : 'full'}>Item Description (detailed — brand, colour, size, marks) <span className="opt-tag">(optional)</span>
+                        <label className="full">Item Description (detailed — brand, colour, size, marks) <span className="opt-tag">(optional)</span>
                           <textarea value={it.remarks} onChange={e => patchItem(it.localId, { remarks: e.target.value })} placeholder="Detailed description" />
                         </label>
-                        <label className={cat?.id === 'arms' ? 'req' : 'full req'}>Photo of the seized object
+                        <label className="full">Photo of the seized object <span className="opt-tag">(optional)</span>
                           <div className="file-field">
-                            <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} required={cat?.id === 'arms'} />
+                            <input type="file" accept="image/*" onChange={e => onPickItemPhoto(it.localId, e)} disabled={busy} />
                             {it.photo && <span className="file-info">{it.photo.file.name}</span>}
                           </div>
                         </label>
