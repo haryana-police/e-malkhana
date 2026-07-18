@@ -433,6 +433,13 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
   display:none; align-items:center; justify-content:center; z-index:100;
   padding:20px;
 }
+/* On desktop the sidebar is fixed at 250px and the content area begins there.
+   Center modals within the CONTENT area only (right of the sidebar) so a popup
+   never overlaps the left navigation. Below 768px the sidebar becomes an
+   off-canvas drawer, so we drop back to full-viewport centering. */
+@media (min-width: 769px){
+  .overlay{ left:250px; right:0; padding-left:24px; padding-right:24px; }
+}
 .overlay.open{ display:flex; }
 .tag-card{
   background: var(--white-paper);
@@ -537,7 +544,8 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 
 /* Generic form modal card */
 .form-card{
-  background: var(--white-paper); width: 560px; max-height: 90vh; overflow:hidden;
+  background: var(--white-paper); width: 560px; max-height: 90vh;
+  overflow-y:auto; min-height:0;
   border-radius:12px; box-shadow:0 18px 40px rgba(20,36,61,0.35); position:relative;
   display:flex; flex-direction:column;
 }
@@ -590,6 +598,7 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .rc-grid{ display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px 14px; }
 .rc-grid label{ display:flex; flex-direction:column; gap:4px; font-size:10.5px; color: var(--slate-soft); text-transform:uppercase; letter-spacing:0.06em; font-weight:600; }
 .rc-grid label.full{ grid-column: 1 / -1; }
+.rc-cat-hint{ grid-column: 1 / -1; padding:8px 10px; border:1px dashed var(--line); border-radius:6px; background:rgba(20,36,61,0.04); font-size:11px; color:var(--slate-soft); text-transform:none; letter-spacing:0; font-weight:500; }
 .rc-opt{ text-transform:none; letter-spacing:0; font-weight:500; color: var(--slate-soft); opacity:0.7; font-size:10px; }
 .rc-grid input, .rc-grid select, .rc-grid textarea{
   font-family:'IBM Plex Sans', sans-serif; font-size:13px; color: var(--slate);
@@ -798,12 +807,13 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 /* Settings modal list */
 .settings-list{ display:flex; flex-direction:column; gap:12px; }
 .settings-row{
-  display:grid; grid-template-columns: 1fr 110px; align-items:center; gap:14px;
+  display:grid; grid-template-columns: minmax(0, 1fr) 110px; align-items:center; gap:14px;
   padding: 10px 0; border-bottom: 1px dashed var(--line);
 }
+.settings-row > :first-child{ min-width: 0; }
 .settings-row:last-child{ border-bottom:none; }
-.settings-row .lbl{ font-size:12.5px; color: var(--slate); font-weight:500; }
-.settings-row .desc{ font-size:11px; color: var(--slate-soft); margin-top:2px; }
+.settings-row .lbl{ font-size:12.5px; color: var(--slate); font-weight:500; overflow-wrap:anywhere; }
+.settings-row .desc{ font-size:11px; color: var(--slate-soft); margin-top:2px; overflow-wrap:anywhere; }
 .settings-row input{ font-family:'IBM Plex Mono', monospace; font-size:13px; color: var(--ink-navy); font-weight:600; }
 
 /* Inline field-level validation error (shown under the offending input). */
@@ -1516,7 +1526,19 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 /* ============================================================
    SettingsModal — tabs + audit log
    ============================================================ */
-.audit-card{ width: 720px; max-width: 95vw; }
+.audit-card{ width: 720px; max-width: 95vw; max-height: 94vh; padding: 22px 24px; box-sizing: border-box; }
+/* Keep the chrome (header, tabs, summary, filter bar) and the footer buttons
+   from shrinking so that ONLY the log list scrolls. The card is already a flex
+   column (.form-card), so the list below can grow into the free space. */
+.audit-card > h3,
+.audit-card > .sub,
+.audit-card > .audit-tabs,
+.audit-card > .settings-focus-head,
+.audit-card > .audit-summary,
+.audit-card > .scan-bar,
+.audit-card > .form-actions{
+  flex: 0 0 auto;
+}
 .audit-tabs{
   display:flex; gap:4px; margin: 4px 0 14px;
   border-bottom: 1px solid var(--line);
@@ -1573,10 +1595,13 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 /* Audit list — each entry */
 .audit-list{
   display:flex; flex-direction: column; gap: 4px;
-  max-height: 50vh; overflow-y: auto; padding-right: 2px;
+  flex: 1 1 auto; min-height: 160px; max-height: none; overflow-y: auto; padding-right: 6px;
   border: 1px solid var(--line); border-radius: 4px;
   background: var(--paper);
 }
+.audit-list::-webkit-scrollbar{ width:9px; }
+.audit-list::-webkit-scrollbar-thumb{ background: var(--paper-darker); border-radius:8px; }
+.audit-list::-webkit-scrollbar-thumb:hover{ background: var(--khaki-light); }
 .audit-row{
   display:grid; grid-template-columns: 1fr auto; gap: 2px 12px;
   padding: 9px 12px;

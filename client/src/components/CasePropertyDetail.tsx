@@ -23,29 +23,17 @@ interface EditableCase {
   description: string;
   sectionLetter: string;       // "A".."E" (we send just the letter; server re-derives "PART A")
   seizingOfficer: string;
-  seizedOn: string;             // "YYYY-MM-DD" for the date input
   itemId: string;
   legalSectionNo: string;      // bare "101" or ""
   legalSectionTitle: string;
 }
 
 function caseToEditable(c: CaseRow): EditableCase {
-  // seizedOn is rendered on the card as e.g. "11 Mar 2026".  For the
-  // <input type="date"> we need YYYY-MM-DD.  We try ISO first, then
-  // fall back to a Date parse on the display string.
-  const seizedIso = (() => {
-    const s = c.seizedOn || '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-    return s;
-  })();
   return {
     itemTypeId: c.itemTypeId != null ? c.itemTypeId : null,
     description: c.description || '',
     sectionLetter: (c.section || '').match(/PART ([A-Z]{1,2})/i)?.[1]?.toUpperCase() || 'A',
     seizingOfficer: c.seizingOfficer || '',
-    seizedOn: seizedIso,
     itemId: c.itemId || '',
     legalSectionNo: c.legalSection || '',
     legalSectionTitle: c.legalSectionTitle || '',
@@ -242,7 +230,6 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         description:    editDraft.description.trim(),
         section:        editDraft.sectionLetter,
         seizingOfficer: editDraft.seizingOfficer.trim(),
-        seizedOn:       editDraft.seizedOn,
         itemId:         editDraft.itemId.trim(),
       };
       if (editDraft.legalSectionNo) {
@@ -282,7 +269,6 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         <div class="meta">Item ID: ${escapeHtml(caseRow.itemId)}</div>
         <div class="meta">Section: ${escapeHtml(caseRow.sectionName)} (Part ${escapeHtml(caseRow.section?.replace('PART ', ''))})</div>
         <div class="meta">Status: ${escapeHtml(caseRow.status)}</div>
-        <div class="meta">Seized: ${escapeHtml(caseRow.seizedOn)} · by ${escapeHtml(caseRow.seizingOfficer)}</div>
         <hr/>
         <button class="no-print" onclick="window.print()">Print</button>
       </body></html>`);
@@ -339,7 +325,6 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         <div class="meta">
           <div><span class="k">Section</span><span class="v">Part ${escapeHtml((caseRow.section || '').replace('PART ', ''))} · ${escapeHtml(caseRow.sectionName || '')}</span></div>
           <div><span class="k">Item ID</span><span class="v">${escapeHtml(caseRow.itemId || '—')}</span></div>
-          <div><span class="k">Seized</span><span class="v">${escapeHtml(caseRow.seizedOn || '—')} · by ${escapeHtml(caseRow.seizingOfficer || '—')}</span></div>
           <div><span class="k">BNS Section${caseRow.legalSections && caseRow.legalSections.length > 1 ? 's' : ''}</span><span class="v">${(caseRow.legalSections && caseRow.legalSections.length ? caseRow.legalSections.map((s, i) => `BNS ${escapeHtml(s)}${caseRow.legalSectionsTitles && caseRow.legalSectionsTitles[i] ? ' — ' + escapeHtml(caseRow.legalSectionsTitles[i]) : ''}`) : (caseRow.legalSection ? [`BNS ${escapeHtml(caseRow.legalSection)}${caseRow.legalSectionTitle ? ' — ' + escapeHtml(caseRow.legalSectionTitle) : ''}`] : ['—'])).join(' · ')}</span></div>
           <div><span class="k">Created</span><span class="v">${escapeHtml(fmtTime(caseRow.createdAt))}</span></div>
         </div>
@@ -446,7 +431,6 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
           )}
           <div className="case-detail-sub" style={{ margin: '10px 0 8px' }}>Common fields</div>
           <div className="case-detail-meta">
-            <div><span className="k">Seized On</span><span className="v">{caseRow.seizedOn}{cp.seizedTime ? ` · ${cp.seizedTime}` : ''}</span></div>
             <div><span className="k">Seizing Officer</span><span className="v">{caseRow.seizingOfficer}</span></div>
             <div><span className="k">Place of Seizure</span><span className="v">{cp.placeOfSeizure || cp.storageLocation || '—'}</span></div>
             <div><span className="k">Storage Location</span><span className="v">{cp.physicalStorage || '—'}</span></div>
@@ -454,7 +438,6 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
             <div><span className="k">Witness 2</span><span className="v">{cp.witness2 || '—'}</span></div>
             <div><span className="k">Quantity</span><span className="v">{cp.quantity || '—'}</span></div>
             <div className="case-detail-sub" style={{ margin: '10px 0 8px' }}>Malkhana Receipt</div>
-            <div><span className="k">Date of Receipt</span><span className="v">{cp.dateOfReceipt || '—'}</span></div>
             <div><span className="k">Received By (Moharrir)</span><span className="v">{cp.receivedBy || '—'}</span></div>
             <div><span className="k">Malkhana Location</span><span className="v">{cp.malkhanaLocation || '—'}</span></div>
             <div className="case-detail-sub" style={{ margin: '10px 0 8px' }}>Seal</div>
@@ -520,14 +503,6 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
               />
             </label>
             <label>
-              <span>Seized on</span>
-              <input
-                type="date"
-                value={editDraft.seizedOn}
-                onChange={e => setEditDraft({ ...editDraft, seizedOn: e.target.value })}
-              />
-            </label>
-            <label>
               <span>Item ID</span>
               <input
                 type="text"
@@ -586,7 +561,6 @@ export function CasePropertyDetail({ onOpenTag, onRegisterMovement }: Props) {
         <div className="case-detail-meta">
           <div><span className="k">Section</span><span className="v">Part {caseRow.section?.replace('PART ', '')} · {caseRow.sectionName}</span></div>
           <div><span className="k">Item ID</span><span className="v">{caseRow.itemId}</span></div>
-          <div><span className="k">Seized</span><span className="v">{caseRow.seizedOn} · by {caseRow.seizingOfficer}</span></div>
           <div><span className="k">BNS section{(caseRow.legalSections && caseRow.legalSections.length > 1) ? 's' : ''}</span><span className="v">{(caseRow.legalSections && caseRow.legalSections.length ? caseRow.legalSections.map((s, i) => `BNS ${s}${caseRow.legalSectionsTitles && caseRow.legalSectionsTitles[i] ? ' — ' + caseRow.legalSectionsTitles[i] : ''}`) : (caseRow.legalSection ? [`BNS ${caseRow.legalSection}${caseRow.legalSectionTitle ? ' — ' + caseRow.legalSectionTitle : ''}`] : ['—'])).join(' · ')}</span></div>
           <div><span className="k">Created</span><span className="v">{fmtTime(caseRow.createdAt)}</span></div>
         </div>

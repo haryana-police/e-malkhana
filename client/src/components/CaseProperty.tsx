@@ -44,7 +44,7 @@ const ALL_STATUSES: CaseStatus[] = [
 // station's preferred layout sticks across reloads.  No DB change — purely
 // client-side, so the Neon schema is untouched.
 type ColKey =
-  | 'sno' | 'id' | 'seizingOfficer' | 'seizedOn' | 'itemType'
+  | 'sno' | 'id' | 'seizingOfficer' | 'itemType'
   | 'section' | 'quantity' | 'status' | 'lastMovement' | 'actions';
 
 interface ColumnDef {
@@ -163,10 +163,6 @@ export function CaseProperty({
     seizingOfficer: {
       key: 'seizingOfficer', label: 'Seizing Officer',
       render: (c) => <td>{c.seizingOfficer}</td>,
-    },
-    seizedOn: {
-      key: 'seizedOn', label: 'Seized On',
-      render: (c) => <td className="date-col">{c.seizedOn}</td>,
     },
     itemType: {
       key: 'itemType', label: 'Item Type',

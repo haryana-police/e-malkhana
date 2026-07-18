@@ -67,7 +67,6 @@ export interface FormTemplate {
 export function firValues(c: CaseRow): Record<string, string> {
   const out: Record<string, string> = {
     fir: c.id || '',
-    date: c.seizedOn || '',
     item: c.itemType || '',
     qty: c.quantity || '',
     desc: c.description || '',

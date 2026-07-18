@@ -930,6 +930,53 @@ export async function upsertFirMaster(fir) {
   };
 }
 
+// Substring search across FIR/DD numbers for the Register form typeahead.
+// Looks in fir_master (primary) and the live register (cases.fir_no),
+// de-duplicates by number, and returns up to `limit` candidates with their
+// record type, police station and item count. Used for single-select
+// lookup-as-you-type (replaces the old "Lookup" button).
+export async function searchFirMaster(q, limit = 8) {
+  const like = `%${String(q || '').trim()}%`;
+  if (!q || !String(q).trim()) return [];
+  const fm = await pool.query(
+    `SELECT fir_no, record_type, police_station
+       FROM fir_master
+      WHERE fir_no ILIKE $1
+      ORDER BY fir_no
+      LIMIT $2`,
+    [like, limit]
+  );
+  const c = await pool.query(
+    `SELECT fir_no, COUNT(*)::int AS item_count
+       FROM cases
+      WHERE fir_no IS NOT NULL AND fir_no ILIKE $1
+      GROUP BY fir_no
+      ORDER BY fir_no
+      LIMIT $2`,
+    [like, limit]
+  );
+  const byNo = new Map();
+  for (const r of fm.rows) {
+    byNo.set(r.fir_no, {
+      firNo: r.fir_no,
+      recordType: r.record_type === 'DD' ? 'DD' : 'FIR',
+      policeStation: r.police_station || '',
+      itemCount: 0,
+    });
+  }
+  for (const r of c.rows) {
+    const existing = byNo.get(r.fir_no);
+    if (existing) existing.itemCount = r.item_count;
+    else byNo.set(r.fir_no, {
+      firNo: r.fir_no,
+      recordType: /^DD\b/i.test(r.fir_no) ? 'DD' : 'FIR',
+      policeStation: '',
+      itemCount: r.item_count,
+    });
+  }
+  return Array.from(byNo.values()).slice(0, limit);
+}
+
 export async function getCaseProperty(itemId) {
   const { rows } = await pool.query('SELECT * FROM case_property WHERE item_id = $1', [itemId]);
   if (!rows[0]) return null;

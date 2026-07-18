@@ -68,6 +68,12 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   const [firChecking, setFirChecking] = useState(false);
   const [firExists, setFirExists] = useState<boolean | null>(null);
   const [firLoaded, setFirLoaded] = useState(false);
+  // ---- FIR/DD live typeahead (single-select, replaces Lookup button) ----
+  const [firHits, setFirHits] = useState<FirMaster[]>([]);
+  const [firOpen, setFirOpen] = useState(false);
+  const [firLoading, setFirLoading] = useState(false);
+  const [firActive, setFirActive] = useState(-1);
+  const firBoxRef = useRef<HTMLDivElement>(null);
   const [firDate, setFirDate] = useState(today);
   // DD-specific
   const [ddDate, setDdDate] = useState(today);
@@ -136,7 +142,68 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   }
 
   // ---------- FIR/DD lookup (fetches existing data if present) ----------
-  async function checkFir() {
+  async // FIR/DD live typeahead search (debounced).  Triggers on every keystroke
+ // in the FIR/DD No. field and shows matching records from the DB to
+ // single-select, replacing the old "Lookup" button.
+ useEffect(() => {
+   if (!firOpen) return;
+   const q = firNo.trim();
+   if (!q) { setFirHits([]); setFirActive(-1); return; }
+   let cancelled = false;
+   setFirLoading(true);
+   const timer = setTimeout(() => {
+     api.searchFirMaster(q, 8)
+       .then(rows => { if (!cancelled) { setFirHits(rows); setFirActive(rows.length ? 0 : -1); } })
+       .catch(() => { if (!cancelled) setFirHits([]); })
+       .finally(() => { if (!cancelled) setFirLoading(false); });
+   }, 200);
+   return () => { cancelled = true; clearTimeout(timer); };
+ }, [firNo, firOpen]);
+
+ useEffect(() => {
+   if (!firOpen) return;
+   function onDocClick(e: MouseEvent) {
+     if (firBoxRef.current && !firBoxRef.current.contains(e.target as Node)) setFirOpen(false);
+   }
+   document.addEventListener('mousedown', onDocClick);
+   return () => document.removeEventListener('mousedown', onDocClick);
+ }, [firOpen]);
+
+ // Single-select a FIR/DD candidate: prefill the wizard exactly like the
+ // old lookup did, then close the typeahead.
+ async function selectFir(fir: FirMaster) {
+   setFirNo(fir.firNo);
+   setFirOpen(false);
+   setFirHits([]);
+   setFirLoading(false);
+   setFirChecking(true); setMsg(null); setFirExists(null);
+   try {
+     const m = await api.firMaster(fir.firNo);
+     setFirExists(true); setFirLoaded(true);
+     setRecordType(m.recordType || fir.recordType || recordType);
+     setFirDate(m.firDate || today);
+     setDdDate(m.ddDate || today); setNatureOfDd(m.natureOfDd || '');
+     setNameOfDeceased(m.nameOfDeceased || ''); setReportingPerson(m.reportingPerson || '');
+     setActualSeizureDdNo(m.actualSeizureDdNo || ''); setActualSeizureDate(m.actualSeizureDate || '');
+     if (!receivedBy.trim()) setReceivedBy(defaultIo(user));
+     setMsg({ kind: 'ok', text: `${fir.firNo} already on file — details loaded. Review below, then click Next.` });
+   } catch {
+     setFirExists(false); setFirLoaded(false);
+     setMsg({ kind: 'ok', text: `New ${fir.firNo} — please fill the ${fir.recordType === 'DD' ? 'DD' : 'FIR'} details below.` });
+   } finally {
+     setFirChecking(false);
+   }
+ }
+
+ function onFirKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+   if (e.key === 'ArrowDown') { e.preventDefault(); setFirOpen(true); setFirActive(i => Math.min(i + 1, firHits.length - 1)); }
+   else if (e.key === 'ArrowUp') { e.preventDefault(); setFirActive(i => Math.max(i - 1, 0)); }
+   else if (e.key === 'Enter') {
+     if (firOpen && firActive >= 0 && firHits[firActive]) { e.preventDefault(); selectFir(firHits[firActive]); }
+   } else if (e.key === 'Escape') { setFirOpen(false); }
+   }
+
+   async function checkFir() {
     const no = firNo.trim();
     const prefix = recordType === 'DD' ? 'DD ' : 'FIR ';
     const full = no.startsWith(prefix) ? no : `${prefix}${no}`;
@@ -561,6 +628,11 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
               <div className="items-grid">
                 {items.map((it, idx) => {
                   const cat = getCategory(it.categoryId);
+                  // Before a category is selected, hide the highlighted columns — Quantity
+                  // and the common seizure fields (Place of Seizure, Sealed/Unsealed, Seal
+                  // No./Mark, Sealed By). Only Category, Malkhana Section, Description and
+                  // Photo remain, so the blank item row isn't cluttered with empty fields.
+                  const noCat = !it.categoryId;
                   // "Minimal" categories (Lost Items, Viscera, Miscellaneous) keep ONLY the
                   // highlighted columns — Malkhana Section, Item Description and Photo (plus
                   // the always-present Category selector).  All other common/per-category
@@ -590,12 +662,19 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </select>
                         </label>
 
+                        {noCat && (
+                          <div className="full rc-cat-hint">
+                            Select a <b>Category of Item</b> to reveal the seizure fields (Quantity, Place of Seizure, Sealed / Unsealed, Seal No. / Mark, Sealed By).
+                          </div>
+                        )}
+
                         {/* Quantity is hidden for Narcotics / NDPS, Arms & Ammunition,
                             Cash & Valuables, Jewellery and Vehicle (not a highlighted
                             column — only Category, Section, Type, Description, Photo are).
                             For Liquor / Excise, a SEPARATE category-field Quantity is
-                            shown instead (below), so the common Quantity is suppressed. */}
-                        {!isMinimal && cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
+                            shown instead (below), so the common Quantity is suppressed.
+                            Also hidden until a Category is selected (noCat). */}
+                        {!noCat && !isMinimal && cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
                           <label>Quantity
                             <input value={it.quantity} onChange={e => patchItem(it.localId, { quantity: e.target.value })} placeholder="e.g. 1 or 2 kg" />
                           </label>
@@ -627,8 +706,10 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         {/* The following common seizure fields are hidden for Narcotics / NDPS,
                             Arms & Ammunition, Cash & Valuables, Jewellery, Liquor / Excise
                             and Vehicle (only the highlighted columns — Category, Section,
-                            Type, Description, Photo — are kept per the required markup). */}
-                        {!isMinimal && cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
+                            Type, Description, Photo — are kept per the required markup).
+                            They are also hidden until a Category is selected (noCat), so a
+                            fresh item row shows only Category, Section, Description, Photo. */}
+                        {!noCat && !isMinimal && cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
                           <>
                             <label>Place of Seizure
                               <input value={it.placeOfSeizure} onChange={e => patchItem(it.localId, { placeOfSeizure: e.target.value })} placeholder="e.g. Near bus stand" />

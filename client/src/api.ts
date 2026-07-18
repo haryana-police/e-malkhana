@@ -114,6 +114,15 @@ export const api = {
   deleteItemTypeField: (id: number) =>
     send<{ id: number; deleted: boolean }>('DELETE', `/item-type-fields/${id}`, {}),
   firMaster: (firNo: string) => get<FirMaster>(`/fir-master/${encodeURIComponent(firNo)}`),
+  // Live substring search across FIR/DD numbers for the Register form
+  // typeahead (single-select lookup-as-you-type). Returns candidates with
+  // record type, police station and item count.
+  searchFirMaster: (q: string, limit: number = 8) => {
+    const p = new URLSearchParams();
+    if (q.trim()) p.set('q', q.trim());
+    p.set('limit', String(limit));
+    return get<FirMaster[]>(`/fir-master/search?${p.toString()}`);
+  },
   upsertFirMaster: (fir: Partial<FirMaster> & { firNo: string }) =>
     send<FirMaster>('POST', '/fir-master', fir),
   caseProperty: (itemId: string) => get<CasePropertyData>(`/case-property/${encodeURIComponent(itemId)}`),
@@ -129,7 +138,7 @@ export const api = {
     items: Array<{
       itemType: string; sectionLetter: string; itemTypeId?: number | null; description?: string;
       category?: string; subType?: string; malkhanaSection?: string; legalSections?: string[];
-      seizedOn?: string; seizingOfficer?: string; photo?: string; status?: string;
+      seizingOfficer?: string; photo?: string; status?: string;
       quantity?: string; placeOfSeizure?: string; physicalStorage?: string; remarks?: string;
       sealSealed?: string; sealNo?: string; sealBy?: string;
       popupFields: { key: string; value: string }[];
@@ -172,13 +181,13 @@ export const api = {
   updateStatus:  (id: string, status: string) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}/status`, { status }),
 
   // Edit editable fields of an existing case from the Case Property Detail
-  // page (itemType, itemSub, section, seizingOfficer, seizedOn, itemId,
+  // page (itemType, itemSub, section, seizingOfficer, itemId,
   // legalSection).  Only present keys are sent to the server, so a partial
   // update is fine.  Returns the updated CaseRow (with fresh sectionName
   // joined server-side).
   updateCase:    (id: string, patch: Partial<{
     itemType: string; itemSub: string; section: string;
-    seizingOfficer: string; seizedOn: string; itemId: string;
+    seizingOfficer: string; itemId: string;
     legalSection: string | null;
   }>) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}`, patch),
 

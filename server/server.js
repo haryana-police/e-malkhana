@@ -22,7 +22,7 @@ import {
 } from './store.js';
 import {
   getSectionMeta, getItemTypeFields, upsertItemTypeField, deleteItemTypeField,
-  getFirMaster, upsertFirMaster, getCaseProperty, upsertCaseProperty,
+  getFirMaster, upsertFirMaster, searchFirMaster, getCaseProperty, upsertCaseProperty,
   getInspections, getInspection, upsertInspection, deleteInspection,
   nextInspectionId, getLastInspectionDate,
 } from './db.js';
@@ -224,7 +224,7 @@ function decorateCaseRow(c, db) {
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   c.lastMovement = ms.length
     ? ms[ms.length - 1].timestamp.slice(0, 10)
-    : (c.createdAt ? c.createdAt.slice(0, 10) : (c.seizedOn || ''));
+    : (c.createdAt ? c.createdAt.slice(0, 10) : '');
   return c;
 }
 
@@ -496,7 +496,7 @@ app.post('/api/cases', async (req, res, next) => {
 // Malkhana Sr. No. (sequence) per item; returns the new case row + metadata
 // the caller needs to write the per-item case_property row.
 async function createOneCase(req, body) {
-  const required = ['firOrDd', 'itemType', 'section', 'seizingOfficer', 'seizedOn']; // photo is OPTIONAL
+  const required = ['firOrDd', 'itemType', 'section', 'seizingOfficer']; // photo is OPTIONAL
   for (const k of required) if (!body[k]) { const e = new Error(`missing field: ${k}`); e.status = 400; throw e; }
 
   const section = db_sectionByLetter(body.section);
@@ -559,7 +559,6 @@ async function createOneCase(req, body) {
     section:    `PART ${section.letter}`,
     status:     body.status || 'Seized',
     seizingOfficer: body.seizingOfficer,
-    seizedOn:   body.seizedOn,
     itemId,
     imageUrl:   body.photo || undefined,
     skipAutoImage: !body.photo,                              // protect newly-registered cases from auto-dummy
@@ -573,7 +572,7 @@ async function createOneCase(req, body) {
     createdAt,
   };
   await mutate(d => { d.cases.push(newCase); rebuildSectionCountsIn(d); });
-  await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer} on ${body.seizedOn}${legalSection ? ` — BNS ${legalSection} (${legalSectionTitle})` : ''} — Sr. No. ${itemId}`);
+  await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer}${legalSection ? ` — BNS ${legalSection} (${legalSectionTitle})` : ''} — Sr. No. ${itemId}`);
   return { newCase, itemId, legalSection, legalSectionTitle };
 }
 
@@ -619,7 +618,6 @@ app.post('/api/cases/batch', async (req, res, next) => {
         itemSub: it.itemSub || '',
         section: it.sectionLetter || it.section,   // accept either letter or "PART X"
         seizingOfficer: it.seizingOfficer || c.seizingOfficer || '',
-        seizedOn: it.seizedOn || c.seizedOn || body.seizedOn || '',
         itemTypeId: it.itemTypeId != null ? it.itemTypeId : null,
         legalSections: it.legalSections || c.legalSections || [],
         description: it.description || '',
@@ -745,7 +743,7 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     // Allow-list of editable keys.  Anything outside this list is silently
     // dropped (avoids callers sneaking in `status` or `id` changes through
     // a different endpoint).
-    const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'seizedOn', 'itemId', 'legalSection',
+    const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'itemId', 'legalSection',
                       'legalSections', 'itemTypeId', 'description'];
     const patch = {};
     for (const k of ALLOWED) {
@@ -838,11 +836,6 @@ app.patch('/api/cases/:id', async (req, res, next) => {
         const v = String(patch.seizingOfficer || '').trim();
         if (!v) { const e = new Error('seizingOfficer cannot be empty'); e.status = 400; throw e; }
         if (c.seizingOfficer !== v) { changes.push(`officer: "${c.seizingOfficer}" → "${v}"`); c.seizingOfficer = v; }
-      }
-      if ('seizedOn' in patch) {
-        const v = String(patch.seizedOn || '').trim();
-        if (!v) { const e = new Error('seizedOn cannot be empty'); e.status = 400; throw e; }
-        if (c.seizedOn !== v) { changes.push(`seized on: ${c.seizedOn} → ${v}`); c.seizedOn = v; }
       }
       if ('itemId' in patch) {
         const v = String(patch.itemId || '').trim();
@@ -1255,6 +1248,16 @@ app.get('/api/fir-master/:firNo(*)', async (req, res, next) => {
     const fir = await getFirMaster(firNo);
     if (!fir) { res.status(404).json({ error: 'not found' }); return; }
     res.json(fir);
+  } catch (e) { next(e); }
+});
+
+// GET /api/fir-master/search?q=FIR 12 -> substring matches (single-select).
+app.get('/api/fir-master/search', async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 8, 25);
+    const hits = await searchFirMaster(q, limit);
+    res.json(hits);
   } catch (e) { next(e); }
 });
 
@@ -1797,10 +1800,10 @@ function applyCaseFilters(filters) {
     rows = rows.filter(c => c.status !== 'Disposed');
   }
   if (filters.from) {
-    rows = rows.filter(c => String(c.seizedOn || '') >= filters.from);
+    rows = rows.filter(c => String(c.createdAt || '').slice(0,10) >= filters.from);
   }
   if (filters.to) {
-    rows = rows.filter(c => String(c.seizedOn || '') <= filters.to);
+    rows = rows.filter(c => String(c.createdAt || '').slice(0,10) <= filters.to);
   }
   if (filters.q) {
     const f = filters.q;
@@ -1838,7 +1841,6 @@ const REPORT_COLUMNS = [
   { key: 'sectionName',     label: 'Section' },
   { key: 'status',          label: 'Status' },
   { key: 'seizingOfficer',  label: 'Seizing Officer' },
-  { key: 'seizedOn',        label: 'Seized On' },
   { key: 'lastMovement',    label: 'Last Movement Date' },
 ];
 
@@ -1860,8 +1862,7 @@ function toReportRow(c) {
     sectionName:     `Part ${c.sectionLetter || c.section?.replace('PART ', '')} — ${c.sectionName}`,
     status:          c.status,
     seizingOfficer:  c.seizingOfficer,
-    seizedOn:        c.seizedOn,
-    lastMovement:    lastMovementDate(c.id, c.createdAt?.slice(0, 10) || c.seizedOn),
+    lastMovement:    lastMovementDate(c.id, c.createdAt?.slice(0, 10) || ''),
   };
 }
 
@@ -2198,9 +2199,9 @@ app.get('/api/reports/malkhana-register', async (req, res, next) => {
       doc.restore();
     }
 
-    // 7 columns: Sl.No. | FIR/DD | Item Description | Seizure Date | Section | Status | Remarks
-    const headers = ['Sl. No.', 'FIR / DD No.', 'Item Description', 'Seizure Date', 'Section', 'Status', 'Remarks'];
-    const widths  = [28, 65, 175, 60, 95, 75, 40];
+    // 6 columns: Sl.No. | FIR/DD | Item Description | Section | Status | Remarks
+    const headers = ['Sl. No.', 'FIR / DD No.', 'Item Description', 'Section', 'Status', 'Remarks'];
+    const widths  = [28, 65, 235, 95, 75, 40];
     const sumW = widths.reduce((a, b) => a + b, 0);
     const scale = pageW / sumW;
     const w = widths.map(x => x * scale);
@@ -2229,7 +2230,6 @@ app.get('/api/reports/malkhana-register', async (req, res, next) => {
         String(sl),
         c.id,
         c.itemSub ? `${c.itemType} — ${c.itemSub}` : c.itemType,
-        c.seizedOn,
         `Part ${c.sectionLetter || c.section?.replace('PART ', '')} · ${c.sectionName}`,
         c.status,
         '',   // blank Remarks

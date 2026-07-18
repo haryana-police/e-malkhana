@@ -140,7 +140,6 @@ export interface NewCaseInput {
   itemSub?: string;
   section: string;          // letter "A".."E"
   seizingOfficer: string;
-  seizedOn: string;
   firNo?: string;           // FIR number for register grouping (defaults to id on server)
   status?: CaseStatus;
   itemId?: string;          // MK-xxxx; server auto-generates if omitted
@@ -191,6 +190,7 @@ export interface FirMaster {
   // Actual seizure details (the DD under which the property was ACTUALLY seized)
   actualSeizureDdNo?: string; // e.g. "DD 12/2026"
   actualSeizureDate?: string; // YYYY-MM-DD — date property was actually seized
+  itemCount?: number;       // number of registered items under this FIR/DD (search hits)
   createdAt?: string;
 }
 
@@ -209,7 +209,6 @@ export interface CasePropertyData {
   remarks?: string;
   status?: string;
   // spec common block (Malkhana receipt event)
-  dateOfReceipt?: string;
   receivedBy?: string;         // Malkhana Moharrir name
   malkhanaLocation?: string;   // Malkhana location / placement
   // per-item seal block
