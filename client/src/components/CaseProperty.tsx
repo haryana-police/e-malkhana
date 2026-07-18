@@ -44,8 +44,9 @@ const ALL_STATUSES: CaseStatus[] = [
 // station's preferred layout sticks across reloads.  No DB change — purely
 // client-side, so the Neon schema is untouched.
 type ColKey =
-  | 'sno' | 'id' | 'seizingOfficer' | 'itemType'
-  | 'section' | 'quantity' | 'status' | 'lastMovement' | 'actions';
+  | 'sno' | 'malkhanaNo' | 'id' | 'firDate' | 'usSection'
+  | 'photo' | 'category' | 'location' | 'receivedBy'
+  | 'status' | 'lastMovement' | 'actions';
 
 interface ColumnDef {
   key: ColKey;
@@ -56,14 +57,29 @@ interface ColumnDef {
   render: (c: CaseRow, i: number) => React.ReactNode;
 }
 
-// Simplified register: FIR/DD · Item Type · Section · Quantity · Status ·
-// Last Movement.  Full description lives on the detail page (row click).
+// Full Malkhana Case Property Register columns, in statutory order:
+// S.No · Malkhana No · FIR/DD · FIR Date · U/S Section · Photo ·
+// Category · Location · Received By · Status · Last Movement.
+// Full per-item description lives on the detail page (row click).
 const DEFAULT_ORDER: ColKey[] = [
-  'sno', 'id', 'itemType',
-  'section', 'quantity', 'status', 'lastMovement', 'actions',
+  'sno', 'malkhanaNo', 'id', 'firDate', 'usSection',
+  'photo', 'category', 'location', 'receivedBy',
+  'status', 'lastMovement', 'actions',
 ];
 
 const LS_KEY = 'cpr-column-order';
+
+// U/S (legal section) — formatted as "BNS 101 — Murder · BNS 22 — …".
+// Mirrors the format used on the detail page + evidence tag.
+function usSectionText(c: CaseRow): string {
+  if (c.legalSections && c.legalSections.length) {
+    return c.legalSections
+      .map((s, i) => `BNS ${s}${c.legalSectionsTitles && c.legalSectionsTitles[i] ? ' — ' + c.legalSectionsTitles[i] : ''}`)
+      .join(' · ');
+  }
+  if (c.legalSection) return `BNS ${c.legalSection}${c.legalSectionTitle ? ' — ' + c.legalSectionTitle : ''}`;
+  return '';
+}
 
 function loadOrder(): ColKey[] {
   try {
@@ -108,14 +124,17 @@ export function CaseProperty({
     return () => document.removeEventListener('mousedown', onDocDown);
   }, [openCol]);
 
-  const TEXT_COLS: ColKey[] = ['id', 'itemType', 'section', 'quantity', 'lastMovement'];
+  const TEXT_COLS: ColKey[] = ['malkhanaNo', 'id', 'firDate', 'usSection', 'category', 'location', 'receivedBy', 'lastMovement'];
 
   function cellText(c: CaseRow, key: ColKey): string {
     switch (key) {
+      case 'malkhanaNo': return c.itemId || '';
       case 'id': return c.id;
-      case 'itemType': return c.itemType;
-      case 'section': return c.sectionName;
-      case 'quantity': return c.quantity || '1';
+      case 'firDate': return c.firDate || '';
+      case 'usSection': return usSectionText(c);
+      case 'category': return c.itemType || '';
+      case 'location': return c.sectionName || '';
+      case 'receivedBy': return c.receivedBy || '';
       case 'lastMovement': return c.lastMovement || '';
       default: return '';
     }
@@ -147,6 +166,10 @@ export function CaseProperty({
       key: 'sno', label: 'S.NO', className: 'col-sno', locked: true,
       render: (_c, i) => <td className="sno">{i + 1}</td>,
     },
+    malkhanaNo: {
+      key: 'malkhanaNo', label: 'Malkhana No.', className: 'col-malkhana',
+      render: (c) => <td className="malkhana-no">{c.itemId || '—'}</td>,
+    },
     id: {
       key: 'id', label: 'FIR / DD No.',
       render: (c) => (
@@ -160,20 +183,42 @@ export function CaseProperty({
         </td>
       ),
     },
-    seizingOfficer: {
-      key: 'seizingOfficer', label: 'Seizing Officer',
-      render: (c) => <td>{c.seizingOfficer}</td>,
+    firDate: {
+      key: 'firDate', label: 'FIR Date', className: 'col-firdate',
+      render: (c) => <td className="date-col">{c.firDate ? c.firDate : '—'}</td>,
     },
-    itemType: {
-      key: 'itemType', label: 'Item Type',
+    usSection: {
+      key: 'usSection', label: 'U/S Section', className: 'col-us',
+      render: (c) => {
+        const txt = usSectionText(c);
+        return <td className="us-section">{txt ? txt : '—'}</td>;
+      },
+    },
+    photo: {
+      key: 'photo', label: 'Photo', className: 'col-photo',
+      render: (c) => (
+        <td className="photo-cell">
+          {c.imageUrl ? (
+            <img
+              src={c.imageUrl}
+              alt={`Seized ${c.itemType}`}
+              className="thumb"
+              loading="lazy"
+              onClick={(e) => { e.stopPropagation(); onOpenTag(c); }}
+              title="Click to open evidence tag (full photo)"
+            />
+          ) : (
+            <span className="no-photo" title="No photo on record">—</span>
+          )}
+        </td>
+      ),
+    },
+    category: {
+      key: 'category', label: 'Category of Item', className: 'col-category',
       render: (c) => <td className="type">{c.itemType}</td>,
     },
-    quantity: {
-      key: 'quantity', label: 'Quant', className: 'col-quant',
-      render: (c) => <td className="quant">{c.quantity || '1'}</td>,
-    },
-    section: {
-      key: 'section', label: 'Location',
+    location: {
+      key: 'location', label: 'Location',
       render: (c) => (
         <td>
           <span
@@ -187,6 +232,10 @@ export function CaseProperty({
           </span>
         </td>
       ),
+    },
+    receivedBy: {
+      key: 'receivedBy', label: 'Received By', className: 'col-received',
+      render: (c) => <td>{c.receivedBy ? c.receivedBy : '—'}</td>,
     },
     status: {
       key: 'status', label: 'Status',
@@ -261,11 +310,15 @@ export function CaseProperty({
   const searchFiltered = byExcludeDisposed.filter(c => {
     if (!textFilter) return true;
     const f = textFilter.toLowerCase();
+    const us = usSectionText(c).toLowerCase();
     return c.id.toLowerCase().includes(f)
+        || (c.itemId || '').toLowerCase().includes(f)
         || c.itemType.toLowerCase().includes(f)
         || (c.description || c.itemSub || '').toLowerCase().includes(f)
-        || c.seizingOfficer.toLowerCase().includes(f)
+        || (c.receivedBy || '').toLowerCase().includes(f)
+        || (c.firDate || '').toLowerCase().includes(f)
         || c.sectionName.toLowerCase().includes(f)
+        || us.includes(f)
         || c.status.toLowerCase().includes(f);
   });
 

@@ -217,6 +217,25 @@ function decorateCaseRow(c, db) {
     if (m) quantity = m[1];
   }
   c.quantity = quantity;
+
+  // FIR Date — joined from the FIR/DD master (fir_master.fir_date, falling
+  // back to dd_date for DD records).  This is the date the FIR/DD was
+  // registered, shown in the register's "FIR Date" column.  Empty when no
+  // master row exists yet (legacy rows registered before fir_master).
+  const fmKey = String(c.id || '').toLowerCase();
+  const fmFirNo = String(c.firNo || c.id || '').toLowerCase();
+  const fm = (db.firMaster || []).find(f => f.firNo && (
+    f.firNo.toLowerCase() === fmKey || f.firNo.toLowerCase() === fmFirNo
+  ));
+  c.firDate = fm && fm.firDate ? fm.firDate : '';
+
+  // Received By (Malkhana Moharrir) — joined from case_property.received_by,
+  // keyed by the item's unique item_id (MK-xxxx).  Empty when the receipt
+  // hasn't been recorded yet.
+  const cpKey = String(c.itemId || '').toLowerCase();
+  const cp = (db.caseProperty || []).find(p => p.itemId && p.itemId.toLowerCase() === cpKey);
+  c.receivedBy = cp && cp.receivedBy ? cp.receivedBy : '';
+
   // Last-movement date: most recent movements-log entry for this case,
   // else the case's createdAt / seizedOn as a fallback.
   const ms = (db.movements || [])

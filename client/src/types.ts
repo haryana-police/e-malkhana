@@ -29,10 +29,12 @@ export interface CaseRow {
   itemId: string;             // "MK-2026-000214"
   imageUrl?: string;          // "/uploads/case-FIR-214-2026.svg"
   docRef?: string;            // "/uploads/doc-FIR-214-2026.pdf" (seizure memo)
-  legalSection?: string;      // "101" — primary BNS section no. (without "BNS " prefix)
-  legalSectionTitle?: string; // "Murder" — denormalised title for offline render
+  legalSection?: string;          // "101" — primary BNS section no. (without "BNS " prefix)
+  legalSectionTitle?: string;     // "Murder" — denormalised title for offline render
   legalSections?: string[];        // all booked section numbers (multi-select)
   legalSectionsTitles?: string[];  // parallel titles (multi-select)
+  firDate?: string;               // FIR/DD registration date (YYYY-MM-DD) — joined from fir_master
+  receivedBy?: string;            // Malkhana Moharrir who received the item — joined from case_property
   createdAt: string;
 }
 

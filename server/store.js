@@ -83,7 +83,7 @@ export async function loadMirror() {
     await ensureReady();
     const client = await pool.connect();
     try {
-      const [kvRes, usersRes, sectionsRes, itRes, bnsRes, casesRes, movRes, auditRes] = await Promise.all([
+      const [kvRes, usersRes, sectionsRes, itRes, bnsRes, casesRes, movRes, auditRes, fmRes, cpRes] = await Promise.all([
         client.query("SELECT key, value FROM kv WHERE key IN ('meta','officer','alertConfig','alertIssues','backupLog')"),
         client.query("SELECT id, initials, name, rank, designation, station, password FROM users ORDER BY id"),
         client.query(`SELECT letter, name, count, active FROM sections ORDER BY length(letter), letter`),
@@ -102,6 +102,11 @@ export async function loadMirror() {
                       FROM movements ORDER BY ts, id`),
         client.query(`SELECT id, ts, user_id, user_name, action, target, details
                       FROM audit_log ORDER BY id`),
+        // FIR/DD master (FIR Date lives here) + case_property (Received By)
+        // are loaded into the mirror so the Case Property Register can show
+        // those two columns without a per-row round-trip to Postgres.
+        client.query(`SELECT fir_no, fir_date, record_type, dd_date FROM fir_master`),
+        client.query(`SELECT item_id, received_by FROM case_property`),
       ]);
       const kv = Object.fromEntries(kvRes.rows.map(r => [r.key, r.value]));
       _mirror = {
@@ -159,6 +164,19 @@ export async function loadMirror() {
           description:       r.description || undefined,
           createdAt: new Date(r.created_at).toISOString(),
         })),
+        // FIR/DD master → keyed by fir_no (lowercased for case-insensitive join).
+        // `firDate` is displayed in the register's "FIR Date" column.  For DD
+        // records we fall back to dd_date so the column is never empty.
+        firMaster: fmRes.rows.map(r => ({
+          firNo: r.fir_no,
+          firDate: r.fir_date || r.dd_date || null,
+          recordType: r.record_type || 'FIR',
+        })),
+        // case_property → keyed by item_id (lowercased).  `receivedBy` is the
+        // Malkhana Moharrir who received the item (register column).
+        caseProperty: cpRes.rows
+          .filter(r => r.item_id)
+          .map(r => ({ itemId: r.item_id, receivedBy: r.received_by || null })),
         movements: movRes.rows.map(r => ({
           id: Number(r.id),
           caseId: r.case_id,
