@@ -1237,6 +1237,19 @@ app.delete('/api/item-type-fields/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/fir-master/search?q=FIR 12 -> substring matches (single-select).
+// Declared BEFORE the /:firNo(*) route so "search" is not captured as a
+// firNo param.  Returns [] (never 404) so the typeahead can render an
+// empty state.
+app.get('/api/fir-master/search', async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 8, 25);
+    const hits = await searchFirMaster(q, limit);
+    res.json(hits);
+  } catch (e) { next(e); }
+});
+
 // GET /api/fir-master/:firNo  -> FIR master record (or 404 null).
 // NOTE: the FIR/DD number contains a slash (e.g. "FIR 088/2026"), so the
 // `*` modifier on :firNo is REQUIRED — a plain :firNo param stops at the
@@ -1248,16 +1261,6 @@ app.get('/api/fir-master/:firNo(*)', async (req, res, next) => {
     const fir = await getFirMaster(firNo);
     if (!fir) { res.status(404).json({ error: 'not found' }); return; }
     res.json(fir);
-  } catch (e) { next(e); }
-});
-
-// GET /api/fir-master/search?q=FIR 12 -> substring matches (single-select).
-app.get('/api/fir-master/search', async (req, res, next) => {
-  try {
-    const q = String(req.query.q || '').trim();
-    const limit = Math.min(parseInt(req.query.limit, 10) || 8, 25);
-    const hits = await searchFirMaster(q, limit);
-    res.json(hits);
   } catch (e) { next(e); }
 });
 

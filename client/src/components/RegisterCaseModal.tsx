@@ -687,12 +687,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </select>
                         </label>
 
-                        {noCat && (
-                          <div className="full rc-cat-hint">
-                            Select a <b>Category of Item</b> to reveal the seizure fields (Quantity, Place of Seizure, Sealed / Unsealed, Seal No. / Mark, Sealed By).
-                          </div>
-                        )}
-
                         {/* Quantity is hidden for Narcotics / NDPS, Arms & Ammunition,
                             Cash & Valuables, Jewellery and Vehicle (not a highlighted
                             column — only Category, Section, Type, Description, Photo are).
