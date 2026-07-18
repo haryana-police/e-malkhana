@@ -387,7 +387,7 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 .bns-hit.picked{ opacity: 0.55; }
 .bns-tick{ margin-left: 4px; color: var(--seal-red); font-weight: 700; }
 
-.row-actions{ display:flex; gap:6px; }
+.row-actions{ display:flex; gap:6px; position:relative; z-index:1; }
 /* Whole row is clickable (PRD #7) — show pointer + soft hover.  Cursor
    on .icon-btn overrides to pointer naturally; we only restyle the row
    so the user knows the whole <tr> is a link target. */
@@ -396,13 +396,17 @@ tr.row-clickable:hover,
 tr.row-clickable:focus-visible { background-color: rgba(20, 36, 61, 0.04); outline: none; }
 tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .icon-btn{
-  width:28px; height:28px; border-radius:5px;
+  position:relative; z-index:2;       /* never let the row sit on top */
+  pointer-events:auto; user-select:none; -webkit-user-select:none;
+  width:30px; height:30px; border-radius:5px;
   border:1px solid var(--line); background: var(--white-paper);
   display:flex; align-items:center; justify-content:center;
   cursor:pointer; font-size:13px;
   color: var(--ink-navy);
+  touch-action: manipulation;        /* kills 300ms delay + ghost-click */
 }
 .icon-btn:hover{ background: var(--paper-dark); }
+.icon-btn:active{ background: var(--khaki); }
 
 /* alerts */
 .alert-row{
