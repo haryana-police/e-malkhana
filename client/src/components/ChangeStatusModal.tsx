@@ -65,8 +65,8 @@ export function ChangeStatusModal({ open, caseRow, onClose, onChanged }: Props) 
   const [attached, setAttached]     = useState<{ name: string; url: string } | null>(null);
   const [uploading, setUploading]   = useState(false);
   const [uploadErr, setUploadErr]   = useState<string | null>(null);
-  const [busy, setBusy]             = useState(false);
-  const [msg, setMsg]               = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   // Default the form whenever a new case is opened
   if (open && caseRow && !nextStatus) {
@@ -182,6 +182,7 @@ export function ChangeStatusModal({ open, caseRow, onClose, onChanged }: Props) 
                 type="file"
                 className="attach-input"
                 accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                capture="environment"
                 onChange={onPickFile}
                 disabled={uploading || busy}
               />
