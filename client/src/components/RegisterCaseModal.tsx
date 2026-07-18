@@ -25,7 +25,6 @@ interface DraftItem {
   subType: string;
   sectionLetter: string;
   catValues: Record<string, string>;
-  seizedOn: string;
   seizingOfficer: string;
   quantity: string;
   placeOfSeizure: string;
@@ -90,7 +89,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
   // ---------- common block (once) ----------
   const [seizedTime, setSeizedTime] = useState('10:00');
-  const [dateOfReceipt, setDateOfReceipt] = useState(today);
   const [receivedBy, setReceivedBy] = useState('');
 
   // ---------- multi-item list ----------
@@ -133,7 +131,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     setFirDate(today); setDdDate(today); setNatureOfDd(''); setNameOfDeceased(''); setReportingPerson('');
     setActualSeizureDdNo(''); setActualSeizureDate('');
     setBnsQuery(''); setLegalSections([]);
-    setSeizedTime('10:00'); setDateOfReceipt(today); setReceivedBy('');
+    setSeizedTime('10:00'); setReceivedBy('');
     setItems([]); setMsg(null); setErrors([]);
   }
 
@@ -188,7 +186,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     setItems(prev => [...prev, {
       localId: newLocalId(),
       categoryId: '', subType: '', sectionLetter: racks[0]?.letter ?? 'A',
-      catValues: {}, seizedOn: today, seizingOfficer: defaultIo(user),
+      catValues: {}, seizingOfficer: defaultIo(user),
       quantity: '1', placeOfSeizure: '', physicalStorage: '', remarks: '',
       photo: null, sealSealed: 'Yes', sealNo: '', sealBy: '',
     }]);
@@ -244,7 +242,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     if (recordType === 'DD' && !natureOfDd) e.push('Select the Nature of DD.');
     if (recordType === 'DD' && natureOfDd === 'UD Case (UnnaturalDeath)' && !nameOfDeceased.trim())
       e.push('Name of Deceased is required for a UD case.');
-    if (!dateOfReceipt) e.push('Date of Receipt in Malkhana is required.');
     if (!receivedBy.trim()) e.push('Received By (Malkhana Moharrir) is required.');
     if (!seizedTime) e.push('Seized Time is required.');
     return e;
@@ -254,9 +251,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     if (items.length === 0) e.push('Add at least one seized item.');
     items.forEach((it, i) => {
       if (!it.categoryId) e.push(`Item ${i + 1}: choose a Category of Item.`);
-      if (!it.seizedOn) e.push(`Item ${i + 1}: Seized On date is required.`);
       if (!it.seizingOfficer.trim()) e.push(`Item ${i + 1}: Seizing Officer is required.`);
-      if (it.categoryId !== 'narcotics' && it.sealSealed === 'Yes' && !it.sealNo.trim()) e.push(`Item ${i + 1}: enter the Seal No. / Mark.`);
       // Arms & Ammunition — only the highlighted sections are required.
       if (it.categoryId === 'arms') {
         if (!it.subType) e.push(`Item ${i + 1}: select Type (Firearms / Other Weapons).`);
@@ -297,10 +292,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
         common: {
           seizedTime,
           witness1: null, witness2: null,  // removed from form
-          dateOfReceipt, receivedBy, malkhanaLocation: '',
+          receivedBy, malkhanaLocation: '',
           legalSections: legalSections.map(s => s.sectionNo),
           seizingOfficer: items[0]?.seizingOfficer || defaultIo(user),
-          seizedOn: items[0]?.seizedOn || today,
         },
         items: items.map((it, idx) => {
           const cat = getCategory(it.categoryId);
@@ -324,7 +318,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
             subType: it.subType,
             malkhanaSection: it.sectionLetter,
             legalSections: legalSections.map(s => s.sectionNo),
-            seizedOn: it.seizedOn,
             seizingOfficer: it.seizingOfficer,
             quantity: it.quantity,
             placeOfSeizure: it.placeOfSeizure,
@@ -537,9 +530,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
               {/* --- Malkhana receipt group --- */}
               <section className="rc-group">
                 <div className="rc-grid">
-                  <label>Date of Receipt in Malkhana
-                    <input type="date" value={dateOfReceipt} max={today} onChange={e => setDateOfReceipt(e.target.value)} required />
-                  </label>
                   <label>Received By (Malkhana Moharrir)
                     <input value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Moharrir name" required />
                   </label>
@@ -548,9 +538,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                   </label>
                   <label>Seizing Officer
                     <input value={items[0]?.seizingOfficer || defaultIo(user)} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizingOfficer: e.target.value } : it))} required />
-                  </label>
-                  <label>Seized On
-                    <input type="date" value={items[0]?.seizedOn || today} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizedOn: e.target.value } : it))} required />
                   </label>
                 </div>
               </section>
