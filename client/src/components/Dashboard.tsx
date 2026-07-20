@@ -52,7 +52,7 @@ export function Dashboard({
     <div className="view active" id="view-dashboard">
       <div className="page-head">
         <div>
-          <h1>Malkhana Overview</h1>
+          <h1>Malkhana Dashboard</h1>
           <div className="sub">
             {stats.station} &nbsp;·&nbsp; As of {stats.asOf}
           </div>

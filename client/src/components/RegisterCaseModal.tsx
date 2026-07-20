@@ -536,6 +536,8 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                   <label>FIR / DD No.
                     <div className="rc-fir-row fir-typeahead" ref={firBoxRef}>
                       <input
+                        type="text"
+                        inputMode="text"
                         value={firNo}
                         onChange={e => { setFirNo(e.target.value); setFirExists(null); setFirLoaded(false); setFirOpen(true); }}
                         onFocus={() => { if (firNo.trim()) setFirOpen(true); }}
