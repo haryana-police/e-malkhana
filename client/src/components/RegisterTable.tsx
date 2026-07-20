@@ -276,16 +276,6 @@ export function RegisterTable({
             <h1>Case Property Register</h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <span
-              className="register-count-pill"
-              title={colFilterCount > 0 ? `${colFilterCount} column filter${colFilterCount > 1 ? 's' : ''} active` : undefined}
-            >
-              {visible.length} of {cases.length} items
-              {activeSection && <> · Part {activeSection}</>}
-              {!activeSection && <> · all locations</>}
-              {compact && visible.length > shown.length && <> · {shown.length} recent</>}
-              {colFilterCount > 0 && <> · <b>{colFilterCount}</b> filter{colFilterCount > 1 ? 's' : ''}</>}
-            </span>
             {onDownloadReport && <button className="btn ghost" onClick={() => onDownloadReport('xlsx')} title="Download currently filtered cases as Excel">⬇ Download Report (Excel)</button>}
             {onDownloadReport && <button className="btn ghost" onClick={() => onDownloadReport('pdf')}  title="Download currently filtered cases as PDF">⬇ Download Report (PDF)</button>}
             {onOpenRegister && <button className="btn" onClick={onOpenRegister}>+ Register New Case Property</button>}
