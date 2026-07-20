@@ -763,6 +763,29 @@ export async function seedItemTypesIfEmpty() {
   }
 }
 
+// Seed the per-item-type dynamic popup FIELD DEFINITIONS (the spec's
+// "Form Builder") from ITEM_TYPE_FIELDS.  Mirrors seedItemTypesIfEmpty:
+// no-op if the table already has rows.  This function was referenced by
+// ensureReady() but never defined — that crashed boot on Vercel.
+export async function seedItemTypeFieldsIfEmpty() {
+  await initSchema();
+  const { rows: cur } = await pool.query('SELECT count(*)::int AS n FROM item_type_fields');
+  if (cur[0] && cur[0].n > 0) return;    // already populated
+  for (let i = 0; i < ITEM_TYPE_FIELDS.length; i++) {
+    const f = ITEM_TYPE_FIELDS[i];
+    await pool.query(
+      `INSERT INTO item_type_fields (section_letter, key, label, field_type, options, sort_order, active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+       ON CONFLICT (section_letter, key) DO NOTHING`,
+      [f.section, f.key, f.label, f.type || 'text', f.options ? JSON.stringify(f.options) : null, i]
+    );
+  }
+  const { rows: after } = await pool.query('SELECT count(*)::int AS n FROM item_type_fields');
+  if (after.rows[0].n > 0) {
+    console.log(`[db] seeded item_type_fields with ${after.rows[0].n} rows`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Per-item-type dynamic popup field DEFINITIONS (the spec's "Form Builder").
 // One row per field per Malkhana section (A–E).  These seed the popups the
