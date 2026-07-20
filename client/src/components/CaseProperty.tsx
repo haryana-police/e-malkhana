@@ -44,9 +44,9 @@ const ALL_STATUSES: CaseStatus[] = [
 // station's preferred layout sticks across reloads.  No DB change — purely
 // client-side, so the Neon schema is untouched.
 type ColKey =
-  | 'sno' | 'malkhanaNo' | 'id' | 'firDate' | 'usSection'
-  | 'photo' | 'category' | 'location' | 'receivedBy'
-  | 'status' | 'lastMovement' | 'actions';
+  | 'sno' | 'id' | 'firDate' | 'usSection'
+  | 'category' | 'location' | 'receivedBy'
+  | 'lastMovement' | 'status' | 'actions';
 
 interface ColumnDef {
   key: ColKey;
@@ -57,14 +57,14 @@ interface ColumnDef {
   render: (c: CaseRow, i: number) => React.ReactNode;
 }
 
-// Full Malkhana Case Property Register columns, in statutory order:
-// S.No · Malkhana No · FIR/DD · FIR Date · U/S Section · Photo ·
-// Category · Location · Received By · Status · Last Movement.
+// Case Property Register columns, in statutory order requested:
+// S.No · FIR/DD No. · FIR Date · Section (U/S) · Category of Item ·
+// Location · Received By (Moharrir) · Last Movement Date · Status · Action.
 // Full per-item description lives on the detail page (row click).
 const DEFAULT_ORDER: ColKey[] = [
-  'sno', 'malkhanaNo', 'id', 'firDate', 'usSection',
-  'photo', 'category', 'location', 'receivedBy',
-  'status', 'lastMovement', 'actions',
+  'sno', 'id', 'firDate', 'usSection',
+  'category', 'location', 'receivedBy',
+  'lastMovement', 'status', 'actions',
 ];
 
 const LS_KEY = 'cpr-column-order';
@@ -124,11 +124,10 @@ export function CaseProperty({
     return () => document.removeEventListener('mousedown', onDocDown);
   }, [openCol]);
 
-  const TEXT_COLS: ColKey[] = ['malkhanaNo', 'id', 'firDate', 'usSection', 'category', 'location', 'receivedBy', 'lastMovement'];
+  const TEXT_COLS: ColKey[] = ['id', 'firDate', 'usSection', 'category', 'location', 'receivedBy', 'lastMovement'];
 
   function cellText(c: CaseRow, key: ColKey): string {
     switch (key) {
-      case 'malkhanaNo': return c.itemId || '';
       case 'id': return c.id;
       case 'firDate': return c.firDate || '';
       case 'usSection': return usSectionText(c);
@@ -166,10 +165,6 @@ export function CaseProperty({
       key: 'sno', label: 'S.NO', className: 'col-sno', locked: true,
       render: (_c, i) => <td className="sno">{i + 1}</td>,
     },
-    malkhanaNo: {
-      key: 'malkhanaNo', label: 'Malkhana No.', className: 'col-malkhana',
-      render: (c) => <td className="malkhana-no">{c.itemId || '—'}</td>,
-    },
     id: {
       key: 'id', label: 'FIR / DD No.',
       render: (c) => (
@@ -188,30 +183,11 @@ export function CaseProperty({
       render: (c) => <td className="date-col">{c.firDate ? c.firDate : '—'}</td>,
     },
     usSection: {
-      key: 'usSection', label: 'U/S Section', className: 'col-us',
+      key: 'usSection', label: 'Section (U/S legal section)', className: 'col-us',
       render: (c) => {
         const txt = usSectionText(c);
         return <td className="us-section">{txt ? txt : '—'}</td>;
       },
-    },
-    photo: {
-      key: 'photo', label: 'Photo', className: 'col-photo',
-      render: (c) => (
-        <td className="photo-cell">
-          {c.imageUrl ? (
-            <img
-              src={c.imageUrl}
-              alt={`Seized ${c.itemType}`}
-              className="thumb"
-              loading="lazy"
-              onClick={(e) => { e.stopPropagation(); onOpenTag(c); }}
-              title="Click to open evidence tag (full photo)"
-            />
-          ) : (
-            <span className="no-photo" title="No photo on record">—</span>
-          )}
-        </td>
-      ),
     },
     category: {
       key: 'category', label: 'Category of Item', className: 'col-category',
@@ -234,7 +210,7 @@ export function CaseProperty({
       ),
     },
     receivedBy: {
-      key: 'receivedBy', label: 'Received By', className: 'col-received',
+      key: 'receivedBy', label: 'Received By (Malkhana Moharrir)', className: 'col-received',
       render: (c) => <td>{c.receivedBy ? c.receivedBy : '—'}</td>,
     },
     status: {
@@ -250,7 +226,7 @@ export function CaseProperty({
       render: (c) => <td className="date-col">{c.lastMovement ? c.lastMovement : '—'}</td>,
     },
     actions: {
-      key: 'actions', label: 'Actions', className: 'col-actions', locked: true,
+      key: 'actions', label: 'Action', className: 'col-actions', locked: true,
       render: (c) => (
         <td>
           <div className="row-actions">
@@ -482,8 +458,8 @@ export function CaseProperty({
               <tr
                 key={c.id}
                 className="row-clickable"
-                onClick={() => navigate(`/case-property/${encodeURIComponent(c.id)}`)}
-                onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/case-property/${encodeURIComponent(c.id)}`); }}
+                onClick={() => navigate(`/case-property/${encodeURIComponent(c.id)}`, { state: { sno: i + 1 } })}
+                onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/case-property/${encodeURIComponent(c.id)}`, { state: { sno: i + 1 } }); }}
                 tabIndex={0}
                 role="link"
                 aria-label={`Open ${c.id} detail page`}

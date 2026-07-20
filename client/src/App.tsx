@@ -405,10 +405,7 @@ export default function App() {
               />
             } />
             <Route path="/case-property/:item_id" element={
-              <CasePropertyDetail
-                onOpenTag={setTagCase}
-                onRegisterMovement={setChangeCase}
-              />
+              <CasePropertyDetail />
             } />
             <Route path="/movements" element={
               <Movements

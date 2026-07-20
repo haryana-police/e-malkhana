@@ -2386,3 +2386,43 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .settings-focus-title{
   font-family:'Rajdhani', sans-serif; font-size:18px; font-weight:700; color: var(--ink-navy);
 }
+
+/* Compact Case Property detail card — single screen, all 11 columns */
+.case-property-card{
+  background: var(--white-paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(20,36,61,0.05);
+}
+.cp-card-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 18px;
+}
+.cp-card-grid > div{
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 8px;
+  min-width: 0;
+}
+.cp-card-grid .k{
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--khaki);
+}
+.cp-card-grid .v{
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--slate);
+  word-break: break-word;
+}
+.cp-card-grid .v.mono{ font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+.cp-card-grid .v.us{ font-size: 12.5px; line-height: 1.35; }
+.cp-card-grid .stamp{ margin-top: 2px; }
+.cp-photo-cell{ grid-column: 1 / -1; flex-direction: row !important; align-items: center; gap: 12px !important; border-bottom: none !important; }
+.cp-thumb{ width: 96px; height: 96px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; }
