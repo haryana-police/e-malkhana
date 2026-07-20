@@ -801,10 +801,14 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </>
                         )}
 
-                        {/* Per-category detail fields are suppressed for the minimal
-                            categories (Lost Items, Viscera, Miscellaneous) — only the
-                            highlighted columns (Section, Description, Photo) are kept. */}
-                        {!isMinimal && cat?.id !== 'gold' && cat?.fields.map(f => (
+                        {/* Per-category columns configured in System Settings →
+                            Item Type Fields render for EVERY category here, so the MM
+                            fills exactly the columns the admin defined (no category is
+                            silently dropped — Jewellery, Viscera, Miscellaneous included).
+                            The "minimal" flag still hides the shared common seizure block
+                            (Place of Seizure / Sealed / Seal No. / Sealed By) for those
+                            categories, but never the admin-defined columns. */}
+                        {cat?.fields.map(f => (
                           <label key={f.key}>
                             {f.label}{f.unit ? ` (${f.unit})` : ''}
                             {renderCatField(it.localId, it, f)}
