@@ -349,7 +349,7 @@ export default function App() {
           onRacksChange={onRacksChange}
           onOpenSettings={(tab) => { if (tab) setSettingsTab(tab); setSettingsSingle(true); setOpenSettings(true); }}
           onOpenSettingsFull={() => { setSettingsSingle(false); setSettingsTab(null); setOpenSettings(true); }}
-          onOpenSectionsManager={() => setOpenSectionsManager(true)}
+          onOpenSectionsManager={() => { setOpenSettings(false); setOpenSectionsManager(true); }}
           onOpenItemTypeManager={() => setOpenItemTypeManager(true)}
           activeSection={activeSection}
           onSectionFilter={setActiveSection}

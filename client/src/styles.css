@@ -496,6 +496,11 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 @media (min-width: 769px){
   .overlay{ left:250px; right:0; padding-left:24px; padding-right:24px; }
 }
+/* The System Setting surface is a standalone screen, not a popup that
+   sits beside the left nav. Stretch it across the FULL viewport (left:0)
+   so the sidebar is dimmed/hidden behind the backdrop while settings is
+   open — matching how every other modal already behaves on mobile. */
+.overlay.overlay-fs{ left:0; right:0; padding-left:24px; padding-right:24px; }
 .overlay.open{ display:flex; }
 .tag-card{
   background: var(--white-paper);

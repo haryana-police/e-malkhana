@@ -159,7 +159,7 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
             <button
               type="button"
               className="sys-setting-item"
-              onClick={() => { onOpenSettings(); onOpenSectionsManager(); }}
+              onClick={() => onOpenSectionsManager()}
             >Malkhana Locations</button>
           </div>
         </div>

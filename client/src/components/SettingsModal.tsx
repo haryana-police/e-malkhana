@@ -178,7 +178,7 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
   for (const e of visibleLog) userSummary[e.userId] = (userSummary[e.userId] || 0) + 1;
 
   return (
-    <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+    <div className="overlay open overlay-fs" onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div className="form-card audit-card">
         <button className="tag-close" onClick={onClose} aria-label="Close">✕</button>
 
