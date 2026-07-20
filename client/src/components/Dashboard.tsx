@@ -20,7 +20,6 @@ interface Props {
   onChangeStatus: (c: CaseRow) => void;
   onDownloadReport: (format: 'xlsx' | 'pdf') => void;
   onViewAll: () => void;
-  onViewAllMovements: () => void;
 }
 
 type TileId = 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection';
@@ -37,7 +36,7 @@ interface TileSpec {
 export function Dashboard({
   stats, movements, alerts, totalCases, cases,
   onStatClick, onOpenTag, onOpenTimeline,
-  onOpenScan, onOpenRegister, onChangeStatus, onDownloadReport, onViewAll, onViewAllMovements,
+  onOpenScan, onOpenRegister, onChangeStatus, onDownloadReport, onViewAll,
 }: Props) {
   const MOVE_PAGE_SIZE = 5;
   const [movePage, setMovePage] = useState(1);
@@ -103,18 +102,6 @@ export function Dashboard({
       <div className="panel">
         <div className="panel-head">
           <h2>Recent Movement Activity</h2>
-          <span className="meta">
-            Last 24 hours
-            {movements.length > 5 && (
-              <a
-                href="#"
-                onClick={e => { e.preventDefault(); onViewAllMovements(); }}
-                style={{ color: 'var(--ink-navy)', marginLeft: 10 }}
-              >
-                View all movements →
-              </a>
-            )}
-          </span>
         </div>
         {moveTotalPages > 1 && (
           <div className="rt-pager">
