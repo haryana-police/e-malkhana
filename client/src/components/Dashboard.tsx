@@ -140,21 +140,6 @@ export function Dashboard({
             ))}
           </tbody>
         </table>
-        {moveTotalPages > 1 && (
-          <div className="rt-pager">
-            <button className="pg-btn" disabled={moveSafePage === 1} onClick={() => setMovePage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
-            {Array.from({ length: moveTotalPages }, (_, i) => i + 1)
-              .filter(p => p === 1 || p === moveTotalPages || (p >= moveSafePage - 2 && p <= moveSafePage + 2))
-              .map((p, idx, arr) => (
-                <span key={p} style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  {idx > 0 && p !== arr[idx - 1] + 1 && <span className="pg-ellipsis">…</span>}
-                  <button className={`pg-btn${p === moveSafePage ? ' active' : ''}`} onClick={() => setMovePage(p)}>{p}</button>
-                </span>
-              ))}
-            <button className="pg-btn" disabled={moveSafePage === moveTotalPages} onClick={() => setMovePage(p => Math.min(moveTotalPages, p + 1))} title="Next">Next ›</button>
-            <span className="pg-info">Page {moveSafePage} of {moveTotalPages} · {movements.length} entries</span>
-          </div>
-        )}
       </div>
 
       <div className="panel">
