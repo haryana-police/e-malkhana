@@ -18,7 +18,8 @@ interface Props {
   onDownloadReport?: (format: 'xlsx' | 'pdf', ids?: string[]) => void;
   onOpenRegister?: () => void;
   onViewAll?: () => void;            // Dashboard "View full register →"
-}
+  pagerTop?: boolean;               // also render page controls above the table
+};
 
 function statusClass(s: CaseStatus): string {
   switch (s) {
@@ -77,7 +78,7 @@ export function RegisterTable({
   activeStatus, onClearStatus,
   excludeDisposed, onClearExcludeDisposed,
   onOpenTag, onOpenTimeline, onOpenScan, onChangeStatus,
-  onDownloadReport, onOpenRegister, onViewAll,
+  onDownloadReport, onOpenRegister, onViewAll, pagerTop,
 }: Props) {
   const [textFilter, setTextFilter] = useState('');
   const order: ColKey[] = DEFAULT_ORDER;
@@ -279,6 +280,27 @@ export function RegisterTable({
   const safePage = Math.min(page, totalPages);
   const shown = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+  const renderPager = () => (
+    <div className="rt-pager">
+      <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(1)} title="First page">«</button>
+      <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
+      {Array.from({ length: totalPages }, (_, i) => i + 1)
+        .filter(p => p === 1 || p === totalPages || (p >= safePage - 2 && p <= safePage + 2))
+        .map((p, idx, arr) => (
+          <span key={p} style={{ display: 'inline-flex', alignItems: 'center' }}>
+            {idx > 0 && p !== arr[idx - 1] + 1 && <span className="pg-ellipsis">…</span>}
+            <button
+              className={`pg-btn${p === safePage ? ' active' : ''}`}
+              onClick={() => setPage(p)}
+            >{p}</button>
+          </span>
+        ))}
+      <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Next">Next ›</button>
+      <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(totalPages)} title="Last page">»</button>
+      <span className="pg-info">Page {safePage} of {totalPages} · {sorted.length} items</span>
+    </div>
+  );
+
   return (
     <div className="register-wrap">
       {(onDownloadReport || onOpenRegister || onOpenScan) && (
@@ -345,6 +367,8 @@ export function RegisterTable({
         />
         {onOpenScan && <button className="btn small scan-btn" onClick={onOpenScan}>Scan QR</button>}
       </div>
+
+      {pagerTop && totalPages > 1 && renderPager()}
 
       <div className="panel">
         <table className="register-table">
@@ -430,26 +454,7 @@ export function RegisterTable({
             ))}
           </tbody>
         </table>
-        {totalPages > 1 && (
-          <div className="rt-pager">
-            <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(1)} title="First page">«</button>
-            <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter(p => p === 1 || p === totalPages || (p >= safePage - 2 && p <= safePage + 2))
-              .map((p, idx, arr) => (
-                <span key={p} style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  {idx > 0 && p !== arr[idx - 1] + 1 && <span className="pg-ellipsis">…</span>}
-                  <button
-                    className={`pg-btn${p === safePage ? ' active' : ''}`}
-                    onClick={() => setPage(p)}
-                  >{p}</button>
-                </span>
-              ))}
-            <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Next">Next ›</button>
-            <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(totalPages)} title="Last page">»</button>
-            <span className="pg-info">Page {safePage} of {totalPages} · {sorted.length} items</span>
-          </div>
-        )}
+        {totalPages > 1 && renderPager()}
       </div>
     </div>
   );
