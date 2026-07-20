@@ -263,15 +263,18 @@ export function RegisterTable({
         <div className="page-head" style={{ marginTop: 0 }}>
           <div>
             <h1>Case Property Register</h1>
-            <div className="sub">
-              {visible.length} of {cases.length} items
-              {activeSection && <> · location: <b>Part {activeSection}</b></>}
-              {!activeSection && <> · all locations</>}
-              {compact && visible.length > shown.length && <> · showing {shown.length} recent</>}
-              {colFilterCount > 0 && <> · <b>{colFilterCount}</b> column filter{colFilterCount > 1 ? 's' : ''} active</>}
-            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <span
+              className="register-count-pill"
+              title={colFilterCount > 0 ? `${colFilterCount} column filter${colFilterCount > 1 ? 's' : ''} active` : undefined}
+            >
+              {visible.length} of {cases.length} items
+              {activeSection && <> · Part {activeSection}</>}
+              {!activeSection && <> · all locations</>}
+              {compact && visible.length > shown.length && <> · {shown.length} recent</>}
+              {colFilterCount > 0 && <> · <b>{colFilterCount}</b> filter{colFilterCount > 1 ? 's' : ''}</>}
+            </span>
             {onDownloadReport && <button className="btn ghost" onClick={() => onDownloadReport('xlsx')} title="Download currently filtered cases as Excel">⬇ Download Report (Excel)</button>}
             {onDownloadReport && <button className="btn ghost" onClick={() => onDownloadReport('pdf')}  title="Download currently filtered cases as PDF">⬇ Download Report (PDF)</button>}
             {onOpenRegister && <button className="btn" onClick={onOpenRegister}>+ Register New Case Property</button>}
