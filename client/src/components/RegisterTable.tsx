@@ -272,13 +272,12 @@ export function RegisterTable({
     return 0;
   });
 
-  // Compact (Dashboard) mode: cap the rows shown and provide a "view all"
-  // link.  Full register (compact=false) is paginated at PAGE_SIZE.
-  const compactShown = compact ? sorted.slice(0, 8) : [];
+  // Both modes are paginated at PAGE_SIZE.  Compact (Dashboard) was
+  // previously capped at 8 with a "view all" link; now it just pages like
+  // the full register so the Dashboard can reach every page too.
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const pagedShown = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const shown = compact ? compactShown : pagedShown;
+  const shown = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className="register-wrap">
@@ -348,15 +347,6 @@ export function RegisterTable({
       </div>
 
       <div className="panel">
-        <div className="panel-head">
-          <h2>All Case Property</h2>
-          <span className="meta">
-            &nbsp; ▦ evidence tag &nbsp; ⏱ movement log &nbsp; ↻ change status
-            {compact && onViewAll && (
-              <> &nbsp; <a href="#" onClick={(e) => { e.preventDefault(); onViewAll(); }} style={{ color: 'var(--ink-navy)', fontWeight: 600 }}>View full register →</a></>
-            )}
-          </span>
-        </div>
         <table className="register-table">
           <thead>
             <tr>
@@ -440,7 +430,7 @@ export function RegisterTable({
             ))}
           </tbody>
         </table>
-        {!compact && totalPages > 1 && (
+        {totalPages > 1 && (
           <div className="rt-pager">
             <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(1)} title="First page">«</button>
             <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
