@@ -67,8 +67,6 @@ const DEFAULT_ORDER: ColKey[] = [
   'lastMovement', 'status', 'actions',
 ];
 
-const LS_KEY = 'cpr-column-order';
-
 // U/S (legal section) — formatted as "BNS 101 — Murder · BNS 22 — …".
 // Mirrors the format used on the detail page + evidence tag.
 function usSectionText(c: CaseRow): string {
@@ -81,22 +79,6 @@ function usSectionText(c: CaseRow): string {
   return '';
 }
 
-function loadOrder(): ColKey[] {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return [...DEFAULT_ORDER];
-    const parsed = JSON.parse(raw) as ColKey[];
-    // Keep only known keys, preserve default order for any that are missing,
-    // and drop unknown ones — defensive against schema drift.
-    const known = new Set(DEFAULT_ORDER);
-    const kept = parsed.filter(k => known.has(k));
-    for (const k of DEFAULT_ORDER) if (!kept.includes(k)) kept.push(k);
-    return kept;
-  } catch {
-    return [...DEFAULT_ORDER];
-  }
-}
-
 export function CaseProperty({
   cases, activeSection, onClearSection,
   activeStatus, onClearStatus,
@@ -105,8 +87,9 @@ export function CaseProperty({
   onDownloadReport,
 }: Props) {
   const [textFilter, setTextFilter] = useState('');
-  const [order, setOrder] = useState<ColKey[]>(loadOrder);
-  const [dragKey, setDragKey] = useState<ColKey | null>(null);
+  // Column order is LOCKED to the statutory sequence — no drag-reorder,
+  // no localStorage persistence.  Every device shows your exact 10 columns.
+  const order: ColKey[] = DEFAULT_ORDER;
   const navigate = useNavigate();
 
   // ---- Click a column heading to filter the register --------------------
@@ -251,23 +234,6 @@ export function CaseProperty({
     },
   };
 
-  function onDrop(target: ColKey) {
-    if (!dragKey || dragKey === target) return;
-    setOrder((o) => {
-      const next = o.filter((k) => k !== dragKey);
-      const idx = next.indexOf(target);
-      next.splice(idx, 0, dragKey);
-      try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch { /* ignore quota */ }
-      return next;
-    });
-    setDragKey(null);
-  }
-
-  function resetColumns() {
-    setOrder([...DEFAULT_ORDER]);
-    try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
-  }
-
   // Three filters: text + section + status.  When `excludeDisposed` is set
   // (dashboard "Pending Disposal" tile), the 'Disposed' rows are dropped on
   // top of any other filters.
@@ -375,8 +341,6 @@ export function CaseProperty({
         <div className="panel-head">
           <h2>All Case Property</h2>
           <span className="meta">
-            <span className="col-reorder-hint" title="Drag a column header left/right to reorder it. Layout is saved on this device.">⠿ drag headers to reorder</span>
-            <button className="btn tiny ghost" onClick={resetColumns} title="Reset columns to default order">reset</button>
             &nbsp; ▦ evidence tag &nbsp; ⏱ movement log &nbsp; ↻ change status
           </span>
         </div>
@@ -389,20 +353,13 @@ export function CaseProperty({
                   <th
                     key={key}
                     data-colpop
-                    className={[col.className, col.locked ? '' : 'col-draggable', !col.locked && openCol === key ? 'col-filter-open' : '', isColFiltered(key) ? 'col-filtered' : ''].filter(Boolean).join(' ')}
-                    draggable={!col.locked}
-                    title={!col.locked ? `Click heading to filter by ${col.label}` : undefined}
-                    onClick={() => { if (!col.locked) setOpenCol(o => o === key ? null : key); }}
-                    onDragStart={(e) => { setDragKey(key); e.dataTransfer.effectAllowed = 'move'; }}
-                    onDragOver={(e) => { if (!col.locked) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); } }}
-                    onDragLeave={(e) => { e.currentTarget.classList.remove('drag-over'); }}
-                    onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); onDrop(key); }}
-                    onDragEnd={() => setDragKey(null)}
+                    className={[col.className, openCol === key ? 'col-filter-open' : '', isColFiltered(key) ? 'col-filtered' : ''].filter(Boolean).join(' ')}
+                    title={`Click heading to filter by ${col.label}`}
+                    onClick={() => setOpenCol(o => o === key ? null : key)}
                   >
-                    {!col.locked && <span className="drag-handle" aria-hidden>⠿</span>}
                     {col.label}
                     {isColFiltered(key) && <span className="col-filter-dot" title="Column filtered">▾</span>}
-                    {!col.locked && openCol === key && (
+                    {openCol === key && (
                       <div className="col-filter-pop" onClick={e => e.stopPropagation()}>
                         {key === 'status' ? (
                           <>
