@@ -181,8 +181,8 @@ body{
   letter-spacing:0.01em;
 }
 .page-head .sub{ font-size:12.5px; color: var(--slate-soft); margin-top:3px; }
-.register-count-pill{ display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:600; color: var(--ink-navy); background: rgba(140,122,84,0.12); border:1px solid rgba(140,122,84,0.35); padding:5px 11px; border-radius:999px; white-space:nowrap; }
-.register-count-pill b{ color: var(--seal-red); }
+.register-count-pill{ display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:600; color: var(--slate-soft); padding:5px 2px; white-space:nowrap; }
+.register-count-pill b{ color: var(--ink-navy); }
 .btn{
   font-family:'IBM Plex Sans', sans-serif;
   font-size:12.5px; font-weight:600;

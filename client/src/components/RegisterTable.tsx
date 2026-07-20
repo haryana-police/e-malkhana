@@ -253,9 +253,20 @@ export function RegisterTable({
 
   const visible = applyColFilters(searchFiltered);
 
+  // Newest first: by createdAt (malkhana entry time).  Stable fallback so
+  // equal/blank dates keep their original array order.
+  const sorted = [...visible].sort((a, b) => {
+    const da = a.createdAt ? Date.parse(a.createdAt) : NaN;
+    const db = b.createdAt ? Date.parse(b.createdAt) : NaN;
+    if (!isNaN(da) && !isNaN(db)) return db - da;
+    if (!isNaN(db)) return 1;
+    if (!isNaN(da)) return -1;
+    return 0;
+  });
+
   // Compact (Dashboard) mode: cap the rows shown and provide a "view all"
   // link.  Behaviour of the full register (compact=false) is unchanged.
-  const shown = compact ? visible.slice(0, 8) : visible;
+  const shown = compact ? sorted.slice(0, 8) : sorted;
 
   return (
     <div className="register-wrap">
