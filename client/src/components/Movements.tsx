@@ -13,6 +13,7 @@ interface Props {
 interface CaseSummary {
   case: CaseRow;
   lastLocation: string;
+  lastMovedBy: string;
   lastMovementAt: string;
   movementCount: number;
 }
@@ -69,6 +70,7 @@ export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, ac
       setSummaries(lists.map(x => ({
         case: x.case,
         lastLocation: x.last?.toLocation ?? '—',
+        lastMovedBy: x.last?.movedBy ?? '—',
         lastMovementAt: x.last?.timestamp ?? '',
         movementCount: x.count,
       })));
@@ -190,23 +192,26 @@ export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, ac
             <table>
               <thead>
                 <tr>
-                  <th>Case</th>
+                  <th className="col-sno">S.NO.</th>
+                  <th>FIR/DDNO</th>
                   <th>Item</th>
                   <th>Current Status</th>
-                  <th>Current Station</th>
+                  <th>Last Moved By</th>
                   <th>Last Update</th>
+                  <th>Current Station</th>
                   <th>Moves</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {visible.length === 0 && (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--slate-soft)' }}>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--slate-soft)' }}>
                     No matching cases.
                   </td></tr>
                 )}
-                {visible.map(s => (
+                {visible.map((s, idx) => (
                   <tr key={s.case.id} className="movements-row" onClick={() => openTimeline(s.case.id)} style={{ cursor: 'pointer' }}>
+                    <td className="col-sno" style={{ textAlign: 'center' }}>{idx + 1}</td>
                     <td className="fir">{s.case.id}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -222,8 +227,9 @@ export function Movements({ cases, onOpenScan, onOpenChangeStatus, onOpenTag, ac
                         {s.case.status}
                       </span>
                     </td>
-                    <td><b>{s.lastLocation}</b></td>
+                    <td>{s.lastMovedBy}</td>
                     <td className="fir" style={{ whiteSpace: 'nowrap' }}>{s.lastMovementAt ? fmtTime(s.lastMovementAt) : '—'}</td>
+                    <td><b>{s.lastLocation}</b></td>
                     <td style={{ textAlign: 'center' }}>{s.movementCount}</td>
                     <td>
                       <div className="row-actions" onClick={e => e.stopPropagation()}>

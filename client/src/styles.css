@@ -309,6 +309,7 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 .register-table tbody tr.row-clickable:hover{ background:rgba(140,122,84,0.12); }
 .register-table .col-sno{ width:44px; text-align:center; }
 .register-table .sno{ text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }
+.panel table .col-sno{ width:44px; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }
 .register-table .col-quant{ width:56px; text-align:center; }
 .register-table .quant{ text-align:center; font-family:'IBM Plex Mono',monospace; font-weight:600; }
 .register-table .col-actions{ width:96px; text-align:center; }

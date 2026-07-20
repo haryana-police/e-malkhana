@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { api } from '../api';
+import html2canvas from 'html2canvas';
 import type { CaseRow, FirMaster, MovementLogRow } from '../types';
 
 const STATUS_TONE: Record<string, string> = {
@@ -67,6 +68,10 @@ export function CasePropertyDetail() {
   const [logDoc, setLogDoc] = useState('');
   const [logErr, setLogErr] = useState<string | null>(null);
   const [logBusy, setLogBusy] = useState(false);
+
+  // Hidden off-screen node used to compose the Download QR sheet
+  // (case detail + movement chain + QR) into a single PNG via html2canvas.
+  const sheetRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!itemIdParam) return;
@@ -209,14 +214,28 @@ export function CasePropertyDetail() {
       </body></html>`);
     w.document.close();
   }
-  function downloadQr() {
+  // ---- Download QR page (composed sheet: detail + movement + QR) ----
+  async function downloadQr() {
     if (!qrUrl || !caseRow) return;
-    const a = document.createElement('a');
-    a.href = qrUrl;
-    a.download = `${caseRow.id.replace(/[^\w]+/g, '_')}_qr.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const node = sheetRef.current;
+    if (!node) return;
+    try {
+      const canvas = await html2canvas(node, { backgroundColor: '#ffffff', scale: 2, useCORS: true, logging: false });
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = `${caseRow.id.replace(/[^\w]+/g, '_')}_detail_qr.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      // Fallback: just download the bare QR if the sheet render fails.
+      const a = document.createElement('a');
+      a.href = qrUrl;
+      a.download = `${caseRow.id.replace(/[^\w]+/g, '_')}_qr.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
   }
 
   // ---- Inline edit (Edit details) ----
@@ -470,9 +489,74 @@ export function CasePropertyDetail() {
           </form>
         </div>
       )}
+
+      {/* Hidden off-screen sheet used by "Download QR" — composes the
+          upper case-detail record + movement chain + QR into one PNG. */}
+      <div
+        ref={sheetRef}
+        style={{
+          position: 'fixed', left: -10000, top: 0, width: 760, padding: 28,
+          background: '#fff', color: '#14243D',
+          fontFamily: "'IBM Plex Sans', 'Segoe UI', Arial, sans-serif',",
+          boxSizing: 'border-box',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #8C7A54', paddingBottom: 8, marginBottom: 12 }}>
+          <div>
+            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: '#8C7A54' }}>{escapeHtml(caseRow.id)}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, margin: '4px 0' }}>{escapeHtml(caseRow.itemType)}</div>
+            {caseRow.itemSub ? <div style={{ color: '#4F6079', fontSize: 12 }}>{escapeHtml(caseRow.itemSub)}</div> : null}
+          </div>
+          <span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: 3, background: '#E6ECF2', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{escapeHtml(caseRow.status)}</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px 16px', margin: '12px 0 18px', padding: '10px 12px', border: '1px solid #D9D2C2', borderRadius: 4 }}>
+          <div><span style={KV_K}>S.NO</span><span style={KV_V}>{sno != null ? sno : '—'}</span></div>
+          <div><span style={KV_K}>Malkhana No.</span><span style={KV_V}>{escapeHtml(caseRow.itemId || '—')}</span></div>
+          <div><span style={KV_K}>FIR / DD No.</span><span style={KV_V}>{escapeHtml(caseRow.id)}</span></div>
+          <div><span style={KV_K}>FIR Date</span><span style={KV_V}>{escapeHtml(caseRow.firDate || '—')}</span></div>
+          <div><span style={KV_K}>Section (U/S)</span><span style={KV_V}>{escapeHtml(detailUsText(caseRow))}</span></div>
+          <div><span style={KV_K}>Category of Item</span><span style={KV_V}>{escapeHtml(caseRow.itemType)}</span></div>
+          <div><span style={KV_K}>Location</span><span style={KV_V}>{escapeHtml(caseRow.sectionName || '—')} (Part {escapeHtml((caseRow.section || '').replace('PART ', ''))})</span></div>
+          <div><span style={KV_K}>Received By (Moharrir)</span><span style={KV_V}>{escapeHtml(caseRow.receivedBy || '—')}</span></div>
+          <div><span style={KV_K}>Last Movement Date</span><span style={KV_V}>{escapeHtml(caseRow.lastMovement || '—')}</span></div>
+          <div><span style={KV_K}>Status</span><span style={KV_V}>{escapeHtml(caseRow.status)}</span></div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: 13, margin: '0 0 8px' }}>Movement Chain</h3>
+            {movements.length === 0 ? (
+              <div style={{ color: '#4F6079', fontSize: 11, fontStyle: 'italic' }}>No movements recorded yet.</div>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {movements.map((m, i) => (
+                  <li key={m.id ?? i} style={{ position: 'relative', padding: '6px 0 6px 20px', borderLeft: '2px solid #D9D2C2', marginLeft: 4 }}>
+                    <div style={{ fontSize: 12 }}>{escapeHtml((m.fromLocation || 'New') )} <span style={{ color: '#8C7A54' }}>→</span> {escapeHtml(m.toLocation || '—')}</div>
+                    <div style={{ fontSize: 10.5, color: '#4F6079', marginTop: 2 }}>{escapeHtml(m.movedBy || '—')} · {fmtTime(m.timestamp)}{m.purpose ? ' · ' + escapeHtml(m.purpose) : ''}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div style={{ width: 180, textAlign: 'center' }}>
+            <h3 style={{ fontSize: 13, margin: '0 0 8px' }}>QR Code</h3>
+            {qrUrl ? <img src={qrUrl} style={{ width: 170, height: 170, border: '4px solid #14243D', borderRadius: 3 }} alt="QR" /> : null}
+            <div style={{ fontSize: 10, color: '#4F6079', marginTop: 6 }}>Encrypted — scan with e-Malkhana</div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid #D9D2C2', fontSize: 10, color: '#4F6079', display: 'flex', justifyContent: 'space-between' }}>
+          <span>e-Malkhana · Case Detail</span>
+          <span>Generated: {escapeHtml(new Date().toLocaleString('en-IN'))}</span>
+        </div>
+      </div>
     </div>
   );
 }
+
+// Shared style snippets for the hidden download sheet.
+const KV_K: React.CSSProperties = { fontSize: 9.5, textTransform: 'uppercase', color: '#8C7A54', display: 'block', letterSpacing: '0.06em' };
+const KV_V: React.CSSProperties = { fontSize: 12, color: '#14243D', fontWeight: 500 };
 
 // Lightweight HTML escaper for the print window so a malicious item name
 // can't break out of the print template.  We use this instead of pulling
