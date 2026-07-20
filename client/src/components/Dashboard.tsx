@@ -20,6 +20,7 @@ interface Props {
   onChangeStatus: (c: CaseRow) => void;
   onDownloadReport: (format: 'xlsx' | 'pdf') => void;
   onViewAll: () => void;
+  onViewAllMovements: () => void;
 }
 
 type TileId = 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection';
@@ -36,7 +37,7 @@ interface TileSpec {
 export function Dashboard({
   stats, movements, alerts, totalCases, cases,
   onStatClick, onOpenTag, onOpenTimeline,
-  onOpenScan, onOpenRegister, onChangeStatus, onDownloadReport, onViewAll,
+  onOpenScan, onOpenRegister, onChangeStatus, onDownloadReport, onViewAll, onViewAllMovements,
 }: Props) {
   const tiles: TileSpec[] = [
     { id: 'all',        label: 'Total Case Property',     value: String(stats.totalProperty), foot: 'Across all sections', hint: 'Open the full Case Property register' },
@@ -96,7 +97,18 @@ export function Dashboard({
       <div className="panel">
         <div className="panel-head">
           <h2>Recent Movement Activity</h2>
-          <span className="meta">Last 24 hours</span>
+          <span className="meta">
+            Last 24 hours
+            {movements.length > 5 && (
+              <a
+                href="#"
+                onClick={e => { e.preventDefault(); onViewAllMovements(); }}
+                style={{ color: 'var(--ink-navy)', marginLeft: 10 }}
+              >
+                View all movements →
+              </a>
+            )}
+          </span>
         </div>
         <table>
           <thead>
@@ -109,7 +121,7 @@ export function Dashboard({
             </tr>
           </thead>
           <tbody>
-            {movements.map(m => (
+            {movements.slice(0, 5).map(m => (
               <tr key={m.fir + m.time}>
                 <td className="fir">{m.fir}</td>
                 <td>{m.item}</td>
