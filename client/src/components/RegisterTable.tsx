@@ -82,10 +82,15 @@ export function RegisterTable({
   const [textFilter, setTextFilter] = useState('');
   const order: ColKey[] = DEFAULT_ORDER;
   const navigate = useNavigate();
+  const PAGE_SIZE = 8;
+  const [page, setPage] = useState(1);
 
   const [openCol, setOpenCol] = useState<ColKey | null>(null);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, string>>>({});
   const [statusFilter, setStatusFilter] = useState<CaseStatus[]>([]);
+
+  // Reset to first page whenever the filter result changes.
+  useEffect(() => { setPage(1); }, [textFilter, colFilters, statusFilter, activeSection, activeStatus, excludeDisposed]);
 
   useEffect(() => {
     if (!openCol) return;
@@ -202,22 +207,25 @@ export function RegisterTable({
       key: 'actions', label: 'Action', className: 'col-actions', locked: true,
       render: (c) => (
         <td>
-          <div className="row-actions">
-            <div
-              className="icon-btn"
+          <div className="row-actions-vertical">
+            <button
+              type="button"
+              className="act-btn act-tag"
               title="View evidence tag (real QR)"
               onClick={(e) => { e.stopPropagation(); if (onOpenTag) onOpenTag(c); }}
-            >▦</div>
-            <div
-              className="icon-btn"
+            ><span className="act-ico">▦</span><span className="act-lbl">evidence tag</span></button>
+            <button
+              type="button"
+              className="act-btn act-log"
               title="View movement log"
               onClick={(e) => { e.stopPropagation(); if (onOpenTimeline) onOpenTimeline(c.id); }}
-            >⏱</div>
-            <div
-              className="icon-btn"
+            ><span className="act-ico">⏱</span><span className="act-lbl">movement log</span></button>
+            <button
+              type="button"
+              className="act-btn act-status"
               title="Change status (record a movement)"
               onClick={(e) => { e.stopPropagation(); if (onChangeStatus) onChangeStatus(c); }}
-            >↻</div>
+            ><span className="act-ico">↻</span><span className="act-lbl">change status</span></button>
           </div>
         </td>
       ),
@@ -265,8 +273,12 @@ export function RegisterTable({
   });
 
   // Compact (Dashboard) mode: cap the rows shown and provide a "view all"
-  // link.  Behaviour of the full register (compact=false) is unchanged.
-  const shown = compact ? sorted.slice(0, 8) : sorted;
+  // link.  Full register (compact=false) is paginated at PAGE_SIZE.
+  const compactShown = compact ? sorted.slice(0, 8) : [];
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedShown = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const shown = compact ? compactShown : pagedShown;
 
   return (
     <div className="register-wrap">
@@ -428,6 +440,26 @@ export function RegisterTable({
             ))}
           </tbody>
         </table>
+        {!compact && totalPages > 1 && (
+          <div className="rt-pager">
+            <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(1)} title="First page">«</button>
+            <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || (p >= safePage - 2 && p <= safePage + 2))
+              .map((p, idx, arr) => (
+                <span key={p} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  {idx > 0 && p !== arr[idx - 1] + 1 && <span className="pg-ellipsis">…</span>}
+                  <button
+                    className={`pg-btn${p === safePage ? ' active' : ''}`}
+                    onClick={() => setPage(p)}
+                  >{p}</button>
+                </span>
+              ))}
+            <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Next">Next ›</button>
+            <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(totalPages)} title="Last page">»</button>
+            <span className="pg-info">Page {safePage} of {totalPages} · {sorted.length} items</span>
+          </div>
+        )}
       </div>
     </div>
   );

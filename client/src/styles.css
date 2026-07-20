@@ -199,6 +199,35 @@ body{
 .btn-excel:hover{ opacity:0.9; }
 .btn-pdf{ background:#c0392b; border:1px solid #c0392b; color:#fff; }
 .btn-pdf:hover{ opacity:0.9; }
+
+/* vertical action buttons in the register Action column */
+.row-actions-vertical{ display:flex; flex-direction:column; gap:5px; align-items:stretch; }
+.act-btn{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:'IBM Plex Sans', sans-serif; font-size:11px; font-weight:600;
+  padding:4px 8px; border-radius:4px; cursor:pointer;
+  border:1px solid var(--line); background:var(--white-paper); color:var(--ink-navy);
+  white-space:nowrap; line-height:1.4;
+}
+.act-btn:hover{ opacity:0.9; }
+.act-ico{ font-size:13px; }
+.act-tag{ border-color:rgba(31,122,61,0.5); color:#1f7a3d; }
+.act-log{ border-color:rgba(140,122,84,0.5); color:var(--ink-navy); }
+.act-status{ border-color:rgba(192,57,43,0.5); color:#c0392b; }
+.act-lbl{ letter-spacing:0.01em; }
+
+/* register + movement pagers */
+.rt-pager{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:12px 4px 2px; }
+.pg-btn{
+  font-family:'IBM Plex Sans', sans-serif; font-size:12px; font-weight:600;
+  padding:5px 10px; border-radius:4px; cursor:pointer;
+  border:1px solid var(--line); background:var(--white-paper); color:var(--ink-navy);
+}
+.pg-btn:hover:not(:disabled){ opacity:0.9; }
+.pg-btn.active{ background:var(--ink-navy); color:#fff; border-color:var(--ink-navy); }
+.pg-btn:disabled{ opacity:0.4; cursor:default; }
+.pg-ellipsis{ padding:0 2px; color:var(--slate-soft); }
+.pg-info{ margin-left:8px; font-size:11.5px; color:var(--slate-soft); }
 .btn.small{ padding:6px 11px; font-size:11.5px; }
 
 /* stat tiles - ledger stamp style */
