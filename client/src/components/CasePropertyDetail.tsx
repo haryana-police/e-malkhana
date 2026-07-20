@@ -125,9 +125,30 @@ export function CasePropertyDetail() {
 
   function printDetail() {
     if (!caseRow) return;
-    // Use a tiny inline stylesheet for the print window so we don't
-    // need to ship a separate print.css through the bundler.  Mirrors
-    // the on-screen layout minus the action bar.
+    // Entry / Seizure details the MM fills in at registration time.
+    const entryRows: string[] = [];
+    if (caseRow.seizingOfficer) entryRows.push(`<div><span class="k">Seizing Officer</span><span class="v">${escapeHtml(caseRow.seizingOfficer)}</span></div>`);
+    if (caseRow.seizedOn) entryRows.push(`<div><span class="k">Seized On</span><span class="v">${escapeHtml(caseRow.seizedOn)}</span></div>`);
+    if (caseRow.description) entryRows.push(`<div style="grid-column:1 / -1"><span class="k">Description / Remarks</span><span class="v">${escapeHtml(caseRow.description)}</span></div>`);
+    if (caseRow.docRef) entryRows.push(`<div style="grid-column:1 / -1"><span class="k">Seizure Memo</span><span class="v">${escapeHtml(caseRow.docRef)}</span></div>`);
+    const entryHtml = entryRows.length
+      ? `<div class="card" style="margin-bottom:18px;"><h3>Entry / Seizure Details</h3><div class="meta">${entryRows.join('')}</div></div>`
+      : '';
+    // Movement chain (same timeline as the on-screen panel + Download sheet).
+    const movementHtml = movements.length === 0
+      ? '<div class="empty">No movements recorded yet.</div>'
+      : `<ul class="timeline">${movements.map(m => `
+          <li>
+            <div class="t-route">${escapeHtml(m.fromLocation || 'New')}<span class="t-arrow">→</span>${escapeHtml(m.toLocation || '—')}</div>
+            <div class="t-meta">${escapeHtml(m.movedBy || '—')} · ${fmtTime(m.timestamp)}${m.purpose ? ' · ' + escapeHtml(m.purpose) : ''}</div>
+          </li>`).join('')}</ul>`;
+    const qrHtml = qrUrl
+      ? `<div class="card" style="flex:0 0 220px;text-align:center">
+           <h3>QR Code</h3>
+           <img class="qr" src="${qrUrl}" alt="QR" />
+           <div class="qr-cap">Encrypted — scan with e-Malkhana</div>
+         </div>`
+      : '';
     const html = `<!doctype html><html><head><title>Case Detail · ${caseRow.id}</title>
       <style>
         @page { size: A4; margin: 14mm; }
@@ -143,10 +164,11 @@ export function CasePropertyDetail() {
         .meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 16px; margin: 12px 0 18px; padding: 10px 12px; border: 1px solid #D9D2C2; border-radius: 4px; }
         .meta .k { font-size: 9.5px; text-transform: uppercase; color: #8C7A54; display: block; letter-spacing: 0.06em; }
         .meta .v { font-size: 12px; color: #14243D; font-weight: 500; }
-        .row  { display: flex; gap: 16px; margin-bottom: 18px; }
+        .row  { display: flex; gap: 16px; margin-bottom: 18px; align-items: flex-start; }
         .card { flex: 1; border: 1px solid #D9D2C2; border-radius: 4px; padding: 12px; }
         .card h3 { font-size: 13px; margin-bottom: 8px; }
         .qr   { width: 180px; height: 180px; display: block; margin: 0 auto; border: 4px solid #14243D; border-radius: 3px; }
+        .qr-cap { font-size: 10px; color: #4F6079; text-align: center; margin-top: 6px; }
         .photo{ max-width: 100%; max-height: 220px; display: block; margin: 0 auto; border: 1px solid #D9D2C2; border-radius: 3px; }
         .timeline { list-style: none; padding: 0; margin: 0; }
         .timeline li { position: relative; padding: 6px 0 6px 20px; border-left: 2px solid #D9D2C2; margin-left: 4px; }
@@ -182,7 +204,15 @@ export function CasePropertyDetail() {
           <div><span class="k">Last Movement Date</span><span class="v">${escapeHtml(caseRow.lastMovement || '—')}</span></div>
           <div><span class="k">Status</span><span class="v">${escapeHtml(caseRow.status)}</span></div>
         </div>
+        ${entryHtml}
         ${caseRow.imageUrl ? `<div class="card" style="margin-bottom:18px;"><h3>Photo</h3><img class="photo" src="${caseRow.imageUrl}" alt="${escapeHtml(caseRow.itemType)}" /></div>` : ''}
+        <div class="row">
+          <div class="card">
+            <h3>Movement Chain</h3>
+            ${movementHtml}
+          </div>
+          ${qrHtml}
+        </div>
         <div class="footer">
           <span>e-Malkhana · Case Detail</span>
           <span>Printed: ${escapeHtml(new Date().toLocaleString('en-IN'))}</span>
