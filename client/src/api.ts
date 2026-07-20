@@ -18,6 +18,7 @@ import type {
   CasePropertyData,
   InspectionReport,
   InspectionMeta,
+  CategoryOfItem,
 } from './types';
 
 const base = '/api';
@@ -106,8 +107,13 @@ export const api = {
   alertConfig: () => get<AlertConfig>('/alerts/config'),
   itemTypes:   (section?: string) => get<ItemType[]>(`/item-types${section ? `?section=${encodeURIComponent(section)}` : ''}`),
 
-  // ---- Case Property entry extension ----
-  sectionMeta: () => get<SectionMeta[]>('/sections/meta'),
+  // ---- Category of Item master (DB-backed, admin-editable) ----
+  itemCategories: () => get<CategoryOfItem[]>('/item-categories'),
+  upsertItemCategory: (cat: Partial<CategoryOfItem> & { id: string; label: string }) =>
+    send<CategoryOfItem>(cat.id ? 'PATCH' : 'POST', `/item-categories${cat.id ? `/${encodeURIComponent(cat.id)}` : ''}`, cat),
+  deleteItemCategory: (id: string) =>
+    send<{ id: string; deleted: boolean }>('DELETE', `/item-categories/${encodeURIComponent(id)}`, {}),
+  // ---- Item Type Fields (legacy per-section popup builder) ----
   itemTypeFields: (section: string) => get<ItemTypeField[]>(`/item-type-fields?section=${encodeURIComponent(section)}`),
   upsertItemTypeField: (section: string, f: Partial<ItemTypeField> & { label: string }) =>
     send<ItemTypeField>('POST', '/item-type-fields', { section, ...f }),

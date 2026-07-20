@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { RackItem, BnsSection, User, FirMaster } from '../types';
-import { ITEM_CATEGORIES, getCategory, classifyNdps, type ItemCategory, type CategoryField } from '../categories';
+import type { RackItem, BnsSection, User, FirMaster, CategoryOfItem, CategoryFieldDef } from '../types';
+import { classifyNdps, getCategory, ITEM_CATEGORIES, type CategoryField } from '../categories';
 import { CameraCaptureModal } from './CameraCaptureModal';
+
+// Local lookup over the DB-loaded category list (replaces static getCategory).
+function getCat(list: CategoryOfItem[] | null, id: string | null | undefined): CategoryOfItem | undefined {
+  if (!list || !id) return undefined;
+  return list.find(c => c.id === id);
+}
 
 interface Props {
   open: boolean;
@@ -115,9 +121,15 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
 
+  // Category-of-Item master is now DB-backed and admin-editable, so we load
+  // it from the API (not the static categories.ts file).  Edits made in
+  // System Settings -> Item Type Fields show up here on the next open.
+  const [categories, setCategories] = useState<CategoryOfItem[] | null>(null);
+
   useEffect(() => {
     if (!open && !asPage) return;
     setMsg(null); setErrors([]); setStep(1); setFirExists(null); setFirLoaded(false);
+    api.itemCategories().then(setCategories).catch(() => setCategories([]));
   }, [open, asPage]);
 
   // BNS typeahead
@@ -283,7 +295,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
       .catch(() => setMsg({ kind: 'error', text: 'Failed to read the photo file.' }))
       .finally(() => { e.target.value = ''; }); // reset so picking the same file again re-triggers onChange
   }
-  function renderCatField(localId: string, it: DraftItem, f: CategoryField) {
+  function renderCatField(localId: string, it: DraftItem, f: CategoryFieldDef) {
     const v = it.catValues[f.key] ?? '';
     const set = (val: string) => patchItem(localId, { catValues: { ...it.catValues, [f.key]: val } });
     if (f.type === 'select') {
@@ -301,7 +313,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   // buttons (e.g. when the actual classification differs from the table value).
   const NDPS_CLASSES: ('Small' | 'Intermediate' | 'Commercial')[] = ['Small', 'Intermediate', 'Commercial'];
   function renderNdpsClassBadge(it: DraftItem) {
-    const cat = getCategory(it.categoryId);
+    const cat = getCat(categories, it.categoryId);
     if (!cat || cat.id !== 'narcotics') return null;
     if (!it.subType) return null;
     const auto = classifyNdps(it.subType, it.catValues['quantity_seized'] || '');
@@ -392,7 +404,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
           seizingOfficer: items[0]?.seizingOfficer || defaultIo(user),
         },
         items: items.map((it, idx) => {
-          const cat = getCategory(it.categoryId);
+          const cat = getCat(categories, it.categoryId);
           const itemFields: { key: string; value: string }[] = [];
           if (cat?.subTypes && it.subType) itemFields.push({ key: 'sub_type', value: it.subType });
           if (ddNo.trim()) itemFields.push({ key: 'dd_no', value: ddNo.trim() });   // persist optional DD ref
@@ -690,7 +702,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
               <div className="items-grid" style={itemsCollapsed ? { display: 'none' } : undefined}>
                 {items.map((it, idx) => {
-                  const cat = getCategory(it.categoryId);
+                  const cat = getCat(categories, it.categoryId);
                   // Before a category is selected, hide the highlighted columns — Quantity
                   // and the common seizure fields (Place of Seizure, Sealed/Unsealed, Seal
                   // No./Mark, Sealed By). Only Category, Malkhana Section, Description and
@@ -712,11 +724,11 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                       <div className={`rc-grid item-grid${cat?.id === 'arms' ? ' arms-grid' : ''}`}>
                         <label>Category of Item
                           <select value={it.categoryId} onChange={e => {
-                            const c = getCategory(e.target.value);
+                            const c = getCat(categories, e.target.value);
                             patchItem(it.localId, { categoryId: e.target.value, subType: '', sectionLetter: c?.sectionLetter || it.sectionLetter, catValues: {} });
                           }} >
                             <option value="">— select category —</option>
-                            {ITEM_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                            {categories?.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                           </select>
                         </label>
                         <label>Location
