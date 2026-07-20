@@ -86,7 +86,7 @@ export async function loadMirror() {
       const [kvRes, usersRes, sectionsRes, itRes, bnsRes, casesRes, movRes, auditRes, fmRes, cpRes] = await Promise.all([
         client.query("SELECT key, value FROM kv WHERE key IN ('meta','officer','alertConfig','alertIssues','backupLog')"),
         client.query("SELECT id, initials, name, rank, designation, station, password FROM users ORDER BY id"),
-        client.query(`SELECT letter, name, count, active FROM sections ORDER BY length(letter), letter`),
+        client.query(`SELECT letter, name, count, active, sort_order FROM sections ORDER BY sort_order, length(letter), letter`),
         client.query(`SELECT id, section_letter, name, sort_order, active FROM item_types ORDER BY section_letter, sort_order, name`),
         client.query(`SELECT section_no, title, description, category FROM bns_sections ORDER BY length(section_no), section_no`),
         client.query(`SELECT id, fir_no, item_type, item_sub, section, status,
@@ -127,7 +127,7 @@ export async function loadMirror() {
           details:   r.details,
         })),
         sections: sectionsRes.rows.map(r => ({
-          letter: r.letter, name: r.name, count: r.count, active: r.active,
+          letter: r.letter, name: r.name, count: r.count, active: r.active, sortOrder: Number(r.sort_order) || 0,
         })),
         bnsSections: bnsRes.rows.map(r => ({
           sectionNo: r.section_no,
@@ -339,14 +339,14 @@ async function persistDiff(client, pre, post) {
     const { inserted, updated, deleted } = diffById(prev, next);
     for (const s of inserted) {
       await client.query(
-        `INSERT INTO sections (letter, name, count, active) VALUES ($1,$2,$3,$4)`,
-        [s.letter, s.name, s.count || 0, s.active !== false]
+        `INSERT INTO sections (letter, name, count, active, sort_order) VALUES ($1,$2,$3,$4,$5)`,
+        [s.letter, s.name, s.count || 0, s.active !== false, s.sortOrder || 0]
       );
     }
     for (const s of updated) {
       await client.query(
-        `UPDATE sections SET name=$2, count=$3, active=$4 WHERE letter=$1`,
-        [s.letter, s.name, s.count || 0, s.active !== false]
+        `UPDATE sections SET name=$2, count=$3, active=$4, sort_order=$5 WHERE letter=$1`,
+        [s.letter, s.name, s.count || 0, s.active !== false, s.sortOrder || 0]
       );
     }
     for (const s of deleted) {

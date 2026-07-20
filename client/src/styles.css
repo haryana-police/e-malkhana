@@ -1456,25 +1456,93 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
    ============================================================ */
 .sections-manager-list{ display:flex; flex-direction:column; gap:8px; }
 .sections-manager-row{
-  display:grid; grid-template-columns: 28px 1fr auto; align-items:center; gap:12px;
+  display:grid; grid-template-columns: 28px 1fr auto auto auto; align-items:center; gap:12px;
   background: var(--paper); border:1px solid var(--line); border-radius: 5px;
   padding: 6px 10px;
 }
-.sections-manager-letter{
-  font-family:'Rajdhani', sans-serif; font-weight:700; font-size:14px;
-  width:24px; height:24px; border-radius:4px;
-  background: var(--khaki); color: var(--ink-navy);
-  display:flex; align-items:center; justify-content:center;
-}
+.sections-manager-row.open{ border-color: var(--ink-navy); }
 .sections-manager-row input{
   font-family:'IBM Plex Sans', sans-serif; font-size: 13px; color: var(--slate);
   background: var(--white-paper); border:1px solid var(--line); border-radius: 4px;
   padding: 7px 9px; outline:none;
 }
+.sections-manager-head{
+  display:flex; align-items:center; gap:10px; width:100%;
+  background: transparent; border:0; cursor:pointer; text-align:left;
+  font-family:'IBM Plex Sans', sans-serif; font-size:13px; color: var(--slate);
+  padding: 8px 10px;
+}
+.sections-manager-head:hover{ background: rgba(45,62,80,0.04); }
+.sections-manager-chevron{
+  font-size:11px; color: var(--slate-soft); width:10px; flex:0 0 auto;
+  transition: transform .15s ease;
+}
+.sections-manager-letter{
+  font-family:'Rajdhani', sans-serif; font-weight:700; font-size:14px;
+  width:24px; height:24px; flex:0 0 auto; border-radius:4px;
+  background: var(--khaki); color: var(--ink-navy);
+  display:flex; align-items:center; justify-content:center;
+}
 .sections-manager-row input:focus{ border-color: var(--ink-navy); }
 .sections-manager-count{
   font-family:'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
   color: var(--slate-soft); white-space: nowrap;
+}
+
+/* Active / Inactive status pill (replaces the old ⊕/⊖ deactivate button) */
+.sm-status{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 600;
+  padding: 4px 9px; border-radius: 999px; cursor:pointer;
+  border:1px solid var(--olive); color: var(--olive);
+  background: rgba(91,122,79,0.08); white-space: nowrap;
+  transition: background 0.12s, opacity 0.12s;
+}
+.sm-status:hover{ background: rgba(91,122,79,0.16); }
+.sm-status:disabled{ opacity: 0.5; cursor: not-allowed; }
+.sm-status .sm-dot{
+  width:7px; height:7px; border-radius:50%; background: var(--olive);
+}
+.sm-status--off{
+  border-color: var(--seal-red); color: var(--seal-red);
+  background: rgba(162,62,44,0.08);
+}
+.sm-status--off:hover{ background: rgba(162,62,44,0.16); }
+.sm-status--off .sm-dot{ background: var(--seal-red); }
+
+/* Reorder / edit / delete action toolbar — 4 square buttons matching the
+   reference mockup (↑ ↓ ✎ ×).  The right-most (delete) is flagged danger. */
+.sections-action-bar{ display:flex; gap:6px; align-self:flex-end; }
+.sections-action{
+  width:28px; height:28px; border-radius:5px;
+  border:1px solid var(--line); background: var(--white-paper);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:13px; line-height:1;
+  color: var(--ink-navy);
+  touch-action: manipulation;
+  transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+}
+.sections-action:hover:not(:disabled){ background: var(--paper-dark); }
+.sections-action:active:not(:disabled){ background: var(--khaki); }
+.sections-action:disabled{ opacity: 0.4; cursor: not-allowed; }
+.sections-action--danger{
+  border-color: var(--seal-red); color: var(--seal-red);
+}
+.sections-action--danger:hover:not(:disabled){
+  background: rgba(162,62,44,0.10); border-color: var(--seal-red);
+}
+.sections-manager-body{
+  display:flex; align-items:center; gap:8px; padding: 0 10px 10px 44px;
+}
+.sections-manager-body input{
+  flex:1 1 auto;
+  font-family:'IBM Plex Sans', sans-serif; font-size: 13px; color: var(--slate);
+  background: var(--white-paper); border:1px solid var(--line); border-radius: 4px;
+  padding: 7px 9px; outline:none;
+}
+.sections-manager-body input:focus{ border-color: var(--ink-navy); }
+.sections-manager-row-actions{
+  display:flex; align-items:center; flex:0 0 auto;
 }
 
 /* ============================================================

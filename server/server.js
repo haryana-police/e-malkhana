@@ -1560,6 +1560,40 @@ app.get('/api/sections', (req, res) => {
   res.json(all.filter(s => !!s.active === filter));
 });
 
+// Persist an explicit display order for all sections.  Body: { order: ['A','B',...] }.
+// Letters listed get sequential sort_order = index; any letter omitted keeps a
+// stable slot after the listed ones (so a partial order from the client is safe).
+app.patch('/api/sections/order', async (req, res, next) => {
+  try {
+    const incoming = Array.isArray(req.body?.order) ? req.body.order.map(String) : [];
+    if (!incoming.length) { const e = new Error('order is required (array of letters)'); e.status = 400; throw e; }
+    let result = [];
+    await mutate(d => {
+      const present = new Set(d.sections.map(s => s.letter));
+      for (const l of incoming) {
+        if (!present.has(l)) { const e = new Error(`unknown section: ${l}`); e.status = 400; throw e; }
+      }
+      const rank = new Map(incoming.map((l, i) => [l, i]));
+      let tail = incoming.length;
+      for (const s of d.sections) {
+        if (rank.has(s.letter)) s.sortOrder = rank.get(s.letter);
+        else s.sortOrder = tail++;
+      }
+      d.sections.sort((a, b) =>
+        (a.sortOrder || 0) - (b.sortOrder || 0) ||
+        a.letter.length - b.letter.length ||
+        a.letter.localeCompare(b.letter)
+      );
+      result = d.sections.map(s => ({
+        letter: s.letter, name: s.name, count: s.count,
+        active: s.active !== false, sortOrder: s.sortOrder || 0,
+      }));
+    });
+    await auditMm(req, 'section.reorder', '*', `Reordered ${incoming.length} section(s)`);
+    res.json(result);
+  } catch (e) { next(e); }
+});
+
 app.patch('/api/sections/:letter', async (req, res, next) => {
   try {
     const letter = String(req.params.letter).toUpperCase();
@@ -1632,8 +1666,9 @@ app.post('/api/sections', async (req, res, next) => {
         if (!found) { const e = new Error('no free section letter available'); e.status = 409; throw e; }
         chosen = found;
       }
-      d.sections.push({ letter: chosen, name, count: 0 });
-      d.sections.sort((a, b) => a.letter.length - b.letter.length || a.letter.localeCompare(b.letter));
+      const maxOrder = d.sections.reduce((m, s) => Math.max(m, (s.sortOrder || 0)), -1);
+      d.sections.push({ letter: chosen, name, count: 0, sortOrder: maxOrder + 1 });
+      d.sections.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.letter.length - b.letter.length || a.letter.localeCompare(b.letter));
       letter = chosen;
     });
 

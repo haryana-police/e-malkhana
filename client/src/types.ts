@@ -109,6 +109,7 @@ export interface RackItem {
   name: string;                // "Narcotics Rack"
   count: number;               // 18
   active?: boolean;            // false = hidden from "Register New" dropdown
+  sortOrder?: number;          // explicit display order in the sections manager
 }
 
 export interface Officer {

@@ -234,6 +234,7 @@ export const api = {
   setSectionActive: (letter: string, active: boolean) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}/active`, { active }),
   createSection: (name: string)                => send<{ letter: string; name: string; count: number; active?: boolean }>('POST',  '/sections', { name }),
   deleteSection: (letter: string)               => send<{ letter: string; name: string; count: number; deleted: boolean }>('DELETE', `/sections/${encodeURIComponent(letter)}`, {}),
+  reorderSections: (order: string[])            => send<{ letter: string; name: string; count: number; active?: boolean; sortOrder?: number }[]>('PATCH', '/sections/order', { order }),
   updateAlerts:  (cfg: Partial<AlertConfig>) => send<AlertConfig>('PATCH', '/alerts/config', cfg),
   createMovement: (input: ScanInput) => send<{ case: CaseRow; movement?: MovementLogRow }>('POST', '/movements', input),
   scan:           (input: ScanInput) => send<{ case: CaseRow; movement?: MovementLogRow }>('POST', '/scan', input),

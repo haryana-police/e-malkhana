@@ -275,6 +275,9 @@ CREATE TABLE IF NOT EXISTS sections (
   count  INTEGER NOT NULL DEFAULT 0,
   active BOOLEAN NOT NULL DEFAULT TRUE
 );
+-- Explicit display order for the sections manager (drag/reorder toolbar).
+-- sort_order drives every sections listing; ties fall back to letter order.
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS item_types (
   id            BIGSERIAL PRIMARY KEY,
@@ -599,8 +602,8 @@ const DEFAULT_SECTIONS = [
 ];
 
 function buildDefaultSections() {
-  return DEFAULT_SECTIONS.map(({ letter, name }) => ({
-    letter, name, count: 0, active: true,
+  return DEFAULT_SECTIONS.map(({ letter, name }, i) => ({
+    letter, name, count: 0, active: true, sort_order: i,
   }));
 }
 
@@ -674,9 +677,9 @@ export async function seedIfEmpty() {
     }
     for (const sec of s.sections) {
       await pool.query(
-        `INSERT INTO sections (letter, name, count, active)
-         VALUES ($1,$2,$3,$4) ON CONFLICT (letter) DO NOTHING`,
-        [sec.letter, sec.name, sec.count || 0, sec.active !== false]
+        `INSERT INTO sections (letter, name, count, active, sort_order)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (letter) DO NOTHING`,
+        [sec.letter, sec.name, sec.count || 0, sec.active !== false, sec.sort_order || 0]
       );
     }
     for (const c of s.cases) {
@@ -999,10 +1002,10 @@ export async function getSectionMeta(letter) {
   const where = letter ? ` WHERE letter = $1` : '';
   const params = letter ? [letter] : [];
   const { rows } = await pool.query(
-    `SELECT letter, name, count, active FROM sections${where} ORDER BY length(letter), letter`,
+    `SELECT letter, name, count, active, sort_order FROM sections${where} ORDER BY sort_order, length(letter), letter`,
     params
   );
-  return rows.map(r => ({ letter: r.letter, name: r.name, count: r.count, active: r.active !== false }));
+  return rows.map(r => ({ letter: r.letter, name: r.name, count: r.count, active: r.active !== false, sortOrder: Number(r.sort_order) || 0 }));
 }
 
 // Active popup field definitions for a section, in display order.
