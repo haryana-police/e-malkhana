@@ -109,7 +109,7 @@ export const api = {
 
   // ---- Category of Item master (DB-backed, admin-editable) ----
   itemCategories: () => get<CategoryOfItem[]>('/item-categories'),
-  upsertItemCategory: (cat: Partial<CategoryOfItem> & { id: string; label: string }) =>
+  upsertItemCategory: (cat: Partial<CategoryOfItem> & { id: string; label?: string }) =>
     send<CategoryOfItem>(cat.id ? 'PATCH' : 'POST', `/item-categories${cat.id ? `/${encodeURIComponent(cat.id)}` : ''}`, cat),
   deleteItemCategory: (id: string) =>
     send<{ id: string; deleted: boolean }>('DELETE', `/item-categories/${encodeURIComponent(id)}`, {}),

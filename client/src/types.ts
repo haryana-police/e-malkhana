@@ -316,3 +316,31 @@ export interface InspectionMeta {
   nextInspectionId: string;
   previousInspectionDate: string | null;
 }
+
+// ---- Category of Item master (mirrors server item_categories table) ------
+// This is the DB-backed, admin-editable master the Register form reads from.
+// `fields` define the popup columns shown for the category; `subTypes` is
+// the inner Type dropdown.  Replaces the old static categories.ts source.
+export type CatFieldType = 'text' | 'number' | 'select' | 'date' | 'time';
+
+export interface CategoryFieldDef {
+  key: string;            // stable snake_case id
+  label: string;          // display label
+  type: CatFieldType;     // text | number | select | date | time
+  options?: string[];     // for select
+  placeholder?: string;
+  unit?: string;          // e.g. "grams", "Rs."
+}
+
+export interface CategoryOfItem {
+  id: string;             // stable id, e.g. "narcotics"
+  label: string;         // display label, e.g. "Narcotics / NDPS Article"
+  sectionLetter: string; // suggested Malkhana Part (A–E)
+  subTypeLabel?: string; // label for the sub-type dropdown, e.g. "Narcotic Type"
+  subTypeControl?: 'select' | 'radio';
+  subTypes?: string[];    // the inner type dropdown options
+  fields: CategoryFieldDef[];
+  sortOrder?: number;
+  active: boolean;
+}
+

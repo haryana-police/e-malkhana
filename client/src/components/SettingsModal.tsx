@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { ITEM_CATEGORIES } from '../categories';
-import type { AlertConfig, AuditEntry, ItemTypeField } from '../types';
+import type { AlertConfig, AuditEntry, CategoryOfItem, CategoryFieldDef } from '../types';
 
 interface Props {
   open: boolean;
@@ -551,180 +550,249 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           // Vehicle / Biological), the popup fields that appear when an MM registers
           // an item of that type.  Add / edit / delete / reorder without coding.
           // =============================================================
+          // Item Type Fields — now a full Category-of-Item MANAGER.
+          // The "Category of Item" master is DB-backed (item_categories),
+          // so the admin can: add / edit / delete a category AND add /
+          // edit / delete / reorder the columns (fields) inside each
+          // category.  Register -> New Case Property reads the SAME table,
+          // so edits show up live at registration.
+          // =============================================================
           function ItemTypeFieldsManager() {
-          // Tabs are now the "Category of Item" master (categories.ts), NOT the
-          // Malkhana sections.  We keep one tab per Malkhana section (A–E) but
-          // label it with that section's primary Category-of-Item name, so the
-          // underlying section-keyed field store is unchanged (no migration).
-          // Only categories that actually carry fields / sub-types are shown —
-          // empty / irrelevant ones (e.g. Lost Items) are hidden.
-          const categoryTabs = useMemo(() => {
-            const seen = new Set<string>();
-            const out: { letter: string; name: string; catId: string }[] = [];
-            for (const c of ITEM_CATEGORIES) {
-              if (seen.has(c.sectionLetter)) continue;            // one tab per section
-              const relevant = (c.fields && c.fields.length > 0) || (c.subTypes && c.subTypes.length > 0);
-              if (!relevant) continue;                            // skip empty categories
-              seen.add(c.sectionLetter);
-              out.push({ letter: c.sectionLetter, name: c.label, catId: c.id });
-            }
-            return out;
-          }, []);
-          const [tab, setTab]           = useState<string>('');
-          const [fields, setFields]     = useState<ItemTypeField[]>([]);
+          const [cats, setCats]         = useState<CategoryOfItem[]>([]);
           const [loading, setLoading]   = useState(false);
           const [busy, setBusy]         = useState(false);
           const [msg, setMsg]           = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
-          // draft row for add/edit
-          const [draft, setDraft]       = useState<Partial<ItemTypeField> | null>(null);
-          const [newLabel, setNewLabel] = useState('');
-          const [newType, setNewType]   = useState<'text' | 'number' | 'select' | 'date' | 'time'>('text');
-          const [newOptions, setNewOptions] = useState('');
+          // which category tab is active (by id)
+          const [tab, setTab]           = useState<string>('');
 
-          // initialise the active tab to the first category
-          useEffect(() => {
-            if (!tab && categoryTabs.length) setTab(categoryTabs[0].letter);
-          }, [categoryTabs, tab]);
+          // category editor (add new / edit existing).  null = closed.
+          const [catDraft, setCatDraft] = useState<{ id?: string; label: string; sectionLetter: string; subTypeLabel: string; subTypeControl: 'select' | 'radio'; subTypes: string; } | null>(null);
 
-          useEffect(() => {
-          if (!tab) return;
-          setLoading(true); setMsg(null);
-          api.itemTypeFields(tab).then(f => { setFields(f); setLoading(false); })
-          .catch(e => { setMsg({ kind: 'error', text: (e as Error).message }); setLoading(false); });
-          }, [tab]);
+          // field editor (add / edit) for the active category.  null = closed.
+          const [fieldDraft, setFieldDraft] = useState<{ key?: string; label: string; type: 'text'|'number'|'select'|'date'|'time'; options: string } | null>(null);
 
-          function openAdd() {
-          setDraft({}); setNewLabel(''); setNewType('text'); setNewOptions('');
+          const active = cats.find(c => c.id === tab);
+
+          async function reload() {
+            try { const list = await api.itemCategories(); setCats(list); }
+            catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
           }
-          function openEdit(f: ItemTypeField) {
-          setDraft(f); setNewLabel(f.label); setNewType(f.fieldType);
-          setNewOptions((f.options || []).join(', '));
+          useEffect(() => {
+            setLoading(true); setMsg(null);
+            api.itemCategories().then(list => { setCats(list); if (!tab && list[0]) setTab(list[0].id); })
+              .catch(e => setMsg({ kind: 'error', text: (e as Error).message }))
+              .finally(() => setLoading(false));
+          }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+          // ---------- category CRUD ----------
+          function openAddCat() {
+            setCatDraft({ label: '', sectionLetter: 'A', subTypeLabel: '', subTypeControl: 'select', subTypes: '' });
+          }
+          function openEditCat(c: CategoryOfItem) {
+            setCatDraft({ id: c.id, label: c.label, sectionLetter: c.sectionLetter,
+              subTypeLabel: c.subTypeLabel || '', subTypeControl: c.subTypeControl || 'select',
+              subTypes: (c.subTypes || []).join(', ') });
+          }
+          async function saveCat() {
+            if (!catDraft) return;
+            const id = catDraft.id || slug(catDraft.label);
+            const payload: any = {
+              id,
+              label: catDraft.label.trim(),
+              sectionLetter: catDraft.sectionLetter,
+              subTypeLabel: catDraft.subTypeLabel.trim() || null,
+              subTypeControl: catDraft.subTypeControl,
+              subTypes: catDraft.subTypes.split(',').map(s => s.trim()).filter(Boolean),
+            };
+            setBusy(true); setMsg(null);
+            try {
+              await api.upsertItemCategory(payload);
+              await reload();
+              if (!catDraft.id) setTab(id);
+              setCatDraft(null);
+              setMsg({ kind: 'ok', text: `Saved category "${payload.label}".` });
+            } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+            finally { setBusy(false); }
+          }
+          async function deleteCat(c: CategoryOfItem) {
+            if (!confirm(`Delete category "${c.label}"? This also removes its columns.`)) return;
+            setBusy(true); setMsg(null);
+            try {
+              await api.deleteItemCategory(c.id);
+              await reload();
+              if (tab === c.id) setTab(cats.find(x => x.id !== c.id)?.id || '');
+              setMsg({ kind: 'ok', text: `Deleted "${c.label}".` });
+            } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+            finally { setBusy(false); }
+          }
+
+          // ---------- field (column) CRUD for the active category ----------
+          function openAddField() { setFieldDraft({ label: '', type: 'text', options: '' }); }
+          function openEditField(f: CategoryFieldDef) {
+            setFieldDraft({ key: f.key, label: f.label, type: f.type, options: (f.options || []).join(', ') });
           }
           async function saveField() {
-          const label = newLabel.trim();
-          if (!label) { setMsg({ kind: 'error', text: 'Field label is required.' }); return; }
-          const options = newType === 'select'
-          ? newOptions.split(',').map(s => s.trim()).filter(Boolean)
-          : undefined;
-          setBusy(true); setMsg(null);
-          try {
-          const payload: any = { section: tab, label, fieldType: newType };
-          if (options) payload.options = options;
-          if (draft?.key) payload.key = draft.key;
-          if (draft?.id) payload.key = draft.key; // preserve key on edit
-          await api.upsertItemTypeField(tab, payload);
-          setDraft(null);
-          const f = await api.itemTypeFields(tab);
-          setFields(f);
-          setMsg({ kind: 'ok', text: `Saved field "${label}" for ${activeCat?.name || 'Category'}.` });
-          } catch (e) {
-          setMsg({ kind: 'error', text: (e as Error).message });
-          } finally {
-          setBusy(false);
+            if (!active || !fieldDraft) return;
+            const key = fieldDraft.key || slug(fieldDraft.label);
+            const options = fieldDraft.type === 'select'
+              ? fieldDraft.options.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+            const fields = [...(active.fields || [])];
+            const idx = fields.findIndex(f => f.key === key);
+            const newField: CategoryFieldDef = { key, label: fieldDraft.label.trim(), type: fieldDraft.type, options, placeholder: undefined, unit: undefined };
+            if (idx >= 0) fields[idx] = newField; else fields.push(newField);
+            setBusy(true); setMsg(null);
+            try {
+              await api.upsertItemCategory({ id: active.id, fields });
+              await reload();
+              setFieldDraft(null);
+              setMsg({ kind: 'ok', text: `Saved column "${newField.label}" for "${active.label}".` });
+            } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+            finally { setBusy(false); }
           }
+          async function deleteField(f: CategoryFieldDef) {
+            if (!active) return;
+            if (!confirm(`Delete column "${f.label}" from "${active.label}"?`)) return;
+            const fields = (active.fields || []).filter(x => x.key !== f.key);
+            setBusy(true); setMsg(null);
+            try {
+              await api.upsertItemCategory({ id: active.id, fields });
+              await reload();
+              setMsg({ kind: 'ok', text: `Deleted column "${f.label}".` });
+            } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+            finally { setBusy(false); }
           }
-          async function removeField(f: ItemTypeField) {
-          if (!confirm(`Delete field "${f.label}" from ${activeCat?.name || 'Category'}?`)) return;
-          setBusy(true); setMsg(null);
-          try {
-          await api.deleteItemTypeField(f.id);
-          setFields(await api.itemTypeFields(tab));
-          setMsg({ kind: 'ok', text: `Deleted "${f.label}".` });
-          } catch (e) {
-          setMsg({ kind: 'error', text: (e as Error).message });
-          } finally {
-          setBusy(false);
-          }
-          }
-          async function moveField(f: ItemTypeField, dir: -1 | 1) {
-          const idx = fields.findIndex(x => x.id === f.id);
-          const ni = idx + dir;
-          if (idx < 0 || ni < 0 || ni >= fields.length) return;
-          const next = [...fields];
-          [next[idx], next[ni]] = [next[ni], next[idx]];
-          // persist the new sort orders
-          setFields(next);
-          try {
-          await Promise.all(next.map((x, i) => api.upsertItemTypeField(tab, { key: x.key, label: x.label, fieldType: x.fieldType, sortOrder: i * 10, active: x.active })));
-          } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+          async function moveField(f: CategoryFieldDef, dir: -1 | 1) {
+            if (!active) return;
+            const fields = [...(active.fields || [])];
+            const i = fields.findIndex(x => x.key === f.key);
+            const ni = i + dir;
+            if (i < 0 || ni < 0 || ni >= fields.length) return;
+            [fields[i], fields[ni]] = [fields[ni], fields[i]];
+            setBusy(true);
+            try { await api.upsertItemCategory({ id: active.id, fields }); await reload(); }
+            catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+            finally { setBusy(false); }
           }
 
-          const activeCat = categoryTabs.find(c => c.letter === tab);
+          function slug(s: string) {
+            return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'cat';
+          }
 
           return (
           <div>
           <div className="sub" style={{ marginBottom: 12 }}>
-            Per <b>Category of Item</b>, configure the popup fields the MM fills at
-            registration — e.g. Narcotics → Substance Type / Gross Weight / Net Weight / Packing Type.
-            Changes apply immediately to new registrations.
+            <b>Category of Item</b> master — add a category, rename it, or delete it. Inside each
+            category, add / edit / remove / reorder the <b>columns</b> (fields) the MM fills at
+            registration. Changes apply immediately to new registrations.
           </div>
 
+          {/* category tabs */}
           <div className="itemtype-tabs">
-            {categoryTabs.map(c => (
-              <button key={c.letter} type="button"
-                className={`itemtype-tab${tab === c.letter ? ' active' : ''}`}
-                onClick={() => setTab(c.letter)} disabled={busy}>
-                <span className="itemtype-tab-name">{c.name}</span>
+            {cats.map(c => (
+              <button key={c.id} type="button"
+                className={`itemtype-tab${tab === c.id ? ' active' : ''}`}
+                onClick={() => setTab(c.id)} disabled={busy}>
+                <span className="itemtype-tab-name">{c.label}</span>
               </button>
             ))}
+            <button type="button" className="itemtype-tab add-tab" onClick={openAddCat} disabled={busy} title="Add a new category">+ Add category</button>
           </div>
 
-          <div className="itemtype-section-head">
-            <b>{activeCat?.name || 'Category'}</b>
-            <span className="itemtype-count">{fields.length} field{fields.length === 1 ? '' : 's'}</span>
-          </div>
+          {loading && <div className="sub" style={{ padding: 12 }}>Loading categories…</div>}
 
-          {loading && <div className="sub" style={{ padding: 12 }}>Loading fields…</div>}
+          {!loading && active && (
+            <>
+              {/* edit / delete the active category */}
+              <div className="itemtype-section-head">
+                <b>{active.label}</b>
+                <span className="itemtype-count">{(active.fields || []).length} column{(active.fields || []).length === 1 ? '' : 's'}</span>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <button type="button" className="icon-btn tiny" title="Edit category" onClick={() => openEditCat(active)} disabled={busy}>✎</button>
+                  <button type="button" className="icon-btn tiny" title="Delete category"
+                    onClick={() => deleteCat(active)} disabled={busy}
+                    style={{ color: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}>×</button>
+                </span>
+              </div>
 
-          {!loading && (
-            <div className="itemtype-list">
-              {fields.length === 0 && !draft && (
-                <div className="sub" style={{ padding: 16, textAlign: 'center' }}>No fields yet — add the first one below.</div>
-              )}
-              {fields.map((f, i) => (
-                <div key={f.id} className="itemtype-row" style={f.active === false ? { opacity: 0.55 } : undefined}>
-                  <div className="itemtype-row-name">
-                    <input value={f.label} disabled readOnly />
-                    <span className="itemtype-case-badge">{f.fieldType}{f.options ? ` · ${(f.options).join(' / ')}` : ''}</span>
+              <div className="itemtype-row" style={{ background: 'rgba(162,62,44,0.04)', marginBottom: 8 }}>
+                <div className="itemtype-row-name">
+                  <span style={{ fontSize: 12, color: 'var(--slate-soft)' }}>Sub-Type label</span>
+                  <input value={active.subTypeLabel || '—'} disabled readOnly />
+                  <span style={{ fontSize: 12, color: 'var(--slate-soft)' }}>Sub-Types ({(active.subTypes || []).join(', ') || '—'}) · Section {active.sectionLetter}</span>
+                </div>
+              </div>
+
+              <div className="itemtype-list">
+                {(active.fields || []).length === 0 && !fieldDraft && (
+                  <div className="sub" style={{ padding: 16, textAlign: 'center' }}>No columns yet — add the first one below.</div>
+                )}
+                {(active.fields || []).map((f, i) => (
+                  <div key={f.key} className="itemtype-row">
+                    <div className="itemtype-row-name">
+                      <input value={f.label} disabled readOnly />
+                      <span className="itemtype-case-badge">{f.type}{f.options ? ` · ${(f.options).join(' / ')}` : ''}</span>
+                    </div>
+                    <div className="itemtype-row-actions">
+                      <button type="button" className="icon-btn" title="Move up" onClick={() => moveField(f, -1)} disabled={busy || i === 0}>↑</button>
+                      <button type="button" className="icon-btn" title="Move down" onClick={() => moveField(f, 1)} disabled={busy || i === (active.fields || []).length - 1}>↓</button>
+                      <button type="button" className="icon-btn" title="Edit" onClick={() => openEditField(f)} disabled={busy}>✎</button>
+                      <button type="button" className="icon-btn" title="Delete" onClick={() => deleteField(f)} disabled={busy}
+                        style={{ color: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}>×</button>
+                    </div>
                   </div>
-                  <div className="itemtype-row-actions">
-                    <button type="button" className="icon-btn" title="Move up" onClick={() => moveField(f, -1)} disabled={busy || i === 0}>↑</button>
-                    <button type="button" className="icon-btn" title="Move down" onClick={() => moveField(f, 1)} disabled={busy || i === fields.length - 1}>↓</button>
-                    <button type="button" className="icon-btn" title="Edit" onClick={() => openEdit(f)} disabled={busy}>✎</button>
-                    <button type="button" className="icon-btn" title="Delete" onClick={() => removeField(f)} disabled={busy}
-                      style={{ color: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}>×</button>
+                ))}
+              </div>
+
+              {fieldDraft && (
+                <div className="itemtype-add" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+                  <div className="sub" style={{ margin: 0 }}>{fieldDraft.key ? 'Edit column' : `+ Add column to ${active.label}`}</div>
+                  <input value={fieldDraft.label} onChange={e => setFieldDraft(d => d && { ...d, label: e.target.value })} placeholder="Column label e.g. Gross Weight" />
+                  <select value={fieldDraft.type} onChange={e => setFieldDraft(d => d && { ...d, type: e.target.value as any })}>
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="select">Select (dropdown)</option>
+                    <option value="date">Date</option>
+                    <option value="time">Time</option>
+                  </select>
+                  {fieldDraft.type === 'select' && (
+                    <input value={fieldDraft.options} onChange={e => setFieldDraft(d => d && { ...d, options: e.target.value })} placeholder="Comma-separated options e.g. Cash, Fake Currency, Papers" />
+                  )}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn" type="button" onClick={saveField} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+                    <button className="btn ghost" type="button" onClick={() => setFieldDraft(null)} disabled={busy}>Cancel</button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {draft && (
-            <div className="itemtype-add" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-              <div className="sub" style={{ margin: 0 }}>{draft.key ? 'Edit field' : `+ Add field to ${activeCat?.name || 'Category'}`}</div>
-              <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Field label e.g. Gross Weight" />
-              <select value={newType} onChange={e => setNewType(e.target.value as any)}>
-                <option value="text">Text</option>
-                <option value="number">Number</option>
-                <option value="select">Select (dropdown)</option>
-                <option value="date">Date</option>
-                <option value="time">Time</option>
-              </select>
-              {newType === 'select' && (
-                <input value={newOptions} onChange={e => setNewOptions(e.target.value)} placeholder="Comma-separated options e.g. Cash, Fake Currency, Papers" />
               )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn" type="button" onClick={saveField} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
-                <button className="btn ghost" type="button" onClick={() => setDraft(null)} disabled={busy}>Cancel</button>
-              </div>
-            </div>
+
+              {!fieldDraft && (
+                <div className="itemtype-add">
+                  <div className="sub" style={{ margin: 0, flex: '0 0 auto', paddingRight: 8 }}>+ Add column to {active.label}</div>
+                  <button className="btn" type="button" onClick={openAddField} disabled={busy}>Add</button>
+                </div>
+              )}
+            </>
           )}
 
-          {!draft && (
-            <div className="itemtype-add">
-              <div className="sub" style={{ margin: 0, flex: '0 0 auto', paddingRight: 8 }}>+ Add field to {activeCat?.name || 'Category'}</div>
-              <button className="btn" type="button" onClick={openAdd} disabled={busy}>Add</button>
+          {/* category add / edit sheet */}
+          {catDraft && (
+            <div className="itemtype-add" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, marginTop: 12 }}>
+              <div className="sub" style={{ margin: 0 }}>{catDraft.id ? 'Edit category' : 'Add new category'}</div>
+              <input value={catDraft.label} onChange={e => setCatDraft(d => d && { ...d, label: e.target.value })} placeholder="Category label e.g. Explosives" />
+              <label className="sub" style={{ margin: 0 }}>Malkhana Section</label>
+              <select value={catDraft.sectionLetter} onChange={e => setCatDraft(d => d && { ...d, sectionLetter: e.target.value })}>
+                {SECTION_LETTERS.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+              <input value={catDraft.subTypeLabel} onChange={e => setCatDraft(d => d && { ...d, subTypeLabel: e.target.value })} placeholder="Sub-Type label (optional) e.g. Explosive Type" />
+              <select value={catDraft.subTypeControl} onChange={e => setCatDraft(d => d && { ...d, subTypeControl: e.target.value as any })}>
+                <option value="select">Sub-Type as dropdown</option>
+                <option value="radio">Sub-Type as radio</option>
+              </select>
+              <input value={catDraft.subTypes} onChange={e => setCatDraft(d => d && { ...d, subTypes: e.target.value })} placeholder="Comma-separated sub-types (optional)" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn" type="button" onClick={saveCat} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+                <button className="btn ghost" type="button" onClick={() => setCatDraft(null)} disabled={busy}>Cancel</button>
+              </div>
             </div>
           )}
 
@@ -732,3 +800,5 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           </div>
           );
           }
+          const SECTION_LETTERS = ['A', 'B', 'C', 'D', 'E'];
+

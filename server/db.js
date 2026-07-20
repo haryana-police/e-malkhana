@@ -498,6 +498,26 @@ CREATE TABLE IF NOT EXISTS item_type_fields (
 );
 CREATE INDEX IF NOT EXISTS item_type_fields_section_idx ON item_type_fields (section_letter, sort_order);
 
+-- item_categories: the "Category of Item" master, made DB-backed so the
+-- admin (System Settings -> Item Type Fields) can ADD / EDIT / DELETE a
+-- category AND add / edit / delete / reorder the columns inside it at
+-- runtime.  Previously this lived in a static client file (categories.ts).
+-- The Register form now reads categories from THIS table so edits reflect
+-- immediately at registration.  sub_types + fields are stored as JSONB so
+-- adding a column never needs a destructive ALTER.
+CREATE TABLE IF NOT EXISTS item_categories (
+  id               TEXT PRIMARY KEY,             -- stable id, e.g. "narcotics"
+  label            TEXT NOT NULL,                -- display label
+  section_letter   TEXT NOT NULL REFERENCES sections (letter) ON DELETE CASCADE,
+  sub_type_label   TEXT,                         -- e.g. "Narcotic Type"
+  sub_type_control TEXT NOT NULL DEFAULT 'select', -- select | radio
+  sub_types        JSONB NOT NULL DEFAULT '[]',  -- [ "Heroin", ... ]
+  fields           JSONB NOT NULL DEFAULT '[]',  -- [ {key,label,type,options,unit,placeholder} ]
+  sort_order       INTEGER NOT NULL DEFAULT 0,
+  active           BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE INDEX IF NOT EXISTS item_categories_section_idx ON item_categories (section_letter, sort_order);
+
 -- case_property_fields: the ACTUAL data captured in the popup, one row per
 -- (item, field).  Keyed by item_id + field key.
 CREATE TABLE IF NOT EXISTS case_property_fields (
@@ -776,25 +796,176 @@ const ITEM_TYPE_FIELDS = [
   { section: 'E', key: 'preservative_used',  label: 'Preservative Used',  type: 'text' },
 ];
 
-export async function seedItemTypeFieldsIfEmpty() {
+// "Category of Item" master — migrated out of the static client file
+// (categories.ts) into the DB so the admin can edit it at runtime.  This
+// array is the ONE-TIME seed; afterwards the DB is the source of truth and
+// the client reads categories from /api/item-categories.  Field `key`s and
+// sub-types mirror the former categories.ts exactly.
+const ITEM_CATEGORIES_SEED = [
+  {
+    id: 'narcotics', label: 'Narcotics / NDPS Article', section: 'A',
+    subTypeLabel: 'Narcotic Type', subTypeControl: 'select',
+    subTypes: ['Heroin (Diacetylmorphine)', 'Ganja (Cannabis)', 'Charas / Hashish', 'Opium', 'Poppy Straw', 'Cocaine', 'Alprazolam', 'Codeine (Cough Syrups)'],
+    fields: [{ key: 'quantity_seized', label: 'Quantity Seized', type: 'text', placeholder: 'e.g. 250 g / 1.2 kg', unit: 'g/kg' }],
+  },
+  {
+    id: 'arms', label: 'Arms & Ammunition', section: 'B',
+    subTypeLabel: 'Type', subTypeControl: 'radio',
+    subTypes: ['Firearms', 'Other Weapons'],
+    fields: [],
+  },
+  {
+    id: 'cash', label: 'Currency & Valuables', section: 'C',
+    subTypeLabel: null, subTypeControl: 'select',
+    subTypes: [],
+    fields: [{ key: 'total_amount', label: 'Total Amount', type: 'number', unit: 'Rs.' }],
+  },
+  {
+    id: 'gold', label: 'Jewellery', section: 'C',
+    subTypeLabel: 'Type', subTypeControl: 'select',
+    subTypes: ['Gold ornaments', 'Silver ornaments', 'Precious stones/jewellery'],
+    fields: [
+      { key: 'weight', label: 'Weight', type: 'text', unit: 'grams' },
+      { key: 'purity', label: 'Purity', type: 'text', placeholder: 'Carat / Hallmark' },
+      { key: 'no_of_pieces', label: 'No. of Pieces', type: 'number' },
+      { key: 'approx_value', label: 'Approx. Value', type: 'number', unit: 'Rs.' },
+      { key: 'valuation_by', label: 'Valuation Done By', type: 'text', placeholder: 'Jeweller / Govt. Approved' },
+    ],
+  },
+  {
+    id: 'vehicle', label: 'Vehicle', section: 'D',
+    subTypeLabel: 'Type', subTypeControl: 'select',
+    subTypes: ['Two-wheeler', 'Four-wheeler', 'Commercial vehicle', 'Vehicle parts/spare parts'],
+    fields: [],
+  },
+  {
+    id: 'lost_items', label: 'Lost Items', section: 'C',
+    subTypeLabel: null, subTypeControl: 'select',
+    subTypes: [], fields: [],
+  },
+  {
+    id: 'liquor', label: 'Excise', section: 'A',
+    subTypeLabel: null, subTypeControl: 'select',
+    subTypes: [],
+    fields: [{ key: 'quantity2', label: 'Quantity', type: 'text', placeholder: 'Liters / Bottles / Pouches' }],
+  },
+  {
+    id: 'viscera', label: 'Viscera (Dead-body Case)', section: 'E',
+    subTypeLabel: null, subTypeControl: 'select',
+    subTypes: [],
+    fields: [
+      { key: 'viscera_jar_no', label: 'Viscera Jar No.', type: 'text', placeholder: 'usually 3–4 jars' },
+      { key: 'organs_included', label: 'Organs Included', type: 'text', placeholder: 'Stomach/Liver/Kidney/Blood/Intestine' },
+      { key: 'sealed_by', label: 'Sealed By (PM Doctor)', type: 'text', placeholder: 'Doctor name' },
+      { key: 'purpose', label: 'Purpose', type: 'text', placeholder: 'Poisoning suspected / preservation' },
+    ],
+  },
+  {
+    id: 'other', label: 'Miscellaneous', section: 'C',
+    subTypeLabel: 'Type', subTypeControl: 'select',
+    subTypes: ['Other/Unclassified items'],
+    fields: [{ key: 'other_desc', label: 'Description', type: 'text', placeholder: 'Describe the article' }],
+  },
+];
+
+export async function seedItemCategoriesIfEmpty() {
   await initSchema();
-  const { rows: cur } = await pool.query('SELECT count(*)::int AS n FROM item_type_fields');
+  const { rows: cur } = await pool.query('SELECT count(*)::int AS n FROM item_categories');
   if (cur[0] && cur[0].n > 0) return;    // already populated
-  for (const f of ITEM_TYPE_FIELDS) {
+  let i = 0;
+  for (const c of ITEM_CATEGORIES_SEED) {
     await pool.query(
-      `INSERT INTO item_type_fields (section_letter, key, label, field_type, options, sort_order, active)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, TRUE)
-       ON CONFLICT (section_letter, key) DO NOTHING`,
-      [f.section, f.key, f.label, f.type, f.options ? JSON.stringify(f.options) : null, 0]
+      `INSERT INTO item_categories
+         (id, label, section_letter, sub_type_label, sub_type_control, sub_types, fields, sort_order, active)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, TRUE)
+       ON CONFLICT (id) DO NOTHING`,
+      [c.id, c.label, c.section, c.subTypeLabel ?? null, c.subTypeControl || 'select',
+       JSON.stringify(c.subTypes || []), JSON.stringify(c.fields || []), i * 10]
     );
+    i++;
   }
-  const { rows: after } = await pool.query('SELECT count(*)::int AS n FROM item_type_fields');
+  const { rows: after } = await pool.query('SELECT count(*)::int AS n FROM item_categories');
   if (after[0] && after[0].n > 0) {
-    console.log(`[db] seeded item_type_fields with ${after[0].n} rows`);
+    console.log(`[db] seeded item_categories with ${after[0].n} rows`);
   }
 }
 
-// ---------------------------------------------------------------------------
+export async function getItemCategories() {
+  const { rows } = await pool.query(
+    `SELECT id, label, section_letter, sub_type_label, sub_type_control, sub_types, fields, sort_order, active
+     FROM item_categories ORDER BY sort_order, id`
+  );
+  return rows.map(r => ({
+    id: r.id,
+    label: r.label,
+    sectionLetter: r.section_letter,
+    subTypeLabel: r.sub_type_label || undefined,
+    subTypeControl: r.sub_type_control === 'radio' ? 'radio' : 'select',
+    subTypes: Array.isArray(r.sub_types) ? r.sub_types : (r.sub_types ? JSON.parse(r.sub_types) : []),
+    fields: Array.isArray(r.fields) ? r.fields : (r.fields ? JSON.parse(r.fields) : []),
+    sortOrder: Number(r.sort_order) || 0,
+    active: r.active !== false,
+  }));
+}
+
+export async function getItemCategory(id) {
+  const { rows } = await pool.query(
+    `SELECT id, label, section_letter, sub_type_label, sub_type_control, sub_types, fields, sort_order, active
+     FROM item_categories WHERE id = $1`,
+    [id]
+  );
+  if (!rows[0]) return undefined;
+  const r = rows[0];
+  return {
+    id: r.id, label: r.label, sectionLetter: r.section_letter,
+    subTypeLabel: r.sub_type_label || undefined,
+    subTypeControl: r.sub_type_control === 'radio' ? 'radio' : 'select',
+    subTypes: Array.isArray(r.sub_types) ? r.sub_types : JSON.parse(r.sub_types),
+    fields: Array.isArray(r.fields) ? r.fields : JSON.parse(r.fields),
+    sortOrder: Number(r.sort_order) || 0, active: r.active !== false,
+  };
+}
+
+// Upsert a category from the admin editor.  `id` is the stable key; we
+// accept a client-supplied id for new categories so it stays a clean slug.
+export async function upsertItemCategory(cat) {
+  const id = String(cat.id || '').trim();
+  const label = String(cat.label || '').trim();
+  if (!id || !label) throw new Error('id and label are required');
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error('id must be letters/numbers/-/_ only');
+  const section = String(cat.sectionLetter || 'A').toUpperCase().trim();
+  if (!DEFAULT_SECTIONS.some(s => s.letter === section)) throw new Error(`unknown section: ${section}`);
+  await pool.query(
+    `INSERT INTO item_categories
+       (id, label, section_letter, sub_type_label, sub_type_control, sub_types, fields, sort_order, active)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9)
+     ON CONFLICT (id) DO UPDATE SET
+       label = EXCLUDED.label,
+       section_letter = EXCLUDED.section_letter,
+       sub_type_label = EXCLUDED.sub_type_label,
+       sub_type_control = EXCLUDED.sub_type_control,
+       sub_types = EXCLUDED.sub_types,
+       fields = EXCLUDED.fields,
+       active = EXCLUDED.active`,
+    [
+      id, label, section,
+      cat.subTypeLabel ? String(cat.subTypeLabel).trim() || null : null,
+      cat.subTypeControl === 'radio' ? 'radio' : 'select',
+      JSON.stringify(Array.isArray(cat.subTypes) ? cat.subTypes : []),
+      JSON.stringify(Array.isArray(cat.fields) ? cat.fields : []),
+      cat.sortOrder != null ? Number(cat.sortOrder) : 0,
+      cat.active !== false,
+    ]
+  );
+  return getItemCategory(id);
+}
+
+export async function deleteItemCategory(id) {
+  await pool.query('DELETE FROM item_categories WHERE id = $1', [id]);
+  return { id, deleted: true };
+}
+
+
 // Read/write helpers for the Case Property extension.  These are the ONLY
 // functions server.js touches for the new tables — store.js's 17-column
 // cases diff is left untouched.
@@ -1216,5 +1387,6 @@ export async function ensureReady() {
   await seedBnsSectionsIfEmpty();
   await seedItemTypesIfEmpty();
   await seedItemTypeFieldsIfEmpty();
+  await seedItemCategoriesIfEmpty();
   await seedInspectionsIfEmpty();
 }

@@ -361,9 +361,15 @@ export default function App() {
                 movements={data.recentMovements}
                 alerts={data.priorityAlerts}
                 totalCases={data.cases.length}
+                cases={data.cases}
                 onStatClick={onStatClick}
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
+                onOpenScan={() => setOpenScan(true)}
+                onOpenRegister={() => navigate('/caseproperty/new')}
+                onChangeStatus={setChangeCase}
+                onDownloadReport={onDownloadReport}
+                onViewAll={() => navigate('/caseproperty')}
               />
             } />
             <Route path="/dashboard" element={
@@ -372,9 +378,15 @@ export default function App() {
                 movements={data.recentMovements}
                 alerts={data.priorityAlerts}
                 totalCases={data.cases.length}
+                cases={data.cases}
                 onStatClick={onStatClick}
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
+                onOpenScan={() => setOpenScan(true)}
+                onOpenRegister={() => navigate('/caseproperty/new')}
+                onChangeStatus={setChangeCase}
+                onDownloadReport={onDownloadReport}
+                onViewAll={() => navigate('/caseproperty')}
               />
             } />
             <Route path="/caseproperty" element={
@@ -435,9 +447,15 @@ export default function App() {
                 movements={data.recentMovements}
                 alerts={data.priorityAlerts}
                 totalCases={data.cases.length}
+                cases={data.cases}
                 onStatClick={onStatClick}
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
+                onOpenScan={() => setOpenScan(true)}
+                onOpenRegister={() => navigate('/caseproperty/new')}
+                onChangeStatus={setChangeCase}
+                onDownloadReport={onDownloadReport}
+                onViewAll={() => navigate('/caseproperty')}
               />
             } />
           </Routes>

@@ -4,15 +4,22 @@ import type {
   MovementRow,
   AlertRow,
 } from '../types';
+import { RegisterTable } from './RegisterTable';
 
 interface Props {
   stats: DashboardStats;
   movements: MovementRow[];
   alerts: AlertRow[];
   totalCases: number;
+  cases: CaseRow[];
   onStatClick: (target: 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection') => void;
   onOpenTag: (c: CaseRow) => void;
   onOpenTimeline: (fir: string) => void;
+  onOpenScan: () => void;
+  onOpenRegister: () => void;
+  onChangeStatus: (c: CaseRow) => void;
+  onDownloadReport: (format: 'xlsx' | 'pdf') => void;
+  onViewAll: () => void;
 }
 
 type TileId = 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection';
@@ -27,7 +34,9 @@ interface TileSpec {
 }
 
 export function Dashboard({
-  stats, movements, alerts, totalCases, onStatClick, onOpenTag, onOpenTimeline,
+  stats, movements, alerts, totalCases, cases,
+  onStatClick, onOpenTag, onOpenTimeline,
+  onOpenScan, onOpenRegister, onChangeStatus, onDownloadReport, onViewAll,
 }: Props) {
   const tiles: TileSpec[] = [
     { id: 'all',        label: 'Total Case Property',     value: String(stats.totalProperty), foot: 'Across all sections', hint: 'Open the full Case Property register' },
@@ -121,6 +130,21 @@ export function Dashboard({
           </div>
         ))}
       </div>
+
+      {/* Case Property Register — embedded on the dashboard (compact: shows
+          the 8 most recent items + a "View full register →" link).  The same
+          shared component powers the full /caseproperty page. */}
+      <RegisterTable
+        cases={cases}
+        compact
+        onOpenTag={onOpenTag}
+        onOpenTimeline={onOpenTimeline}
+        onOpenScan={onOpenScan}
+        onOpenRegister={onOpenRegister}
+        onChangeStatus={onChangeStatus}
+        onDownloadReport={onDownloadReport}
+        onViewAll={onViewAll}
+      />
 
       {/* Reference data: kept for internal use (no UI shown) */}
       <span style={{ display: 'none' }} data-total={totalCases}></span>

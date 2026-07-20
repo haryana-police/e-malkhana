@@ -25,6 +25,7 @@ import {
   getFirMaster, upsertFirMaster, searchFirMaster, getCaseProperty, upsertCaseProperty,
   getInspections, getInspection, upsertInspection, deleteInspection,
   nextInspectionId, getLastInspectionDate,
+  getItemCategories, getItemCategory, upsertItemCategory, deleteItemCategory,
 } from './db.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
 import crypto from 'node:crypto';
@@ -1257,7 +1258,79 @@ app.delete('/api/item-type-fields/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// GET /api/fir-master/search?q=FIR 12 -> substring matches (single-select).
+// ---- Item Category of Item master (DB-backed, admin-editable) -----------
+// GET /api/item-categories -> full ordered list (active first then inactive).
+app.get('/api/item-categories', async (_req, res, next) => {
+  try {
+    const list = await getItemCategories();
+    // active first, then inactive, each by sortOrder
+    list.sort((a, b) => (a.active === b.active ? a.sortOrder - b.sortOrder : a.active ? -1 : 1));
+    res.json(list);
+  } catch (e) { next(e); }
+});
+
+// POST /api/item-categories  { id, label, sectionLetter, subTypeLabel?,
+//   subTypeControl?, subTypes?, fields? } -> create or replace a category.
+app.post('/api/item-categories', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const id = String(body.id || '').trim();
+    if (!id) { const e = new Error('id is required'); e.status = 400; throw e; }
+    if (!body.label || !String(body.label).trim()) { const e = new Error('label is required'); e.status = 400; throw e; }
+    const cat = await upsertItemCategory({
+      id,
+      label: String(body.label).trim(),
+      sectionLetter: body.sectionLetter,
+      subTypeLabel: body.subTypeLabel,
+      subTypeControl: body.subTypeControl,
+      subTypes: Array.isArray(body.subTypes) ? body.subTypes : [],
+      fields: Array.isArray(body.fields) ? body.fields : [],
+    });
+    await auditMm(req, 'category.upsert', id, `Saved category "${cat.label}"`);
+    res.status(201).json(cat);
+  } catch (e) { next(e); }
+});
+
+// PATCH /api/item-categories/:id  -> partial update (label / section /
+// subTypes / fields / active / sortOrder).  Same upsert at the DB layer.
+app.patch('/api/item-categories/:id', async (req, res, next) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) { const e = new Error('id is required'); e.status = 400; throw e; }
+    const existing = await getItemCategory(id);
+    if (!existing) { const e = new Error(`unknown category: ${id}`); e.status = 404; throw e; }
+    const b = req.body || {};
+    const merged = {
+      id,
+      label: b.label != null ? String(b.label).trim() : existing.label,
+      sectionLetter: b.sectionLetter != null ? b.sectionLetter : existing.sectionLetter,
+      subTypeLabel: b.subTypeLabel !== undefined ? b.subTypeLabel : existing.subTypeLabel,
+      subTypeControl: b.subTypeControl != null ? b.subTypeControl : existing.subTypeControl,
+      subTypes: Array.isArray(b.subTypes) ? b.subTypes : existing.subTypes,
+      fields: Array.isArray(b.fields) ? b.fields : existing.fields,
+      sortOrder: b.sortOrder != null ? Number(b.sortOrder) : existing.sortOrder,
+      active: b.active != null ? !!b.active : existing.active,
+    };
+    const cat = await upsertItemCategory(merged);
+    await auditMm(req, 'category.upsert', id, `Updated category "${cat.label}"`);
+    res.json(cat);
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/item-categories/:id
+app.delete('/api/item-categories/:id', async (req, res, next) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) { const e = new Error('id is required'); e.status = 400; throw e; }
+    const existing = await getItemCategory(id);
+    if (!existing) { const e = new Error(`unknown category: ${id}`); e.status = 404; throw e; }
+    await deleteItemCategory(id);
+    await auditMm(req, 'category.delete', id, `Deleted category "${existing.label}"`);
+    res.json({ id, deleted: true });
+  } catch (e) { next(e); }
+});
+
+
 // Declared BEFORE the /:firNo(*) route so "search" is not captured as a
 // firNo param.  Returns [] (never 404) so the typeahead can render an
 // empty state.
