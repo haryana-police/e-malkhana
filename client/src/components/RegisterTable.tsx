@@ -454,7 +454,6 @@ export function RegisterTable({
             ))}
           </tbody>
         </table>
-        {totalPages > 1 && renderPager()}
       </div>
     </div>
   );

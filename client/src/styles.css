@@ -217,7 +217,7 @@ body{
 .act-lbl{ letter-spacing:0.01em; }
 
 /* register + movement pagers */
-.rt-pager{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:12px 4px 2px; }
+.rt-pager{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:12px 4px 2px; justify-content:flex-end; }
 .pg-btn{
   font-family:'IBM Plex Sans', sans-serif; font-size:12px; font-weight:600;
   padding:5px 10px; border-radius:4px; cursor:pointer;
