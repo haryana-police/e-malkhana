@@ -1008,8 +1008,10 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
     margin-bottom: 16px;
   }
   .page-head h1{ font-size: 22px; }
-  .page-head > div:last-child{ width: 100%; }
-  .page-head > div:last-child .btn{ flex: 1; justify-content: center; }
+  /* On mobile keep the action buttons top-right (natural width, wrap) —
+     not full-width across the page. */
+  .page-head > div:last-child{ width: auto; display: flex; justify-content: flex-end; flex-wrap: wrap; }
+  .page-head > div:last-child .btn{ flex: 0 1 auto; justify-content: center; }
 
   .stat-row{ grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stat-tile{ padding: 14px 14px 12px; }
