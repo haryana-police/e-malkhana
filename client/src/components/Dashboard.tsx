@@ -39,7 +39,7 @@ export function Dashboard({
   onStatClick, onOpenTag, onOpenTimeline,
   onOpenScan, onOpenRegister, onChangeStatus, onDownloadReport, onViewAll, onViewAllMovements,
 }: Props) {
-  const MOVE_PAGE_SIZE = 8;
+  const MOVE_PAGE_SIZE = 5;
   const [movePage, setMovePage] = useState(1);
   const moveTotalPages = Math.max(1, Math.ceil(movements.length / MOVE_PAGE_SIZE));
   const moveSafePage = Math.min(movePage, moveTotalPages);
