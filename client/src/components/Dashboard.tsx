@@ -77,6 +77,22 @@ export function Dashboard({
         ))}
       </div>
 
+      {/* Case Property Register — embedded on the dashboard (compact: shows
+          the 8 most recent items + a "View full register →" link).  Shown
+          right after the stat tiles so the register is prominent at the top;
+          Recent Movement Activity + Priority Alerts sit at the bottom. */}
+      <RegisterTable
+        cases={cases}
+        compact
+        onOpenTag={onOpenTag}
+        onOpenTimeline={onOpenTimeline}
+        onOpenScan={onOpenScan}
+        onOpenRegister={onOpenRegister}
+        onChangeStatus={onChangeStatus}
+        onDownloadReport={onDownloadReport}
+        onViewAll={onViewAll}
+      />
+
       <div className="panel">
         <div className="panel-head">
           <h2>Recent Movement Activity</h2>
@@ -130,21 +146,6 @@ export function Dashboard({
           </div>
         ))}
       </div>
-
-      {/* Case Property Register — embedded on the dashboard (compact: shows
-          the 8 most recent items + a "View full register →" link).  The same
-          shared component powers the full /caseproperty page. */}
-      <RegisterTable
-        cases={cases}
-        compact
-        onOpenTag={onOpenTag}
-        onOpenTimeline={onOpenTimeline}
-        onOpenScan={onOpenScan}
-        onOpenRegister={onOpenRegister}
-        onChangeStatus={onChangeStatus}
-        onDownloadReport={onDownloadReport}
-        onViewAll={onViewAll}
-      />
 
       {/* Reference data: kept for internal use (no UI shown) */}
       <span style={{ display: 'none' }} data-total={totalCases}></span>
