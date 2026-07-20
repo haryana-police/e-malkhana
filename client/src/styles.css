@@ -1777,7 +1777,14 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .case-link:focus-visible { outline: 2px solid var(--khaki-light); outline-offset: 2px; }
 
 .case-detail { padding: 0 0 32px; }
-.case-detail-bar { margin-bottom: 12px; }
+.case-detail-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.case-detail-bar .case-detail-actions {
+  /* top-right toolbar: keep buttons on the right, wrap below on mobile */
+  margin-bottom: 0;
+}
 .case-detail-head {
   display: flex; justify-content: space-between; align-items: flex-start;
   gap: 18px; padding: 16px 20px;

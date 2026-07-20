@@ -797,6 +797,7 @@ app.patch('/api/cases/:id', async (req, res, next) => {
         newItemTypeName = it.name;
       }
     }
+    let newLegalSection = undefined;
     let newLegalSectionTitle = undefined;
     let newLegalSections = undefined;        // undefined = no change requested
     let newLegalSectionsTitles = undefined;

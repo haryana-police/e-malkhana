@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { api } from '../api';
-import type { CaseRow, FirMaster } from '../types';
+import type { CaseRow, FirMaster, MovementLogRow } from '../types';
 
 const STATUS_TONE: Record<string, string> = {
   'Seized': 'tone-info', 'In Malkhana': 'tone-info',
@@ -21,6 +21,24 @@ function detailUsText(c: CaseRow): string {
   return '—';
 }
 
+function fmtTime(iso: string) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+// Render a movement's docRef: a clickable link when it's a file URL,
+// inline text when it's a short reference (e.g. "FSL-FWD-2026-114").
+function renderDocRef(ref: string) {
+  if (!ref) return null;
+  const isUrl = /^https?:\/\//.test(ref) || ref.startsWith('/uploads') || ref.startsWith('/api/uploads');
+  if (isUrl) {
+    const name = decodeURIComponent(ref.split('/').pop() || ref);
+    return <><br /><a href={ref} target="_blank" rel="noreferrer">📎 {name}</a></>;
+  }
+  return <> · {ref}</>;
+}
+
 export function CasePropertyDetail() {
   const { item_id: itemIdParam } = useParams<{ item_id: string }>();
   const navigate = useNavigate();
@@ -30,8 +48,25 @@ export function CasePropertyDetail() {
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrMask, setQrMask] = useState<string | null>(null);
   const [firMaster, setFirMaster] = useState<FirMaster | null>(null);
+  const [movements, setMovements] = useState<MovementLogRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // ---- inline edit (Edit details) ----
+  const [editing, setEditing] = useState(false);
+  const [editErr, setEditErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [sections, setSections] = useState<{ letter: string; name: string }[]>([]);
+
+  // ---- log / edit movement modal ----
+  const [showLog, setShowLog] = useState(false);
+  const [logTo, setLogTo] = useState('');
+  const [logBy, setLogBy] = useState('');
+  const [logPurpose, setLogPurpose] = useState('');
+  const [logDoc, setLogDoc] = useState('');
+  const [logErr, setLogErr] = useState<string | null>(null);
+  const [logBusy, setLogBusy] = useState(false);
 
   useEffect(() => {
     if (!itemIdParam) return;
@@ -40,14 +75,16 @@ export function CasePropertyDetail() {
       try {
         const c = await api.case(itemIdParam);
         setCaseRow(c);
-        const [qr, fir] = await Promise.all([
+        const [qr, fir, mv] = await Promise.all([
           api.qr(c.id).catch(() => ({ dataUrl: '', payload: '', encrypted: false, mask: null })),
           // FIR master details (police station, U/S, IO) — once per FIR.
           api.firMaster(c.firNo || c.id).catch(() => null),
+          api.movements(c.id).catch(() => [] as MovementLogRow[]),
         ]);
         setQrUrl(qr.dataUrl);
         setQrMask(qr.mask || null);
         setFirMaster(fir);
+        setMovements(Array.isArray(mv) ? mv : []);
       } catch (e) {
         setErr((e as Error).message);
       } finally {
@@ -55,8 +92,8 @@ export function CasePropertyDetail() {
       }
     })();
   }, [itemIdParam]);
-  // ---- Print ----
 
+  // ---- Print ----
   function printTag() {
     if (!qrUrl || !caseRow) return;
     const w = window.open('', '_blank', 'width=400,height=600');
@@ -152,6 +189,119 @@ export function CasePropertyDetail() {
     w.document.close();
   }
 
+  // ---- Print / Download QR page ----
+  function printQr() {
+    if (!qrUrl || !caseRow) return;
+    const w = window.open('', '_blank', 'width=420,height=620');
+    if (!w) return;
+    w.document.write(`<!doctype html><html><head><title>QR · ${caseRow.id}</title>
+      <style>body{font-family:'IBM Plex Sans',sans-serif;text-align:center;padding:24px}
+      h2{font-size:18px;margin:8px 0}p{color:#666;margin:4px 0;font-size:13px}img{width:280px;height:280px;border:6px solid #14243D}
+      @media print{.noprint{display:none}}</style></head><body>
+      <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8C7A54;font-weight:600">Evidence QR</div>
+      <h2>${escapeHtml(caseRow.id)}</h2>
+      <img src="${qrUrl}"/>
+      <p><b>Item:</b> ${escapeHtml(caseRow.itemType)}</p>
+      <p><b>Section:</b> ${escapeHtml(caseRow.sectionName)}</p>
+      <p><b>Status:</b> ${escapeHtml(caseRow.status)}</p>
+      <p><b>Item ID:</b> ${escapeHtml(caseRow.itemId)}</p>
+      <button class="noprint" onclick="window.print()">Print / Save as PDF</button>
+      </body></html>`);
+    w.document.close();
+  }
+  function downloadQr() {
+    if (!qrUrl || !caseRow) return;
+    const a = document.createElement('a');
+    a.href = qrUrl;
+    a.download = `${caseRow.id.replace(/[^\w]+/g, '_')}_qr.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  // ---- Inline edit (Edit details) ----
+  function startEdit() {
+    if (!caseRow) return;
+    setEditing(true);
+    setEditErr(null);
+    setSavedFlash(false);
+    api.sections('all').then(s => setSections(s.map(x => ({ letter: x.letter, name: x.name })))).catch(() => setSections([]));
+  }
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!caseRow) return;
+    setSaving(true); setEditErr(null);
+    const form = new FormData(e.currentTarget as HTMLFormElement);
+    const patch: Record<string, any> = {};
+    const itemType = String(form.get('itemType') || '').trim();
+    const itemSub = String(form.get('itemSub') || '').trim();
+    const section = String(form.get('section') || '').trim();
+    const seizingOfficer = String(form.get('seizingOfficer') || '').trim();
+    const itemId = String(form.get('itemId') || '').trim();
+    const description = String(form.get('description') || '').trim();
+    const legalRaw = String(form.get('legalSections') || '').trim();
+    const legalSections = legalRaw
+      ? legalRaw.split(',').map(s => s.replace(/^BNS\s+/i, '').trim()).filter(Boolean)
+      : undefined;
+    if (itemType && itemType !== caseRow.itemType) patch.itemType = itemType;
+    if (itemSub !== (caseRow.itemSub || '')) patch.itemSub = itemSub;
+    if (section && section !== caseRow.section?.replace('PART ', '')) patch.section = section;
+    if (seizingOfficer && seizingOfficer !== caseRow.seizingOfficer) patch.seizingOfficer = seizingOfficer;
+    if (itemId && itemId !== caseRow.itemId) patch.itemId = itemId;
+    if (description !== (caseRow.description || '')) patch.description = description;
+    if (legalSections && JSON.stringify(legalSections) !== JSON.stringify(caseRow.legalSections || [])) patch.legalSections = legalSections;
+    if (Object.keys(patch).length === 0) { setEditing(false); setSaving(false); return; }
+    try {
+      const updated = await api.updateCase(caseRow.id, patch);
+      setCaseRow(updated);
+      setEditing(false);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 3000);
+    } catch (err) {
+      setEditErr((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ---- Log / Edit movement ----
+  async function openLog() {
+    if (!caseRow) return;
+    setShowLog(true);
+    setLogErr(null);
+    setLogTo(caseRow.sectionName || '');
+    setLogBy(caseRow.receivedBy || 'SI Rakesh Sharma');
+    setLogPurpose('Movement');
+    setLogDoc('');
+  }
+  async function submitLog(e: React.FormEvent) {
+    e.preventDefault();
+    if (!caseRow) return;
+    if (!logTo.trim()) { setLogErr('Destination location is required.'); return; }
+    setLogBusy(true); setLogErr(null);
+    try {
+      await api.createMovement({
+        caseId: caseRow.id,
+        toLocation: logTo.trim(),
+        movedBy: logBy.trim() || 'Moharrir',
+        purpose: logPurpose.trim() || 'Movement',
+        docRef: logDoc.trim() || undefined,
+      });
+      setShowLog(false);
+      // refresh movement log + case (last-movement date / location)
+      const [c, mv] = await Promise.all([
+        api.case(caseRow.id).catch(() => caseRow),
+        api.movements(caseRow.id).catch(() => [] as MovementLogRow[]),
+      ]);
+      setCaseRow(c);
+      setMovements(Array.isArray(mv) ? mv : []);
+    } catch (err) {
+      setLogErr((err as Error).message);
+    } finally {
+      setLogBusy(false);
+    }
+  }
+
   if (busy) return <div className="empty-state">Loading…</div>;
   if (err) return (
     <div className="empty-state">
@@ -163,9 +313,16 @@ export function CasePropertyDetail() {
 
   return (
     <div className="case-detail">
-      {/* breadcrumb + back */}
+      {/* breadcrumb + back, with the top-right action toolbar */}
       <div className="case-detail-bar">
         <Link to="/caseproperty" className="link-back">← All Case Property</Link>
+        <div className="case-detail-actions">
+          <button className="btn" type="button" onClick={startEdit}>✎ Edit details</button>
+          <button className="btn" type="button" onClick={openLog}>＋ Log New Movement</button>
+          <button className="btn ghost" type="button" onClick={printTag}>🏷 Print Tag</button>
+          <button className="btn ghost" type="button" onClick={printDetail}>🖨 Print full detail</button>
+          {savedFlash && <span className="case-detail-saved-flash">Saved ✓</span>}
+        </div>
       </div>
 
       {/* header */}
@@ -173,10 +330,48 @@ export function CasePropertyDetail() {
         <div>
           <div className="case-detail-id">{caseRow.id}</div>
           <h1 className="case-detail-title">{caseRow.itemType}</h1>
-          {caseRow.description && <div className="case-detail-sub">{caseRow.description}</div>}
+          {caseRow.itemSub && <div className="case-detail-sub">{caseRow.itemSub}</div>}
         </div>
         <span className={`stamp ${STATUS_TONE[caseRow.status] || ''}`}>{caseRow.status}</span>
       </header>
+
+      {/* Inline edit form */}
+      {editing && (
+        <form className="case-detail-edit" onSubmit={saveEdit}>
+          <h3>Edit Case Property Details</h3>
+          <div className="case-detail-edit-grid">
+            <label>Item Type
+              <input name="itemType" defaultValue={caseRow.itemType} />
+            </label>
+            <label>Description / Sub-type
+              <input name="itemSub" defaultValue={caseRow.itemSub || ''} />
+            </label>
+            <label>Section (Part)
+              <select name="section" defaultValue={caseRow.section?.replace('PART ', '') || ''}>
+                <option value="">— select —</option>
+                {sections.map(s => <option key={s.letter} value={s.letter}>{s.letter} — {s.name}</option>)}
+              </select>
+            </label>
+            <label>Seizing Officer
+              <input name="seizingOfficer" defaultValue={caseRow.seizingOfficer || ''} />
+            </label>
+            <label>Malkhana No.
+              <input name="itemId" defaultValue={caseRow.itemId || ''} />
+            </label>
+            <label>Free-text description
+              <input name="description" defaultValue={caseRow.description || ''} />
+            </label>
+            <label>Legal Section(s) — comma separated
+              <input name="legalSections" defaultValue={(caseRow.legalSections || []).join(', ')} placeholder="e.g. 244, 245" />
+            </label>
+          </div>
+          {editErr && <div className="case-detail-edit-err">{editErr}</div>}
+          <div className="case-detail-edit-actions">
+            <button type="submit" className="btn" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+            <button type="button" className="btn ghost" onClick={() => setEditing(false)} disabled={saving}>Cancel</button>
+          </div>
+        </form>
+      )}
 
       {/* Compact 11-column Case Property card (matches the register) — no scroll */}
       <div className="case-property-card" style={{ marginTop: 16 }}>
@@ -199,6 +394,82 @@ export function CasePropertyDetail() {
           </div>
         </div>
       </div>
+
+      {/* Movement chain (LEFT) + QR code (RIGHT) */}
+      <div className="case-detail-grid">
+        {/* LEFT — Movement Chain */}
+        <div className="case-detail-card">
+          <h3>Movement Chain</h3>
+          {movements.length === 0 ? (
+            <div className="case-detail-timeline-item"><div className="t-route">No movements recorded yet.</div></div>
+          ) : (
+            <ul className="case-detail-timeline">
+              {movements.map((m, i) => (
+                <li className="case-detail-timeline-item" key={m.id ?? i}>
+                  <div className="t-route">
+                    {m.fromLocation === '—' ? 'New' : m.fromLocation}
+                    <span className="t-arrow">→</span>
+                    {m.toLocation}
+                  </div>
+                  <div className="t-meta">
+                    by {m.movedBy} · {fmtTime(m.timestamp)} · {m.purpose}
+                    {renderDocRef(m.docRef)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <button className="btn small" type="button" onClick={openLog}>✎ Edit / Log Movement</button>
+          </div>
+        </div>
+
+        {/* RIGHT — QR Code (below the header, on the right) */}
+        <div className="case-detail-card">
+          <h3>QR Code</h3>
+          {qrUrl
+            ? <img className="case-detail-qr" src={qrUrl} alt={`QR for ${caseRow.id}`} />
+            : <div className="case-detail-qr" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--slate-soft)' }}>No QR</div>}
+          {qrMask && <div className="case-detail-qr-meta">{qrMask}</div>}
+          {caseRow.imageUrl && (
+            <img className="case-detail-photo" src={caseRow.imageUrl} alt="Evidence photo" style={{ marginTop: 12 }} />
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button className="btn ghost small" type="button" onClick={printQr}>🖨 Print QR</button>
+            <button className="btn ghost small" type="button" onClick={downloadQr} disabled={!qrUrl}>⬇ Download QR</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Log / Edit Movement modal */}
+      {showLog && (
+        <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !logBusy) setShowLog(false); }}>
+          <form className="form-card" onSubmit={submitLog}>
+            <button type="button" className="tag-close" onClick={() => setShowLog(false)} aria-label="Close">✕</button>
+            <h3>Log / Edit Movement — {caseRow.id}</h3>
+            <div className="sub">{caseRow.itemType} · Current: {caseRow.sectionName}</div>
+            <div className="form-grid">
+              <label className="full">To location
+                <input value={logTo} onChange={e => setLogTo(e.target.value)} placeholder="e.g. Malkhana — Part B / FSL Madhuban" required />
+              </label>
+              <label>Moved by
+                <input value={logBy} onChange={e => setLogBy(e.target.value)} placeholder="Officer name" />
+              </label>
+              <label>Purpose
+                <input value={logPurpose} onChange={e => setLogPurpose(e.target.value)} placeholder="e.g. For forensic analysis" />
+              </label>
+              <label className="full">Document ref (optional)
+                <input value={logDoc} onChange={e => setLogDoc(e.target.value)} placeholder="e.g. FSL-FWD-2026-114" />
+              </label>
+            </div>
+            {logErr && <div className="form-msg show error" style={{ marginTop: 8 }}>{logErr}</div>}
+            <div className="form-actions">
+              <button type="button" className="btn ghost" onClick={() => setShowLog(false)} disabled={logBusy}>Cancel</button>
+              <button type="submit" className="btn" disabled={logBusy || !logTo.trim()}>{logBusy ? 'Recording…' : 'Record movement'}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
