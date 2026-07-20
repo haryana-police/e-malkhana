@@ -194,24 +194,87 @@ export function CasePropertyDetail() {
     w.document.close();
   }
 
-  // ---- Print / Download QR page ----
+  // ---- Print QR page (composed sheet: detail + movement + QR) ----
   function printQr() {
     if (!qrUrl || !caseRow) return;
-    const w = window.open('', '_blank', 'width=420,height=620');
+    const w = window.open('', '_blank', 'width=820,height=1100');
     if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>QR · ${caseRow.id}</title>
-      <style>body{font-family:'IBM Plex Sans',sans-serif;text-align:center;padding:24px}
-      h2{font-size:18px;margin:8px 0}p{color:#666;margin:4px 0;font-size:13px}img{width:280px;height:280px;border:6px solid #14243D}
-      @media print{.noprint{display:none}}</style></head><body>
-      <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8C7A54;font-weight:600">Evidence QR</div>
-      <h2>${escapeHtml(caseRow.id)}</h2>
-      <img src="${qrUrl}"/>
-      <p><b>Item:</b> ${escapeHtml(caseRow.itemType)}</p>
-      <p><b>Section:</b> ${escapeHtml(caseRow.sectionName)}</p>
-      <p><b>Status:</b> ${escapeHtml(caseRow.status)}</p>
-      <p><b>Item ID:</b> ${escapeHtml(caseRow.itemId)}</p>
-      <button class="noprint" onclick="window.print()">Print / Save as PDF</button>
-      </body></html>`);
+    const movementHtml = movements.length === 0
+      ? '<div class="empty">No movements recorded yet.</div>'
+      : `<ul class="timeline">${movements.map(m => `
+          <li>
+            <div class="t-route">${escapeHtml(m.fromLocation || 'New')}<span class="t-arrow">→</span>${escapeHtml(m.toLocation || '—')}</div>
+            <div class="t-meta">${escapeHtml(m.movedBy || '—')} · ${fmtTime(m.timestamp)}${m.purpose ? ' · ' + escapeHtml(m.purpose) : ''}</div>
+          </li>`).join('')}</ul>`;
+    const html = `<!doctype html><html><head><title>QR Sheet · ${caseRow.id}</title>
+      <style>
+        @page { size: A4; margin: 14mm; }
+        body { font-family: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif; color: #14243D; margin: 0; }
+        h1, h3 { font-family: 'Rajdhani', 'Segoe UI', Arial, sans-serif; color: #14243D; margin: 0; }
+        .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #8C7A54; padding-bottom: 8px; margin-bottom: 12px; }
+        .id { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8C7A54; }
+        .title { font-size: 22px; margin: 4px 0; }
+        .sub { color: #4F6079; font-size: 12px; }
+        .stamp { display: inline-block; padding: 4px 10px; border-radius: 3px; background: #E6ECF2; color: #14243D; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 16px; margin: 12px 0 18px; padding: 10px 12px; border: 1px solid #D9D2C2; border-radius: 4px; }
+        .meta .k { font-size: 9.5px; text-transform: uppercase; color: #8C7A54; display: block; letter-spacing: 0.06em; }
+        .meta .v { font-size: 12px; color: #14243D; font-weight: 500; }
+        .row { display: flex; gap: 18px; align-items: flex-start; }
+        .card { flex: 1; border: 1px solid #D9D2C2; border-radius: 4px; padding: 12px; }
+        .card h3 { font-size: 13px; margin-bottom: 8px; }
+        .qr { width: 180px; height: 180px; display: block; margin: 0 auto; border: 4px solid #14243D; border-radius: 3px; }
+        .qr-cap { font-size: 10px; color: #4F6079; text-align: center; margin-top: 6px; }
+        .timeline { list-style: none; padding: 0; margin: 0; }
+        .timeline li { position: relative; padding: 6px 0 6px 20px; border-left: 2px solid #D9D2C2; margin-left: 4px; }
+        .timeline li:last-child { border-left-color: transparent; }
+        .timeline li::before { content: ''; position: absolute; left: -5px; top: 12px; width: 8px; height: 8px; border-radius: 50%; background: #14243D; border: 2px solid #fff; }
+        .t-route { font-size: 12px; }
+        .t-arrow { color: #8C7A54; margin: 0 4px; }
+        .t-meta { font-size: 10.5px; color: #4F6079; margin-top: 2px; }
+        .empty { color: #4F6079; font-size: 11px; font-style: italic; }
+        .footer { margin-top: 18px; padding-top: 8px; border-top: 1px solid #D9D2C2; font-size: 10px; color: #4F6079; display: flex; justify-content: space-between; }
+        .noprint { display: block; text-align: right; margin: 12px 0; }
+        .noprint button { padding: 6px 14px; border: 1px solid #14243D; background: #14243D; color: #fff; border-radius: 3px; cursor: pointer; }
+        @media print { .noprint { display: none; } }
+      </style></head><body>
+        <div class="noprint"><button onclick="window.print()">🖨 Print / Save as PDF</button></div>
+        <div class="head">
+          <div>
+            <div class="id">${escapeHtml(caseRow.id)}</div>
+            <h1 class="title">${escapeHtml(caseRow.itemType)}</h1>
+            ${caseRow.itemSub ? `<div class="sub">${escapeHtml(caseRow.itemSub)}</div>` : ''}
+          </div>
+          <span class="stamp">${escapeHtml(caseRow.status)}</span>
+        </div>
+        <div class="meta">
+          <div><span class="k">S.NO</span><span class="v">${sno != null ? sno : '—'}</span></div>
+          <div><span class="k">Malkhana No.</span><span class="v">${escapeHtml(caseRow.itemId || '—')}</span></div>
+          <div><span class="k">FIR / DD No.</span><span class="v">${escapeHtml(caseRow.id)}</span></div>
+          <div><span class="k">FIR Date</span><span class="v">${escapeHtml(caseRow.firDate || '—')}</span></div>
+          <div><span class="k">Section (U/S)</span><span class="v">${escapeHtml(detailUsText(caseRow))}</span></div>
+          <div><span class="k">Category of Item</span><span class="v">${escapeHtml(caseRow.itemType)}</span></div>
+          <div><span class="k">Location</span><span class="v">${escapeHtml(caseRow.sectionName || '—')} (Part ${escapeHtml((caseRow.section || '').replace('PART ', ''))})</span></div>
+          <div><span class="k">Received By (Moharrir)</span><span class="v">${escapeHtml(caseRow.receivedBy || '—')}</span></div>
+          <div><span class="k">Last Movement Date</span><span class="v">${escapeHtml(caseRow.lastMovement || '—')}</span></div>
+          <div><span class="k">Status</span><span class="v">${escapeHtml(caseRow.status)}</span></div>
+        </div>
+        <div class="row">
+          <div class="card">
+            <h3>Movement Chain</h3>
+            ${movementHtml}
+          </div>
+          <div class="card" style="flex:0 0 220px;text-align:center">
+            <h3>QR Code</h3>
+            <img class="qr" src="${qrUrl}" alt="QR" />
+            <div class="qr-cap">Encrypted — scan with e-Malkhana</div>
+          </div>
+        </div>
+        <div class="footer">
+          <span>e-Malkhana · Case Detail</span>
+          <span>Printed: ${escapeHtml(new Date().toLocaleString('en-IN'))}</span>
+        </div>
+      </body></html>`;
+    w.document.write(html);
     w.document.close();
   }
   // ---- Download QR page (composed sheet: detail + movement + QR) ----
