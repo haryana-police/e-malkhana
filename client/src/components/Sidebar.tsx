@@ -20,9 +20,7 @@ interface Props {
 }
 
 const navItems: { view: ViewName; label: string }[] = [
-  { view: 'dashboard',     label: 'Dashboard' },
-  { view: 'caseproperty',  label: 'Case Property' },
-  { view: 'movements',     label: 'Movements' },
+  { view: 'dashboard',     label: 'Case Property' },
   { view: 'templates',     label: 'Templates' },
   { view: 'alerts',        label: 'Alerts & Compliance' },
 ];
