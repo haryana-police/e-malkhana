@@ -1936,40 +1936,46 @@ function lastMovementDate(caseId, fallback) {
   return ms[ms.length - 1].timestamp.slice(0, 10);
 }
 
-// Canonical 10-column row shape used by both xlsx and PDF outputs.
-// Column order matches the issued Case Property Register format
-// (S.No. first, Quantity + Last Movement Date present).
+// Canonical column shape used by both xlsx and PDF outputs.
+// Column order & labels MIRROR the on-screen Case Property Register table
+// (S.No., FIR/DD No., FIR Date, Section U/S, Category of Item, Location,
+// Received By, Last Movement Date, Status).  "Action" is UI-only (buttons)
+// and is intentionally excluded from the export.
 const REPORT_COLUMNS = [
-  { key: 'sno',             label: 'S.No.' },
-  { key: 'id',              label: 'FIR / DD No.' },
-  { key: 'itemType',        label: 'Item Type' },
-  { key: 'description',     label: 'Description' },
-  { key: 'quantity',        label: 'Quantity' },
-  { key: 'sectionName',     label: 'Section' },
-  { key: 'status',          label: 'Status' },
-  { key: 'seizingOfficer',  label: 'Seizing Officer' },
-  { key: 'lastMovement',    label: 'Last Movement Date' },
+  { key: 'sno',         label: 'S.No.' },
+  { key: 'id',          label: 'FIR / DD No.' },
+  { key: 'firDate',     label: 'FIR Date' },
+  { key: 'usSection',   label: 'Section (U/S legal section)' },
+  { key: 'category',    label: 'Category of Item' },
+  { key: 'location',    label: 'Location' },
+  { key: 'receivedBy',  label: 'Received By (Malkhana Moharrir)' },
+  { key: 'lastMovement',label: 'Last Movement Date' },
+  { key: 'status',      label: 'Status' },
 ];
 
-function toReportRow(c) {
-  // Quantity is parsed out of the leading "<n> unit(s) · …" pattern that
-  // RegisterCaseModal prefixes into itemSub; we fall back to "1" when
-  // nothing is parseable (legacy seed rows).
-  let qty = '1';
-  if (c.itemSub) {
-    const m = c.itemSub.match(/^(\d+)\s*unit/i);
-    if (m) qty = m[1];
+// Mirror of the client's usSectionText(): "BNS 101 — Murder · BNS 22 — …".
+function usSectionText(c) {
+  if (Array.isArray(c.legalSections) && c.legalSections.length) {
+    return c.legalSections
+      .map((s, i) => `BNS ${s}${Array.isArray(c.legalSectionsTitles) && c.legalSectionsTitles[i] ? ' — ' + c.legalSectionsTitles[i] : ''}`)
+      .join(' · ');
   }
+  if (c.legalSection) return `BNS ${c.legalSection}${c.legalSectionTitle ? ' — ' + c.legalSectionTitle : ''}`;
+  return '';
+}
+
+function toReportRow(c, idx) {
+  const letter = c.sectionLetter || c.section?.replace('PART ', '') || '';
   return {
-    sno:             '', // filled in per-row by buildReportRows() so it reflects the filtered, sorted order
-    id:              c.id,
-    itemType:        c.itemType,
-    description:     c.itemSub,
-    quantity:        qty,
-    sectionName:     `Part ${c.sectionLetter || c.section?.replace('PART ', '')} — ${c.sectionName}`,
-    status:          c.status,
-    seizingOfficer:  c.seizingOfficer,
-    lastMovement:    lastMovementDate(c.id, c.createdAt?.slice(0, 10) || ''),
+    sno:          String(idx + 1),
+    id:           c.id,
+    firDate:      c.firDate || '',
+    usSection:    usSectionText(c),
+    category:     c.itemType || '',
+    location:     letter ? `${letter} — ${c.sectionName || ''}`.trim() : (c.sectionName || ''),
+    receivedBy:   c.receivedBy || '',
+    lastMovement: lastMovementDate(c.id, c.createdAt?.slice(0, 10) || ''),
+    status:       c.status || '',
   };
 }
 
@@ -2053,8 +2059,9 @@ app.get('/api/reports/case-property', async (req, res, next) => {
         }
       });
 
-      // Column widths (approximate; ExcelJS uses character widths)
-      const widths = [16, 28, 38, 8, 30, 18, 22, 12, 16];
+      // Column widths (approximate; ExcelJS uses character widths) — one
+      // per REPORT_COLUMNS entry, in the same order.
+      const widths = [8, 20, 12, 36, 40, 22, 22, 16, 16];
       widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
       // Borders on the table region
@@ -2143,7 +2150,7 @@ app.get('/api/reports/case-property', async (req, res, next) => {
 
       // Column widths (proportional).  Total = page width minus margins.
       const colWidths = REPORT_COLUMNS.map((_, i) => {
-        const widths = [70, 110, 145, 38, 130, 80, 95, 60, 75];
+        const widths = [40, 95, 55, 150, 160, 95, 95, 60, 55];
         return widths[i] || 60;
       });
       const colTotal = colWidths.reduce((a, b) => a + b, 0);
