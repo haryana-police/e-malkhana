@@ -15,7 +15,7 @@ interface Props {
   onOpenTimeline?: (fir: string) => void;
   onOpenScan?: () => void;
   onChangeStatus?: (c: CaseRow) => void;
-  onDownloadReport?: (format: 'xlsx' | 'pdf') => void;
+  onDownloadReport?: (format: 'xlsx' | 'pdf', ids?: string[]) => void;
   onOpenRegister?: () => void;
   onViewAll?: () => void;            // Dashboard "View full register →"
 }
@@ -288,8 +288,8 @@ export function RegisterTable({
             <h1>Case Property Register</h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {onDownloadReport && <button className="btn btn-excel" onClick={() => onDownloadReport('xlsx')} title="Download currently filtered cases as Excel">⬇ Download Report (Excel)</button>}
-            {onDownloadReport && <button className="btn btn-pdf" onClick={() => onDownloadReport('pdf')}  title="Download currently filtered cases as PDF">⬇ Download Report (PDF)</button>}
+            {onDownloadReport && <button className="btn btn-excel" onClick={() => onDownloadReport('xlsx', shown.map(c => c.id))} title="Download currently filtered cases as Excel">⬇ Download Report (Excel)</button>}
+            {onDownloadReport && <button className="btn btn-pdf" onClick={() => onDownloadReport('pdf', shown.map(c => c.id))}  title="Download currently filtered cases as PDF">⬇ Download Report (PDF)</button>}
             {onOpenRegister && <button className="btn" onClick={onOpenRegister}>+ Register New Case Property</button>}
           </div>
         </div>

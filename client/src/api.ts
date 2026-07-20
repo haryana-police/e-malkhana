@@ -202,16 +202,20 @@ export const api = {
   // the file.
   casePropertyReportUrl: (filters: {
     section?: string; status?: string | null; excludeDisposed?: boolean;
-    from?: string; to?: string; q?: string;
+    from?: string; to?: string; q?: string; ids?: string[];
   }, format: 'xlsx' | 'pdf') => {
     const p = new URLSearchParams();
     p.set('format', format);
-    if (filters.section && filters.section !== 'all') p.set('section', filters.section);
-    if (filters.status  && filters.status  !== 'all') p.set('status',  filters.status);
-    if (filters.excludeDisposed) p.set('excludeDisposed', '1');
-    if (filters.from) p.set('from', filters.from);
-    if (filters.to)   p.set('to',   filters.to);
-    if (filters.q)    p.set('q',    filters.q);
+    if (filters.ids && filters.ids.length) {
+      p.set('ids', filters.ids.join(','));
+    } else {
+      if (filters.section && filters.section !== 'all') p.set('section', filters.section);
+      if (filters.status  && filters.status  !== 'all') p.set('status',  filters.status);
+      if (filters.excludeDisposed) p.set('excludeDisposed', '1');
+      if (filters.from) p.set('from', filters.from);
+      if (filters.to)   p.set('to',   filters.to);
+      if (filters.q)    p.set('q',    filters.q);
+    }
     return `${base}/reports/case-property?${p.toString()}`;
   },
   malkhanaRegisterUrl: (section: string = 'all') =>

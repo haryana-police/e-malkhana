@@ -1880,11 +1880,22 @@ function parseCaseFilters(query) {
   const from = String(query.from || '').trim();
   const to   = String(query.to   || '').trim();
   const q    = String(query.q    || '').trim().toLowerCase();
-  return { section, status, excludeDisposed, from, to, q };
+  // Ordered list of item ids to export EXACTLY (in this order).  When
+  // present, the export mirrors the rows currently visible on screen
+  // (after search / column filters / sort), overriding section/status/etc.
+  const rawIds = String(query.ids || '').trim();
+  const ids = rawIds ? rawIds.split(',').map(s => s.trim()).filter(Boolean) : null;
+  return { section, status, excludeDisposed, from, to, q, ids };
 }
 
 function applyCaseFilters(filters) {
   const db = getDb();
+  // When an explicit ordered id list is supplied (export "what's on screen"),
+  // return exactly those cases, in that order, ignoring other filters.
+  if (filters.ids && filters.ids.length) {
+    const byId = new Map(allCases().map(c => [c.id, c]));
+    return filters.ids.map(id => byId.get(id)).filter(Boolean);
+  }
   let rows = allCases();
   if (filters.section && filters.section !== 'ALL') {
     rows = rows.filter(c => (c.sectionLetter || c.section?.replace('PART ', '')) === filters.section);

@@ -278,15 +278,20 @@ export default function App() {
   // visible rows.  For Dashboard / Alerts there's no filter, so we pass
   // the unfiltered URL.  For the Malkhana Register we respect the active
   // section filter from the sidebar.
-  function buildReportFilters() {
+  function buildReportFilters(ids?: string[]) {
+    if (ids && ids.length) {
+      // Export EXACTLY the rows currently visible on screen (respects
+      // client-side search, column filters and newest-first sort).
+      return { ids };
+    }
     return {
       section: activeSection || 'all',
       status: activeStatus || (excludeDisposed ? 'all' : 'all'),
       excludeDisposed,
     };
   }
-  function onDownloadReport(format: 'xlsx' | 'pdf') {
-    const url = api.casePropertyReportUrl(buildReportFilters(), format);
+  function onDownloadReport(format: 'xlsx' | 'pdf', ids?: string[]) {
+    const url = api.casePropertyReportUrl(buildReportFilters(ids), format);
     window.location.href = url;
   }
   function onGenerateRegister(format: 'pdf' | 'print') {
