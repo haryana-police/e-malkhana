@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { ITEM_CATEGORIES } from '../categories';
 import type { AlertConfig, AuditEntry, ItemTypeField } from '../types';
 
 interface Props {
@@ -551,8 +552,25 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           // an item of that type.  Add / edit / delete / reorder without coding.
           // =============================================================
           function ItemTypeFieldsManager() {
-          const [sections, setSections] = useState<{ letter: string; name: string }[]>([]);
-          const [tab, setTab]           = useState<string>('A');
+          // Tabs are now the "Category of Item" master (categories.ts), NOT the
+          // Malkhana sections.  We keep one tab per Malkhana section (A–E) but
+          // label it with that section's primary Category-of-Item name, so the
+          // underlying section-keyed field store is unchanged (no migration).
+          // Only categories that actually carry fields / sub-types are shown —
+          // empty / irrelevant ones (e.g. Lost Items) are hidden.
+          const categoryTabs = useMemo(() => {
+            const seen = new Set<string>();
+            const out: { letter: string; name: string; catId: string }[] = [];
+            for (const c of ITEM_CATEGORIES) {
+              if (seen.has(c.sectionLetter)) continue;            // one tab per section
+              const relevant = (c.fields && c.fields.length > 0) || (c.subTypes && c.subTypes.length > 0);
+              if (!relevant) continue;                            // skip empty categories
+              seen.add(c.sectionLetter);
+              out.push({ letter: c.sectionLetter, name: c.label, catId: c.id });
+            }
+            return out;
+          }, []);
+          const [tab, setTab]           = useState<string>('');
           const [fields, setFields]     = useState<ItemTypeField[]>([]);
           const [loading, setLoading]   = useState(false);
           const [busy, setBusy]         = useState(false);
@@ -564,13 +582,10 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           const [newType, setNewType]   = useState<'text' | 'number' | 'select' | 'date' | 'time'>('text');
           const [newOptions, setNewOptions] = useState('');
 
+          // initialise the active tab to the first category
           useEffect(() => {
-          api.sectionMeta().then(list => {
-          const s = list.map(r => ({ letter: r.letter, name: r.name }));
-          setSections(s);
-          if (s.length && !s.find(x => x.letter === tab)) setTab(s[0].letter);
-          }).catch(() => setSections([]));
-          }, []);
+            if (!tab && categoryTabs.length) setTab(categoryTabs[0].letter);
+          }, [categoryTabs, tab]);
 
           useEffect(() => {
           if (!tab) return;
@@ -602,7 +617,7 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           setDraft(null);
           const f = await api.itemTypeFields(tab);
           setFields(f);
-          setMsg({ kind: 'ok', text: `Saved field "${label}" for Part ${tab}.` });
+          setMsg({ kind: 'ok', text: `Saved field "${label}" for ${activeCat?.name || 'Category'}.` });
           } catch (e) {
           setMsg({ kind: 'error', text: (e as Error).message });
           } finally {
@@ -610,7 +625,7 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           }
           }
           async function removeField(f: ItemTypeField) {
-          if (!confirm(`Delete field "${f.label}" from Part ${tab}?`)) return;
+          if (!confirm(`Delete field "${f.label}" from ${activeCat?.name || 'Category'}?`)) return;
           setBusy(true); setMsg(null);
           try {
           await api.deleteItemTypeField(f.id);
@@ -635,27 +650,28 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
           }
 
+          const activeCat = categoryTabs.find(c => c.letter === tab);
+
           return (
           <div>
           <div className="sub" style={{ marginBottom: 12 }}>
-            Per Item Type (Malkhana section), configure the popup fields the MM fills at
+            Per <b>Category of Item</b>, configure the popup fields the MM fills at
             registration — e.g. Narcotics → Substance Type / Gross Weight / Net Weight / Packing Type.
             Changes apply immediately to new registrations.
           </div>
 
           <div className="itemtype-tabs">
-            {sections.map(s => (
-              <button key={s.letter} type="button"
-                className={`itemtype-tab${tab === s.letter ? ' active' : ''}`}
-                onClick={() => setTab(s.letter)} disabled={busy}>
-                <span className="itemtype-tab-letter">{s.letter}</span>
-                <span className="itemtype-tab-name">{s.name}</span>
+            {categoryTabs.map(c => (
+              <button key={c.letter} type="button"
+                className={`itemtype-tab${tab === c.letter ? ' active' : ''}`}
+                onClick={() => setTab(c.letter)} disabled={busy}>
+                <span className="itemtype-tab-name">{c.name}</span>
               </button>
             ))}
           </div>
 
           <div className="itemtype-section-head">
-            <b>Part {tab}</b> · {sections.find(s => s.letter === tab)?.name}
+            <b>{activeCat?.name || 'Category'}</b>
             <span className="itemtype-count">{fields.length} field{fields.length === 1 ? '' : 's'}</span>
           </div>
 
@@ -686,7 +702,7 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
 
           {draft && (
             <div className="itemtype-add" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-              <div className="sub" style={{ margin: 0 }}>{draft.key ? 'Edit field' : `+ Add field to Part ${tab}`}</div>
+              <div className="sub" style={{ margin: 0 }}>{draft.key ? 'Edit field' : `+ Add field to ${activeCat?.name || 'Category'}`}</div>
               <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Field label e.g. Gross Weight" />
               <select value={newType} onChange={e => setNewType(e.target.value as any)}>
                 <option value="text">Text</option>
@@ -707,7 +723,7 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
 
           {!draft && (
             <div className="itemtype-add">
-              <div className="sub" style={{ margin: 0, flex: '0 0 auto', paddingRight: 8 }}>+ Add field to Part {tab}</div>
+              <div className="sub" style={{ margin: 0, flex: '0 0 auto', paddingRight: 8 }}>+ Add field to {activeCat?.name || 'Category'}</div>
               <button className="btn" type="button" onClick={openAdd} disabled={busy}>Add</button>
             </div>
           )}
