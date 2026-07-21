@@ -204,9 +204,9 @@ export function RegisterTable({
             <button
               type="button"
               className="act-btn act-tag"
-              title="View evidence tag (real QR)"
+              title="View QR code tag"
               onClick={(e) => { e.stopPropagation(); if (onOpenTag) onOpenTag(c); }}
-            ><span className="act-ico">▦</span><span className="act-lbl">evidence tag</span></button>
+            ><span className="act-ico">▦</span><span className="act-lbl">QR code</span></button>
             <button
               type="button"
               className="act-btn act-log"
