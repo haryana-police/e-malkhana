@@ -586,7 +586,7 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           const [tab, setTab]           = useState<string>('');
 
           // category editor (add new / edit existing).  null = closed.
-          const [catDraft, setCatDraft] = useState<{ id?: string; label: string; sectionLetter: string; subTypeLabel: string; subTypeControl: 'select' | 'radio'; subTypes: string; } | null>(null);
+          const [catDraft, setCatDraft] = useState<{ id?: string; label: string; sectionLetter: string; subTypeLabel: string; subTypeControl: 'select' | 'radio'; subTypes: string[]; } | null>(null);
 
           // field editor (add / edit) for the active category.  null = closed.
           const [fieldDraft, setFieldDraft] = useState<{ key?: string; label: string; type: 'text'|'number'|'select'|'date'|'time'; options: string; unit: string; placeholder: string; required: boolean; } | null>(null);
@@ -606,23 +606,57 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
 
           // ---------- category CRUD ----------
           function openAddCat() {
-            setCatDraft({ label: '', sectionLetter: 'A', subTypeLabel: '', subTypeControl: 'select', subTypes: '' });
+            setCatDraft({ label: '', sectionLetter: 'A', subTypeLabel: '', subTypeControl: 'select', subTypes: [] });
           }
           function openEditCat(c: CategoryOfItem) {
             setCatDraft({ id: c.id, label: c.label, sectionLetter: c.sectionLetter,
               subTypeLabel: c.subTypeLabel || '', subTypeControl: c.subTypeControl || 'select',
-              subTypes: (c.subTypes || []).join(', ') });
+              subTypes: [...(c.subTypes || [])] });
+          }
+          // --- sub-type helpers (operate on catDraft.subTypes, save on Save) ---
+          function addSubType() {
+            setCatDraft(d => d ? { ...d, subTypes: [...d.subTypes, ''] } : d);
+          }
+          function moveSubType(idx: number, dir: -1 | 1) {
+            setCatDraft(d => {
+              if (!d) return d;
+              const arr = [...d.subTypes];
+              const ni = idx + dir;
+              if (ni < 0 || ni >= arr.length) return d;
+              [arr[idx], arr[ni]] = [arr[ni], arr[idx]];
+              return { ...d, subTypes: arr };
+            });
+          }
+          function patchSubType(idx: number, value: string) {
+            setCatDraft(d => {
+              if (!d) return d;
+              const arr = [...d.subTypes];
+              arr[idx] = value;
+              return { ...d, subTypes: arr };
+            });
+          }
+          function deleteSubType(idx: number) {
+            setCatDraft(d => d ? { ...d, subTypes: d.subTypes.filter((_, i) => i !== idx) } : d);
           }
           async function saveCat() {
             if (!catDraft) return;
             const id = catDraft.id || slug(catDraft.label);
+            // Clean sub-types: trim + drop empty + dedupe (preserving first occurrence order)
+            const seen = new Set<string>();
+            const cleanSubs = catDraft.subTypes.map(s => s.trim()).filter(s => {
+              if (!s) return false;
+              const k = s.toLowerCase();
+              if (seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
             const payload: any = {
               id,
               label: catDraft.label.trim(),
               sectionLetter: catDraft.sectionLetter,
               subTypeLabel: catDraft.subTypeLabel.trim() || null,
               subTypeControl: catDraft.subTypeControl,
-              subTypes: catDraft.subTypes.split(',').map(s => s.trim()).filter(Boolean),
+              subTypes: cleanSubs,
             };
             setBusy(true); setMsg(null);
             try {
@@ -825,8 +859,31 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
                 <option value="select">Sub-Type as dropdown</option>
                 <option value="radio">Sub-Type as radio</option>
               </select>
-              <input value={catDraft.subTypes} onChange={e => setCatDraft(d => d && { ...d, subTypes: e.target.value })} placeholder="Comma-separated sub-types (optional)" />
-              <div style={{ display: 'flex', gap: 8 }}>
+
+              {/* Sub-Types: row-by-row editor (add / edit / delete / reorder) */}
+              <div style={{ borderTop: '1px dashed rgba(0,0,0,0.12)', paddingTop: 8, marginTop: 4 }}>
+                <div className="sub" style={{ margin: 0, marginBottom: 6 }}>Sub-Types ({catDraft.subTypes.length})</div>
+                {catDraft.subTypes.length === 0 && (
+                  <div className="sub" style={{ fontSize: 12, padding: '4px 0', color: 'var(--slate-soft)' }}>No sub-types yet — leave empty if this category doesn't need a Type field.</div>
+                )}
+                {catDraft.subTypes.map((s, i) => (
+                  <div key={i} className="itemtype-row" style={{ padding: '4px 6px' }}>
+                    <div className="itemtype-row-name" style={{ gap: 6 }}>
+                      <span style={{ minWidth: 22, color: 'var(--slate-soft)', fontSize: 11 }}>#{i + 1}</span>
+                      <input value={s} onChange={e => patchSubType(i, e.target.value)} placeholder={`Sub-Type ${i + 1} e.g. Heroin`} />
+                    </div>
+                    <div className="itemtype-row-actions">
+                      <button type="button" className="icon-btn" title="Move up" disabled={i === 0} onClick={() => moveSubType(i, -1)}>↑</button>
+                      <button type="button" className="icon-btn" title="Move down" disabled={i === catDraft.subTypes.length - 1} onClick={() => moveSubType(i, 1)}>↓</button>
+                      <button type="button" className="icon-btn" title="Delete sub-type" onClick={() => deleteSubType(i)}
+                        style={{ color: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}>×</button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn ghost small" onClick={addSubType} disabled={busy} style={{ marginTop: 6 }}>+ Add sub-type</button>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                 <button className="btn" type="button" onClick={saveCat} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
                 <button className="btn ghost" type="button" onClick={() => setCatDraft(null)} disabled={busy}>Cancel</button>
               </div>
