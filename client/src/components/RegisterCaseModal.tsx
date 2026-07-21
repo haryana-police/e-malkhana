@@ -819,7 +819,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                             categories, but never the admin-defined columns. */}
                         {cat?.fields.map(f => (
                           <label key={f.key}>
-                            {f.label}{f.unit ? ` (${f.unit})` : ''}
+                            {f.label}{f.unit ? ` (${f.unit})` : ''}{f.required ? <span style={{ color: 'var(--seal-red)', marginLeft: 4 }}>*</span> : null}
                             {renderCatField(it.localId, it, f)}
                           </label>
                         ))}

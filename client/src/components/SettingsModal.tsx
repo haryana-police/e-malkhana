@@ -589,7 +589,7 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           const [catDraft, setCatDraft] = useState<{ id?: string; label: string; sectionLetter: string; subTypeLabel: string; subTypeControl: 'select' | 'radio'; subTypes: string; } | null>(null);
 
           // field editor (add / edit) for the active category.  null = closed.
-          const [fieldDraft, setFieldDraft] = useState<{ key?: string; label: string; type: 'text'|'number'|'select'|'date'|'time'; options: string } | null>(null);
+          const [fieldDraft, setFieldDraft] = useState<{ key?: string; label: string; type: 'text'|'number'|'select'|'date'|'time'; options: string; unit: string; placeholder: string; required: boolean; } | null>(null);
 
           const active = cats.find(c => c.id === tab);
 
@@ -647,18 +647,27 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           }
 
           // ---------- field (column) CRUD for the active category ----------
-          function openAddField() { setFieldDraft({ label: '', type: 'text', options: '' }); }
+          function openAddField() { setFieldDraft({ label: '', type: 'text', options: '', unit: '', placeholder: '', required: false }); }
           function openEditField(f: CategoryFieldDef) {
-            setFieldDraft({ key: f.key, label: f.label, type: f.type, options: (f.options || []).join(', ') });
+            setFieldDraft({ key: f.key, label: f.label, type: f.type, options: (f.options || []).join(', '), unit: f.unit || '', placeholder: f.placeholder || '', required: !!f.required });
           }
           async function saveField() {
             if (!active || !fieldDraft) return;
             const key = fieldDraft.key || slug(fieldDraft.label);
             const options = fieldDraft.type === 'select'
               ? fieldDraft.options.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+            const trimmedLabel = fieldDraft.label.trim();
+            if (!trimmedLabel) { setMsg({ kind: 'error', text: 'Column label is required.' }); return; }
+            const trimmedUnit = fieldDraft.unit.trim();
+            const trimmedPlaceholder = fieldDraft.placeholder.trim();
             const fields = [...(active.fields || [])];
             const idx = fields.findIndex(f => f.key === key);
-            const newField: CategoryFieldDef = { key, label: fieldDraft.label.trim(), type: fieldDraft.type, options, placeholder: undefined, unit: undefined };
+            const newField: CategoryFieldDef = {
+              key, label: trimmedLabel, type: fieldDraft.type, options,
+              placeholder: trimmedPlaceholder || undefined,
+              unit: trimmedUnit || undefined,
+              required: fieldDraft.required || undefined,
+            };
             if (idx >= 0) fields[idx] = newField; else fields.push(newField);
             setBusy(true); setMsg(null);
             try {
@@ -750,7 +759,8 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
                   <div key={f.key} className="itemtype-row">
                     <div className="itemtype-row-name">
                       <input value={f.label} disabled readOnly />
-                      <span className="itemtype-case-badge">{f.type}{f.options ? ` · ${(f.options).join(' / ')}` : ''}</span>
+                      <span className="itemtype-case-badge">{f.type}{f.unit ? ` · ${f.unit}` : ''}{f.options ? ` · ${(f.options).join(' / ')}` : ''}{f.required ? ' · REQUIRED' : ''}</span>
+                      {f.placeholder && <span style={{ fontSize: 12, color: 'var(--slate-soft)' }}>placeholder: {f.placeholder}</span>}
                     </div>
                     <div className="itemtype-row-actions">
                       <button type="button" className="icon-btn" title="Move up" onClick={() => moveField(f, -1)} disabled={busy || i === 0}>↑</button>
@@ -767,16 +777,24 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
                 <div className="itemtype-add" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
                   <div className="sub" style={{ margin: 0 }}>{fieldDraft.key ? 'Edit column' : `+ Add column to ${active.label}`}</div>
                   <input value={fieldDraft.label} onChange={e => setFieldDraft(d => d && { ...d, label: e.target.value })} placeholder="Column label e.g. Gross Weight" />
-                  <select value={fieldDraft.type} onChange={e => setFieldDraft(d => d && { ...d, type: e.target.value as any })}>
-                    <option value="text">Text</option>
-                    <option value="number">Number</option>
-                    <option value="select">Select (dropdown)</option>
-                    <option value="date">Date</option>
-                    <option value="time">Time</option>
-                  </select>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <select value={fieldDraft.type} onChange={e => setFieldDraft(d => d && { ...d, type: e.target.value as any })}>
+                      <option value="text">Text</option>
+                      <option value="number">Number</option>
+                      <option value="select">Select (dropdown)</option>
+                      <option value="date">Date</option>
+                      <option value="time">Time</option>
+                    </select>
+                    <input value={fieldDraft.unit} onChange={e => setFieldDraft(d => d && { ...d, unit: e.target.value })} placeholder="Unit e.g. g/kg, Rs., ml" />
+                  </div>
                   {fieldDraft.type === 'select' && (
                     <input value={fieldDraft.options} onChange={e => setFieldDraft(d => d && { ...d, options: e.target.value })} placeholder="Comma-separated options e.g. Cash, Fake Currency, Papers" />
                   )}
+                  <input value={fieldDraft.placeholder} onChange={e => setFieldDraft(d => d && { ...d, placeholder: e.target.value })} placeholder="Placeholder hint (optional) e.g. e.g. 250 g / 1.2 kg" />
+                  <label className="itemtype-check" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--slate-soft)' }}>
+                    <input type="checkbox" checked={fieldDraft.required} onChange={e => setFieldDraft(d => d && { ...d, required: e.target.checked })} />
+                    <span>Make this column <b style={{ color: 'var(--ink)' }}>required</b> at registration</span>
+                  </label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn" type="button" onClick={saveField} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
                     <button className="btn ghost" type="button" onClick={() => setFieldDraft(null)} disabled={busy}>Cancel</button>

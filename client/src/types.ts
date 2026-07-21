@@ -331,6 +331,7 @@ export interface CategoryFieldDef {
   options?: string[];     // for select
   placeholder?: string;
   unit?: string;          // e.g. "grams", "Rs."
+  required?: boolean;     // enforce non-empty value at registration
 }
 
 export interface CategoryOfItem {
