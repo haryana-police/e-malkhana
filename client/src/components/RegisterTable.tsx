@@ -81,9 +81,14 @@ export function RegisterTable({
   const [textFilter, setTextFilter] = useState('');
   const order: ColKey[] = DEFAULT_ORDER;
   const navigate = useNavigate();
+  const PAGE_SIZE = 8;
+  const [page, setPage] = useState(1);
   const [openCol, setOpenCol] = useState<ColKey | null>(null);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, string>>>({});
   const [statusFilter, setStatusFilter] = useState<CaseStatus[]>([]);
+
+  // Reset the register pager when any search or filter changes.
+  useEffect(() => { setPage(1); }, [textFilter, colFilters, statusFilter, activeSection, activeStatus, excludeDisposed]);
 
   useEffect(() => {
     if (!openCol) return;
@@ -199,8 +204,8 @@ export function RegisterTable({
     actions: {
       key: 'actions', label: 'Action', className: 'col-actions', locked: true,
       render: (c) => (
-        <td>
-          <div className="row-actions-vertical">
+        <td className="actions-cell">
+          <div className="row-actions-hover">
             <button
               type="button"
               className="act-btn act-tag"
@@ -212,13 +217,13 @@ export function RegisterTable({
               className="act-btn act-log"
               title="View movement log"
               onClick={(e) => { e.stopPropagation(); if (onOpenTimeline) onOpenTimeline(c.id); }}
-            ><span className="act-ico">⏱</span><span className="act-lbl">movement log</span></button>
+            ><span className="act-ico">⏱</span><span className="act-lbl">Movement log</span></button>
             <button
               type="button"
               className="act-btn act-status"
               title="Change status (record a movement)"
               onClick={(e) => { e.stopPropagation(); if (onChangeStatus) onChangeStatus(c); }}
-            ><span className="act-ico">↻</span><span className="act-lbl">change status</span></button>
+            ><span className="act-ico">↻</span><span className="act-lbl">Change status</span></button>
           </div>
         </td>
       ),
@@ -265,9 +270,9 @@ export function RegisterTable({
     return 0;
   });
 
-  // Render the complete filtered register; pagination controls were removed
-  // so every matching case remains visible in one table.
-  const shown = sorted;
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const shown = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className="register-wrap">
@@ -334,6 +339,13 @@ export function RegisterTable({
           onKeyDown={e => { if (e.key === 'Enter' && textFilter.trim() && onOpenScan) onOpenScan(); }}
         />
         {onOpenScan && <button className="btn small scan-btn" onClick={onOpenScan}>Scan QR</button>}
+        {totalPages > 1 && (
+          <div className="rt-pager rt-pager-inline">
+            <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
+            <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Next">Next ›</button>
+            <span className="pg-info">Page {safePage} of {totalPages} · {shown.length} entries</span>
+          </div>
+        )}
       </div>
 
       <div className="panel">

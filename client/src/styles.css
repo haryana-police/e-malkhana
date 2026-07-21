@@ -200,22 +200,26 @@ body{
 .btn-pdf{ background:#c0392b; border:1px solid #c0392b; color:#fff; }
 .btn-pdf:hover{ opacity:0.9; }
 
-/* vertical action buttons in the register Action column */
-.row-actions-vertical{ display:flex; flex-direction:column; gap:2px; align-items:stretch; }
+/* Register Action cell: 3 compact icon-only buttons in a single row.
+   On desktop, hovering the row opens a small labelled action strip without
+   changing the row height. */
+.register-table tbody td.actions-cell{ overflow:visible; }
+.register-table .row-actions-hover{ display:flex; flex-direction:row; gap:3px; align-items:center; justify-content:flex-start; flex-wrap:nowrap; }
 .act-btn{
-  display:inline-flex; align-items:center; gap:4px;
+  display:inline-flex; align-items:center; justify-content:center; gap:3px;
   font-family:'IBM Plex Sans', sans-serif; font-size:10px; font-weight:600;
   padding:1px 5px; border-radius:3px; cursor:pointer;
   border:1px solid var(--line); background:var(--white-paper); color:var(--ink-navy);
   white-space:nowrap; line-height:1.2;
-  justify-content:flex-start;
 }
 .act-btn:hover{ opacity:0.9; }
-.act-ico{ font-size:11px; }
+.act-ico{ font-size:12px; line-height:1; }
 .act-tag{ border-color:rgba(31,122,61,0.5); color:#1f7a3d; }
 .act-log{ border-color:rgba(140,122,84,0.5); color:var(--ink-navy); }
 .act-status{ border-color:rgba(192,57,43,0.5); color:#c0392b; }
-.act-lbl{ letter-spacing:0.01em; }
+.act-lbl{ display:none; letter-spacing:0.01em; }
+.register-table tbody tr:hover .row-actions-hover .act-lbl,
+.act-btn:focus .act-lbl{ display:inline; }
 
 /* register + movement pagers */
 .rt-pager{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:12px 4px 2px; justify-content:flex-end; }
@@ -322,6 +326,10 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 /* Case Property Register — matches the issued paper register format:
    dark-blue header, white / light-beige alternating rows, a serial
    column and a numeric Quant + date columns. */
+.register-table{
+  table-layout: fixed;        /* fixed column widths from colgroup; no auto-flex waste */
+  width: 100%;
+}
 .register-table thead th{
   background: var(--ink-navy);
   color: #fff;
@@ -329,24 +337,40 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
   font-weight:600;
   letter-spacing:0.06em;
   text-transform:uppercase;
-  padding:8px 6px;
+  padding:6px 8px;
   border-bottom:2px solid rgba(0,0,0,0.25);
   position:sticky; top:0; z-index:1;
+  white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis;
 }
 .register-table tbody td{
-  padding:6px 6px;
+  padding:6px 8px;
   font-size:12.5px;
   border-bottom:1px solid var(--paper-dark);
+  vertical-align: top;
+  overflow:hidden; text-overflow:ellipsis; word-break:break-word;
 }
 .register-table tbody tr:nth-child(odd){ background:#ffffff; }
 .register-table tbody tr:nth-child(even){ background:#F7F2E6; }
 .register-table tbody tr.row-clickable:hover{ background:rgba(140,122,84,0.12); }
-.register-table .col-sno{ width:44px; text-align:center; }
+
+/* Fixed-width column model — percentages match the reference HTML so the
+   table fills the container with no wasted horizontal real estate. */
+.register-table .col-sno{        width:4%;   }
+.register-table .col-id{         width:10%;  }
+.register-table .col-firdate{    width:8%;   }
+.register-table .col-us{         width:10%;  }
+.register-table .col-category{   width:16%;  }
+.register-table .col-location{   width:12%;  }
+.register-table .col-received{   width:12%;  }
+.register-table .col-lastmove{   width:9%;   }
+.register-table .col-status{     width:8%;   }
+.register-table .col-actions{    width:11%;  }
 .register-table .sno{ text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }
 .panel table .col-sno{ width:44px; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }
 .register-table .col-quant{ width:56px; text-align:center; }
 .register-table .quant{ text-align:center; font-family:'IBM Plex Mono',monospace; font-weight:600; }
-.register-table .col-actions{ width:86px; text-align:left; padding-left:4px; padding-right:4px; }
+.register-table .col-actions{ padding-left:4px; padding-right:4px; }
 .register-table .date-col{ font-family:'IBM Plex Mono',monospace; font-size:12px; white-space:nowrap; }
 .register-table .type{ font-weight:600; color:var(--slate); }
 .register-table .bns-chip{ margin-top:4px; }
@@ -354,7 +378,7 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
   font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:600; color: var(--ink-navy);
   display:inline-block; padding:0; margin:0;
 }
-.register-table td.fir{ padding-left:4px; padding-right:4px; }
+.register-table td.fir{ padding-left:0; padding-right:0; }
 .item-desc .type{ font-weight:600; color: var(--slate); }
 .item-desc .sub{ font-size:11px; color: var(--slate-soft); }
 
@@ -2616,9 +2640,31 @@ html, body{ overflow-x: hidden; max-width: 100vw; }
 .letterhead-menu,
 .sidebar-close-btn,
 .sections-action{ width: 44px; height: 44px; padding: 0; }
-/* Stretch the action-row icon buttons to 44px tall and add inter-button gap. */
-.row-actions-vertical{ gap: 8px; }
-.row-actions-vertical .act-btn{ min-height: 44px; padding: 6px 10px; }
+/* Register Action buttons: compact on desktop. The labels are hidden in the
+   resting state and revealed together while the action cell/row is hovered. */
+@media (min-width: 769px){
+  .register-table .row-actions-hover{ gap:3px; }
+  .register-table .row-actions-hover .act-btn{
+    min-height:0; min-width:0; height:auto;
+    padding:1px 5px;
+    font-size:10px; line-height:1.15;
+  }
+  .register-table .row-actions-hover .act-ico{ font-size:12px; }
+  .register-table .actions-cell{ position:relative; overflow:visible; z-index:2; }
+  /* Expand above the row instead of pushing the table row taller or clipping
+     the labels inside the fixed-width Action column. */
+  .register-table tbody tr:hover .row-actions-hover,
+  .register-table .row-actions-hover:focus-within{
+    position:absolute; right:4px; top:50%; transform:translateY(-50%);
+    z-index:5; padding:3px; gap:4px;
+    background:var(--white-paper); border:1px solid var(--line);
+    border-radius:4px; box-shadow:0 3px 10px rgba(20,36,61,0.16);
+    white-space:nowrap;
+  }
+  .register-table tbody tr:hover .row-actions-hover .act-lbl,
+  .register-table .row-actions-hover:focus-within .act-lbl{ display:inline; }
+
+}
 .sections-action-bar{ gap: 8px; }
 .itemtype-row-actions{ gap: 8px; }
 
@@ -2722,9 +2768,11 @@ input, select, textarea{
   /* Sticky header inside a scroll container is fine; keep it. */
   .register-table thead th{ font-size: 9.5px; padding: 9px 10px; }
   .register-table tbody td{ padding: 9px 10px; font-size: 12px; }
-  /* Action buttons stretch full-width inside their column for easier taps. */
-  .row-actions-vertical .act-btn{ width: 100%; }
-  .act-btn .act-lbl{ font-size: 12px; }
+  /* Action buttons: 44px touch targets, labels always visible on mobile. */
+  .row-actions-hover{ gap: 6px; flex-wrap: wrap; }
+  .row-actions-hover .act-btn{ min-height: 44px; padding: 6px 10px; }
+  .row-actions-hover .act-ico{ font-size: 13px; }
+  .row-actions-hover .act-lbl{ display: inline; font-size: 12px; }
 
   /* Pager buttons: 44px hit area, wrap on narrow screens. */
   .rt-pager{ gap: 8px; justify-content: center; }
