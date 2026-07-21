@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { AlertConfig, AuditEntry, CategoryOfItem, CategoryFieldDef } from '../types';
+import type { AlertConfig, AuditEntry, CaseRow, CategoryFieldDef, CategoryOfItem, MovementLogRow } from '../types';
 
 interface Props {
   open: boolean;
@@ -8,7 +8,7 @@ interface Props {
   onUpdated: (cfg: AlertConfig) => void;
   onOpenSectionsManager?: () => void;
   onOpenItemTypeManager?: () => void;
-  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log';
+  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements';
   // When true, show ONLY the requested part (no tab bar). Used when the
   // user clicks a specific System Setting part from the sidebar, so they
   // land on that one part instead of the whole settings surface.
@@ -25,6 +25,7 @@ const FOCUS_TITLE: Record<string, string> = {
   fields: 'Item Type Fields',
   backup: 'Backup & Restore',
   log: 'Activity log',
+  movements: 'Movement Logs',
 };
 
 const ACTION_LABELS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' | 'critical' }> = {
@@ -32,6 +33,9 @@ const ACTION_LABELS: Record<string, { label: string; tone: 'good' | 'warn' | 'in
   'case.status':     { label: 'STATUS',     tone: 'info' },
   'movement.record': { label: 'MOVED',      tone: 'info' },
   'movement.log':    { label: 'LOG',        tone: 'info' },
+  'movement.create': { label: 'NEW LOG',    tone: 'info' },
+  'movement.update': { label: 'EDIT LOG',   tone: 'warn' },
+  'movement.delete': { label: 'DEL LOG',    tone: 'critical' },
   'scan.read':       { label: 'SCAN',       tone: 'info' },
   'scan.record':     { label: 'SCAN+MOVE',  tone: 'info' },
   'section.rename':  { label: 'SECTION',    tone: 'good' },
@@ -46,7 +50,7 @@ function fmtTime(iso: string) {
 }
 
 export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab, single, asPage = false }: Props) {
-  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup'>('thresholds');
+  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup' | 'movements'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
   const [backupLog, setBackupLog] = useState<any[]>([]);
@@ -211,6 +215,10 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
               className={`audit-tab${tab === 'log' ? ' active' : ''}`}
               onClick={() => setTab('log')}
             >Activity log <span className="audit-tab-count">{visibleLog.length}</span></button>
+            <button
+              className={`audit-tab${tab === 'movements' ? ' active' : ''}`}
+              onClick={() => setTab('movements')}
+            >Movement Logs</button>
             {onOpenSectionsManager && (
               <button
                 className="audit-tab"
@@ -424,6 +432,10 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
             <button className="btn ghost" onClick={onClose}>Close</button>
           </div>
         </>
+      )}
+
+      {activeTab === 'movements' && (
+        <MovementLogsManager />
       )}
     </>
   );
@@ -941,4 +953,313 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           );
           }
           const SECTION_LETTERS = ['A', 'B', 'C', 'D', 'E'];
+
+// =============================================================
+// Movement Logs manager — add, edit, and remove rows from the
+// persisted movement log.  The same rows are read by the case
+// timeline (`CasePropertyDetail`) and the register's Last
+// Movement Date column, so a change here reflects everywhere
+// immediately.  Uses the System-Settings-only
+// /api/movement-logs CRUD endpoints (the case-detail flow is
+// unchanged).  Every write is recorded in the audit log under
+// the signed-in MM's ID.
+// =============================================================
+type MovementDraft = {
+  caseId: string;
+  fromLocation: string;
+  toLocation: string;
+  movedBy: string;
+  timestamp: string;     // datetime-local string (YYYY-MM-DDTHH:MM)
+  purpose: string;
+  docRef: string;
+};
+
+function emptyMovementDraft(): MovementDraft {
+  return {
+    caseId: '',
+    fromLocation: '',
+    toLocation: '',
+    movedBy: '',
+    timestamp: '',
+    purpose: '',
+    docRef: '',
+  };
+}
+
+function toLocalInput(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  // datetime-local needs YYYY-MM-DDTHH:MM in LOCAL time, not UTC.
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromLocalInput(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function fmtMovementTime(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+    timeZone: 'Asia/Kolkata',
+  });
+}
+
+function MovementLogsManager() {
+  const [rows, setRows]       = useState<MovementLogRow[] | null>(null);
+  const [cases, setCases]     = useState<CaseRow[]>([]);
+  const [busy, setBusy]       = useState(false);
+  const [msg, setMsg]         = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [filter, setFilter]   = useState('');
+  const [editing, setEditing] = useState<{ id: number; draft: MovementDraft } | null>(null);
+  const [creating, setCreating] = useState<MovementDraft | null>(null);
+
+  async function reload() {
+    try {
+      const [list, caseList] = await Promise.all([api.movementLogs(), api.cases()]);
+      setRows(list);
+      setCases(caseList);
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+  }
+  useEffect(() => { reload(); }, []);
+
+  const filtered = (rows || []).filter(r => {
+    if (!filter.trim()) return true;
+    const f = filter.toLowerCase();
+    return (r.caseId || '').toLowerCase().includes(f)
+        || (r.fromLocation || '').toLowerCase().includes(f)
+        || (r.toLocation || '').toLowerCase().includes(f)
+        || (r.movedBy || '').toLowerCase().includes(f)
+        || (r.purpose || '').toLowerCase().includes(f)
+        || (r.docRef || '').toLowerCase().includes(f);
+  });
+
+  function startCreate() {
+    setCreating(emptyMovementDraft());
+    setEditing(null);
+    setMsg(null);
+  }
+  function startEdit(r: MovementLogRow) {
+    setEditing({ id: r.id, draft: {
+      caseId: r.caseId,
+      fromLocation: r.fromLocation || '',
+      toLocation: r.toLocation || '',
+      movedBy: r.movedBy || '',
+      timestamp: toLocalInput(r.timestamp),
+      purpose: r.purpose || '',
+      docRef: r.docRef || '',
+    } });
+    setCreating(null);
+    setMsg(null);
+  }
+  function cancelDraft() {
+    setCreating(null);
+    setEditing(null);
+  }
+  function patchDraft(d: MovementDraft, field: keyof MovementDraft, value: string): MovementDraft {
+    return { ...d, [field]: value };
+  }
+  function validate(d: MovementDraft): string | null {
+    if (!d.caseId.trim())   return 'Case is required.';
+    if (!d.toLocation.trim()) return 'To location is required.';
+    if (!d.movedBy.trim())    return 'Moved by is required.';
+    if (d.timestamp) {
+      const t = new Date(d.timestamp);
+      if (Number.isNaN(t.getTime())) return 'Timestamp must be a valid date and time.';
+    }
+    return null;
+  }
+  async function saveCreate() {
+    if (!creating) return;
+    const err = validate(creating);
+    if (err) { setMsg({ kind: 'error', text: err }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const ts = fromLocalInput(creating.timestamp);
+      const created = await api.createMovementLog({
+        caseId: creating.caseId.trim(),
+        fromLocation: creating.fromLocation.trim(),
+        toLocation: creating.toLocation.trim(),
+        movedBy: creating.movedBy.trim(),
+        purpose: creating.purpose.trim(),
+        docRef: creating.docRef.trim(),
+        ...(ts ? { timestamp: ts } : {}),
+      });
+      setRows(prev => prev ? [created, ...prev] : [created]);
+      setCreating(null);
+      setMsg({ kind: 'ok', text: `Logged movement #${created.id}.` });
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+  async function saveEdit() {
+    if (!editing) return;
+    const err = validate(editing.draft);
+    if (err) { setMsg({ kind: 'error', text: err }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const ts = fromLocalInput(editing.draft.timestamp);
+      const updated = await api.updateMovementLog(editing.id, {
+        caseId: editing.draft.caseId.trim(),
+        fromLocation: editing.draft.fromLocation.trim(),
+        toLocation: editing.draft.toLocation.trim(),
+        movedBy: editing.draft.movedBy.trim(),
+        purpose: editing.draft.purpose.trim(),
+        docRef: editing.draft.docRef.trim(),
+        ...(ts ? { timestamp: ts } : {}),
+      });
+      setRows(prev => prev ? prev.map(r => r.id === updated.id ? updated : r) : [updated]);
+      setEditing(null);
+      setMsg({ kind: 'ok', text: `Updated movement #${updated.id}.` });
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+  async function removeRow(r: MovementLogRow) {
+    if (!confirm(`Delete movement #${r.id} (${r.fromLocation || 'New'} → ${r.toLocation || '—'}) for case ${r.caseId}? This is permanent and will also be removed from the case timeline.`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      await api.deleteMovementLog(r.id);
+      setRows(prev => prev ? prev.filter(x => x.id !== r.id) : prev);
+      setMsg({ kind: 'ok', text: `Deleted movement #${r.id}.` });
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  // Render the form used by both create and edit.
+  function renderForm(d: MovementDraft, onChange: (next: MovementDraft) => void) {
+    return (
+      <div className="itemtype-add" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, marginTop: 8 }}>
+        <div className="sub" style={{ margin: 0 }}>Movement details</div>
+        <label className="sub" style={{ margin: 0 }}>Case</label>
+        <select value={d.caseId} onChange={e => onChange(patchDraft(d, 'caseId', e.target.value))}>
+          <option value="">— pick a case —</option>
+          {cases.map(c => (
+            <option key={c.id} value={c.id}>{c.id} · {c.itemType}</option>
+          ))}
+        </select>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div>
+            <label className="sub" style={{ margin: 0 }}>From</label>
+            <input value={d.fromLocation} onChange={e => onChange(patchDraft(d, 'fromLocation', e.target.value))} placeholder="Previous location (optional — auto-fills if blank)" />
+          </div>
+          <div>
+            <label className="sub" style={{ margin: 0 }}>To</label>
+            <input value={d.toLocation} onChange={e => onChange(patchDraft(d, 'toLocation', e.target.value))} placeholder="e.g. Malkhana — Part B" />
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div>
+            <label className="sub" style={{ margin: 0 }}>Moved By</label>
+            <input value={d.movedBy} onChange={e => onChange(patchDraft(d, 'movedBy', e.target.value))} placeholder="Officer name" />
+          </div>
+          <div>
+            <label className="sub" style={{ margin: 0 }}>Timestamp</label>
+            <input type="datetime-local" value={d.timestamp} onChange={e => onChange(patchDraft(d, 'timestamp', e.target.value))} />
+          </div>
+        </div>
+        <label className="sub" style={{ margin: 0 }}>Purpose</label>
+        <input value={d.purpose} onChange={e => onChange(patchDraft(d, 'purpose', e.target.value))} placeholder="e.g. Seizure check-in, FSL dispatch" />
+        <label className="sub" style={{ margin: 0 }}>Doc Ref</label>
+        <input value={d.docRef} onChange={e => onChange(patchDraft(d, 'docRef', e.target.value))} placeholder="e.g. SM-2026-0214" />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="sub" style={{ marginBottom: 12 }}>
+        Add, edit, or remove <b>movement log rows</b> for any case. Changes apply immediately to the case timeline, the register's Last Movement Date column, and the dashboard's recent activity. Every change is recorded in the <b>Activity log</b> with the signed-in MM's ID.
+      </div>
+
+      <div className="scan-bar">
+        <span className="scan-label">Filter</span>
+        <input
+          placeholder="Filter by case, location, officer, purpose, or doc ref…"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+        />
+        <button className="btn" type="button" onClick={startCreate} disabled={busy || !!editing}>+ Add log</button>
+        <button className="btn ghost" type="button" onClick={reload} disabled={busy}>Refresh</button>
+      </div>
+
+      {creating && (
+        <>
+          {renderForm(creating, setCreating)}
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            <button className="btn" type="button" onClick={saveCreate} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+            <button className="btn ghost" type="button" onClick={cancelDraft} disabled={busy}>Cancel</button>
+          </div>
+        </>
+      )}
+
+      {editing && (
+        <>
+          <div className="sub" style={{ margin: '8px 0 0' }}>Editing movement #{editing.id}</div>
+          {renderForm(editing.draft, (next) => setEditing({ ...editing, draft: next }))}
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            <button className="btn" type="button" onClick={saveEdit} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+            <button className="btn ghost" type="button" onClick={cancelDraft} disabled={busy}>Cancel</button>
+          </div>
+        </>
+      )}
+
+      {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 8 }}>{msg.text}</div>}
+
+      <div className="audit-list" style={{ marginTop: 10 }}>
+        {rows === null
+          ? <div className="sub" style={{ padding: 14 }}>Loading movement logs…</div>
+          : filtered.length === 0
+            ? <div className="sub" style={{ padding: 14, textAlign: 'center' }}>
+                {rows.length === 0
+                  ? 'No movement logs yet. Use “Add log” above to create the first one.'
+                  : 'No movement logs match the current filter.'}
+              </div>
+            : filtered.map(r => {
+                const isEditing = editing?.id === r.id;
+                return (
+                  <div key={r.id} className="audit-row tone-info">
+                    <div className="audit-row-left">
+                      <span className="audit-action tone-info">#{r.id}</span>
+                      <span className="audit-target">{r.caseId}</span>
+                    </div>
+                    <div className="audit-row-right">
+                      <span className="audit-detail">
+                        <b>{r.fromLocation && r.fromLocation !== '—' ? r.fromLocation : 'New'}</b>
+                        <span style={{ color: 'var(--slate-soft)', margin: '0 6px' }}>→</span>
+                        <b>{r.toLocation || '—'}</b>
+                        {r.purpose ? <> · <i>{r.purpose}</i></> : null}
+                        {r.docRef ? <> · doc: {r.docRef}</> : null}
+                      </span>
+                    </div>
+                    <div className="audit-row-foot">
+                      <span className="audit-user">
+                        <span className="audit-user-name">by {r.movedBy || '—'}</span>
+                      </span>
+                      <span className="audit-time">{fmtMovementTime(r.timestamp)}</span>
+                      <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                        <button type="button" className="icon-btn tiny" disabled={busy || isEditing || !!creating} onClick={() => startEdit(r)}>✎</button>
+                        <button type="button" className="icon-btn tiny" disabled={busy || isEditing} title="Delete"
+                          onClick={() => removeRow(r)}
+                          style={{ color: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}>×</button>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+        }
+      </div>
+
+      <div className="form-actions">
+        <button className="btn ghost" onClick={reload} disabled={busy}>Refresh</button>
+      </div>
+    </div>
+  );
+}
 

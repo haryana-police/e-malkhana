@@ -1040,7 +1040,7 @@ app.get('/api/cases/:id/qr', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// =================== API: movements (append-only) ===================
+// =================== API: movements ===================
 
 app.get('/api/cases/:id/movements', async (req, res, next) => {
   try {
@@ -1050,6 +1050,109 @@ app.get('/api/cases/:id/movements', async (req, res, next) => {
     // .map/.length on the case-detail page.
     const rows = await getMovements(req.params.id);
     res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// System Settings CRUD for the actual persisted movement-log rows. The
+// normal case-detail flow continues to use POST /movements; these endpoints
+// are for controlled corrections, manual back-entry, and removal of an
+// incorrect log.
+app.get('/api/movement-logs', async (_req, res, next) => {
+  try {
+    const rows = [...(getDb().movements || [])]
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp) || b.id - a.id);
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+function movementText(value) {
+  return value == null ? '' : String(value).trim();
+}
+
+function normaliseMovementTimestamp(value, fallback = nowISO()) {
+  if (value == null || String(value).trim() === '') return fallback;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    const e = new Error('timestamp must be a valid date and time');
+    e.status = 400;
+    throw e;
+  }
+  return d.toISOString();
+}
+
+app.post('/api/movement-logs', async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const caseId = movementText(b.caseId);
+    const toLocation = movementText(b.toLocation);
+    const movedBy = movementText(b.movedBy);
+    if (!caseId) { const e = new Error('caseId is required'); e.status = 400; throw e; }
+    if (!toLocation) { const e = new Error('toLocation is required'); e.status = 400; throw e; }
+    if (!movedBy) { const e = new Error('movedBy is required'); e.status = 400; throw e; }
+
+    const c = findOrThrow(caseId);
+    const prior = await getMovements(c.id);
+    const movement = {
+      id: await nextMovementId(),
+      caseId: c.id,
+      fromLocation: movementText(b.fromLocation) || (prior.length ? prior[prior.length - 1].toLocation : '—'),
+      toLocation,
+      movedBy,
+      timestamp: normaliseMovementTimestamp(b.timestamp),
+      purpose: movementText(b.purpose),
+      docRef: movementText(b.docRef),
+    };
+    await mutate(d => { d.movements.push(movement); });
+    await auditMm(req, 'movement.create', c.id,
+      `Created movement: ${movement.fromLocation} → ${movement.toLocation}${movement.purpose ? ` — ${movement.purpose}` : ''}`);
+    res.status(201).json(movement);
+  } catch (e) { next(e); }
+});
+
+app.patch('/api/movement-logs/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { const e = new Error('invalid movement id'); e.status = 400; throw e; }
+    const existing = (getDb().movements || []).find(m => m.id === id);
+    if (!existing) { const e = new Error(`movement not found: ${id}`); e.status = 404; throw e; }
+    const b = req.body || {};
+    const caseId = b.caseId != null ? movementText(b.caseId) : existing.caseId;
+    const toLocation = b.toLocation != null ? movementText(b.toLocation) : existing.toLocation;
+    const movedBy = b.movedBy != null ? movementText(b.movedBy) : existing.movedBy;
+    if (!caseId) { const e = new Error('caseId is required'); e.status = 400; throw e; }
+    if (!toLocation) { const e = new Error('toLocation is required'); e.status = 400; throw e; }
+    if (!movedBy) { const e = new Error('movedBy is required'); e.status = 400; throw e; }
+    const targetCase = findOrThrow(caseId);
+    const movement = {
+      ...existing,
+      caseId: targetCase.id,
+      fromLocation: b.fromLocation != null ? movementText(b.fromLocation) : existing.fromLocation,
+      toLocation,
+      movedBy,
+      timestamp: normaliseMovementTimestamp(b.timestamp, existing.timestamp),
+      purpose: b.purpose != null ? movementText(b.purpose) : existing.purpose,
+      docRef: b.docRef != null ? movementText(b.docRef) : existing.docRef,
+    };
+    await mutate(d => {
+      const index = d.movements.findIndex(m => m.id === id);
+      if (index >= 0) d.movements[index] = movement;
+    });
+    await auditMm(req, 'movement.update', targetCase.id,
+      `Updated movement #${id}: ${movement.fromLocation} → ${movement.toLocation}`);
+    res.json(movement);
+  } catch (e) { next(e); }
+});
+
+app.delete('/api/movement-logs/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { const e = new Error('invalid movement id'); e.status = 400; throw e; }
+    const existing = (getDb().movements || []).find(m => m.id === id);
+    if (!existing) { const e = new Error(`movement not found: ${id}`); e.status = 404; throw e; }
+    await mutate(d => { d.movements = d.movements.filter(m => m.id !== id); });
+    await auditMm(req, 'movement.delete', existing.caseId,
+      `Deleted movement #${id}: ${existing.fromLocation} → ${existing.toLocation}`);
+    res.json({ id, deleted: true });
   } catch (e) { next(e); }
 });
 
@@ -1064,7 +1167,7 @@ app.post('/api/movements', async (req, res, next) => {
     const movement = {
       id: movementId,
       caseId: c.id,
-      fromLocation: lastLocationOf(c.id),
+      fromLocation: await lastLocationOf(c.id),
       toLocation:   b.toLocation,
       movedBy:      b.movedBy || getDb().officer.name,
       timestamp:    nowISO(),
@@ -1086,8 +1189,8 @@ app.post('/api/movements', async (req, res, next) => {
 
 // =================== API: scan endpoint ===================
 
-function lastLocationOf(caseId) {
-  const ms = getMovements(caseId);
+async function lastLocationOf(caseId) {
+  const ms = await getMovements(caseId);
   return ms.length ? ms[ms.length - 1].toLocation : '—';
 }
 
@@ -1148,9 +1251,9 @@ app.post('/api/scan', async (req, res, next) => {
     // (this is what the QR scanner typically does first: "what is this item?").
     if (b.toLocation) {
       const movement = {
-        id: nextMovementId(),
+        id: await nextMovementId(),
         caseId: c.id,
-        fromLocation: lastLocationOf(c.id),
+        fromLocation: await lastLocationOf(c.id),
         toLocation:   b.toLocation,
         movedBy:      b.movedBy || getDb().officer.name,
         timestamp:    nowISO(),

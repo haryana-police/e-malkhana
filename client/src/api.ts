@@ -171,6 +171,17 @@ export const api = {
   users:       () => get<User[]>('/users'),
   qr:          (id: string) => get<{ dataUrl: string; payload: string; encrypted?: boolean; mask?: string }>(`/cases/${encodeURIComponent(id)}/qr`),
   movements:   (id: string) => get<MovementLogRow[]>(`/cases/${encodeURIComponent(id)}/movements`),
+  // System Settings manages the persisted movement-log rows directly.
+  // The list is sorted newest-first; the same caseId, fromLocation,
+  // toLocation, movedBy, purpose, docRef, and timestamp fields apply
+  // that the case-detail timeline already shows.
+  movementLogs: () => get<MovementLogRow[]>('/movement-logs'),
+  createMovementLog: (row: { caseId: string; fromLocation?: string; toLocation: string; movedBy: string; timestamp?: string; purpose?: string; docRef?: string }) =>
+    send<MovementLogRow>('POST', '/movement-logs', row),
+  updateMovementLog: (id: number, patch: { caseId?: string; fromLocation?: string; toLocation?: string; movedBy?: string; timestamp?: string; purpose?: string; docRef?: string }) =>
+    send<MovementLogRow>('PATCH', `/movement-logs/${id}`, patch),
+  deleteMovementLog: (id: number) =>
+    send<{ id: number; deleted: boolean }>('DELETE', `/movement-logs/${id}`, {}),
   audit:       (params?: { limit?: number; userId?: string; action?: string; target?: string }) => {
     const q = new URLSearchParams();
     if (params?.limit  != null) q.set('limit',  String(params.limit));
