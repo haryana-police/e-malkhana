@@ -3,7 +3,6 @@ import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router
 import { api, setCurrentMm } from './api';
 import type {
   ViewName, CaseRow, CaseStatus, MovementEvent, AlertConfig, RackItem, User,
-  InspectionReport,
 } from './types';
 import { Letterhead } from './components/Letterhead';
 import { Sidebar } from './components/Sidebar';
@@ -161,37 +160,18 @@ export default function App() {
   // dashboard.coldStart → reject → caught → err set → UI shows red screen
   // even though cases() and alerts() would have succeeded individually.
   async function reload() {
-    const [dashR, casesR, alertsR, inspR] = [
+    const [dashR, casesR, alertsR] = [
       api.dashboard().catch(e => ({ __err: (e as Error).message })),
       api.cases().catch(e => ({ __err: (e as Error).message })),
       api.alerts().catch(e => ({ __err: (e as Error).message })),
-      api.inspections().catch(e => ({ __err: (e as Error).message })),
     ];
-    const [dash, cases, alerts, insp] = await Promise.all([dashR, casesR, alertsR, inspR]);
+    const [dash, cases, alerts] = await Promise.all([dashR, casesR, alertsR]);
     const dashErr  = (dash  as any).__err as string | undefined;
     const casesErr = (cases as any).__err as string | undefined;
-    const alErr    = (alerts as any).__err as string | undefined;
     if (casesErr) { setErr(casesErr); return; }
     const dashOk = !dashErr && dash ? (dash as any) : null;
     const casesOk = Array.isArray(cases) ? (cases as CaseRow[]) : null;
     const alOk = Array.isArray(alerts) ? (alerts as any) : null;
-    const inspOk = Array.isArray(insp) ? (insp as InspectionReport[]) : null;
-    // Merge non-compliant inspections into the Alerts & Compliance tab so a
-    // failing inspection automatically surfaces there (Part 5).
-    let mergedAlerts = alOk || [];
-    if (inspOk) {
-      const inspectionAlerts = inspOk
-        .filter(i => i.overallStatus === 'Non-Compliant')
-        .map(i => ({
-          level: 'urgent',
-          title: `Inspection ${i.inspectionId} — Non-Compliant (${i.policeStation})`,
-          desc: `Inspecting officer: ${i.inspectingOfficerName} (${i.inspectingOfficerRank}), ${i.inspectionDate}. Malkhana compliance failed — corrective action required.`,
-          days: i.inspectionDate,
-          category: 'inspection',
-          inspectionId: i.inspectionId,
-        }));
-      mergedAlerts = [...inspectionAlerts, ...mergedAlerts];
-    }
     setData(d => {
       const next = d ? { ...d } : ({} as BootData);
       if (dashOk) {
@@ -202,7 +182,7 @@ export default function App() {
         next.priorityAlerts  = dashOk.priorityAlerts;
       }
       if (casesOk) next.cases = casesOk;
-      if (alOk || inspOk) next.alerts = mergedAlerts;
+      if (alOk) next.alerts = alOk;
       return next as BootData;
     });
     setErr(null);
