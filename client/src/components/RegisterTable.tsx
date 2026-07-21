@@ -17,8 +17,6 @@ interface Props {
   onChangeStatus?: (c: CaseRow) => void;
   onDownloadReport?: (format: 'xlsx' | 'pdf', ids?: string[]) => void;
   onOpenRegister?: () => void;
-  onViewAll?: () => void;            // Dashboard "View full register →"
-  pagerTop?: boolean;               // also render page controls above the table
 };
 
 function statusClass(s: CaseStatus): string {
@@ -78,20 +76,14 @@ export function RegisterTable({
   activeStatus, onClearStatus,
   excludeDisposed, onClearExcludeDisposed,
   onOpenTag, onOpenTimeline, onOpenScan, onChangeStatus,
-  onDownloadReport, onOpenRegister, onViewAll, pagerTop,
+  onDownloadReport, onOpenRegister,
 }: Props) {
   const [textFilter, setTextFilter] = useState('');
   const order: ColKey[] = DEFAULT_ORDER;
   const navigate = useNavigate();
-  const PAGE_SIZE = 8;
-  const [page, setPage] = useState(1);
-
   const [openCol, setOpenCol] = useState<ColKey | null>(null);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, string>>>({});
   const [statusFilter, setStatusFilter] = useState<CaseStatus[]>([]);
-
-  // Reset to first page whenever the filter result changes.
-  useEffect(() => { setPage(1); }, [textFilter, colFilters, statusFilter, activeSection, activeStatus, excludeDisposed]);
 
   useEffect(() => {
     if (!openCol) return;
@@ -212,9 +204,9 @@ export function RegisterTable({
             <button
               type="button"
               className="act-btn act-tag"
-              title="View evidence tag (real QR)"
+              title="View QR code tag"
               onClick={(e) => { e.stopPropagation(); if (onOpenTag) onOpenTag(c); }}
-            ><span className="act-ico">▦</span><span className="act-lbl">evidence tag</span></button>
+            ><span className="act-ico">▦</span><span className="act-lbl">QR code</span></button>
             <button
               type="button"
               className="act-btn act-log"
@@ -273,24 +265,9 @@ export function RegisterTable({
     return 0;
   });
 
-  // Both modes are paginated at PAGE_SIZE.  Compact (Dashboard) was
-  // previously capped at 8 with a "view all" link; now it just pages like
-  // the full register so the Dashboard can reach every page too.
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const shown = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  // Compact pager — no page-number buttons, just « ‹ Prev  Next › »  + page info.
-  // Used both inline (right corner of the search bar) and as a top pager (Dashboard).
-  const renderPager = () => (
-    <div className="rt-pager rt-pager-compact">
-      <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(1)} title="First page">«</button>
-      <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
-      <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Next">Next ›</button>
-      <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(totalPages)} title="Last page">»</button>
-      <span className="pg-info">Page {safePage} of {totalPages} · {sorted.length} items</span>
-    </div>
-  );
+  // Render the complete filtered register; pagination controls were removed
+  // so every matching case remains visible in one table.
+  const shown = sorted;
 
   return (
     <div className="register-wrap">
@@ -357,18 +334,7 @@ export function RegisterTable({
           onKeyDown={e => { if (e.key === 'Enter' && textFilter.trim() && onOpenScan) onOpenScan(); }}
         />
         {onOpenScan && <button className="btn small scan-btn" onClick={onOpenScan}>Scan QR</button>}
-        {totalPages > 1 && (
-          <div className="rt-pager rt-pager-inline">
-            <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(1)} title="First page">«</button>
-            <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
-            <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Next">Next ›</button>
-            <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(totalPages)} title="Last page">»</button>
-            <span className="pg-info">Page {safePage} of {totalPages} · {sorted.length} items</span>
-          </div>
-        )}
       </div>
-
-      {pagerTop && totalPages > 1 && renderPager()}
 
       <div className="panel">
         <table className="register-table">
