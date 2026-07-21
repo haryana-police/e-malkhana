@@ -19,7 +19,6 @@ interface Props {
   onOpenRegister: () => void;
   onChangeStatus: (c: CaseRow) => void;
   onDownloadReport: (format: 'xlsx' | 'pdf') => void;
-  onViewAll: () => void;
 }
 
 type TileId = 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection';
@@ -36,7 +35,7 @@ interface TileSpec {
 export function Dashboard({
   stats, movements, alerts, totalCases, cases,
   onStatClick, onOpenTag, onOpenTimeline,
-  onOpenScan, onOpenRegister, onChangeStatus, onDownloadReport, onViewAll,
+  onOpenScan, onOpenRegister, onChangeStatus, onDownloadReport,
 }: Props) {
   const MOVE_PAGE_SIZE = 5;
   const [movePage, setMovePage] = useState(1);
@@ -89,14 +88,12 @@ export function Dashboard({
       <RegisterTable
         cases={cases}
         compact
-        pagerTop
         onOpenTag={onOpenTag}
         onOpenTimeline={onOpenTimeline}
         onOpenScan={onOpenScan}
         onOpenRegister={onOpenRegister}
         onChangeStatus={onChangeStatus}
         onDownloadReport={onDownloadReport}
-        onViewAll={onViewAll}
       />
 
       <div className="panel">

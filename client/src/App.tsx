@@ -356,7 +356,6 @@ export default function App() {
                 onOpenRegister={() => navigate('/caseproperty/new')}
                 onChangeStatus={setChangeCase}
                 onDownloadReport={onDownloadReport}
-                onViewAll={() => navigate('/caseproperty')}
               />
             } />
             <Route path="/dashboard" element={
@@ -373,7 +372,6 @@ export default function App() {
                 onOpenRegister={() => navigate('/caseproperty/new')}
                 onChangeStatus={setChangeCase}
                 onDownloadReport={onDownloadReport}
-                onViewAll={() => navigate('/caseproperty')}
               />
             } />
             <Route path="/caseproperty" element={
@@ -489,7 +487,6 @@ export default function App() {
                 onOpenRegister={() => navigate('/caseproperty/new')}
                 onChangeStatus={setChangeCase}
                 onDownloadReport={onDownloadReport}
-                onViewAll={() => navigate('/caseproperty')}
               />
             } />
           </Routes>
