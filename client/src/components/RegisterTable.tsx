@@ -280,21 +280,12 @@ export function RegisterTable({
   const safePage = Math.min(page, totalPages);
   const shown = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+  // Compact pager — no page-number buttons, just « ‹ Prev  Next › »  + page info.
+  // Used both inline (right corner of the search bar) and as a top pager (Dashboard).
   const renderPager = () => (
-    <div className="rt-pager">
+    <div className="rt-pager rt-pager-compact">
       <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(1)} title="First page">«</button>
       <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
-      {Array.from({ length: totalPages }, (_, i) => i + 1)
-        .filter(p => p === 1 || p === totalPages || (p >= safePage - 2 && p <= safePage + 2))
-        .map((p, idx, arr) => (
-          <span key={p} style={{ display: 'inline-flex', alignItems: 'center' }}>
-            {idx > 0 && p !== arr[idx - 1] + 1 && <span className="pg-ellipsis">…</span>}
-            <button
-              className={`pg-btn${p === safePage ? ' active' : ''}`}
-              onClick={() => setPage(p)}
-            >{p}</button>
-          </span>
-        ))}
       <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Next">Next ›</button>
       <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(totalPages)} title="Last page">»</button>
       <span className="pg-info">Page {safePage} of {totalPages} · {sorted.length} items</span>
@@ -366,6 +357,15 @@ export function RegisterTable({
           onKeyDown={e => { if (e.key === 'Enter' && textFilter.trim() && onOpenScan) onOpenScan(); }}
         />
         {onOpenScan && <button className="btn small scan-btn" onClick={onOpenScan}>Scan QR</button>}
+        {totalPages > 1 && (
+          <div className="rt-pager rt-pager-inline">
+            <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(1)} title="First page">«</button>
+            <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
+            <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} title="Next">Next ›</button>
+            <button className="pg-btn" disabled={safePage === totalPages} onClick={() => setPage(totalPages)} title="Last page">»</button>
+            <span className="pg-info">Page {safePage} of {totalPages} · {sorted.length} items</span>
+          </div>
+        )}
       </div>
 
       {pagerTop && totalPages > 1 && renderPager()}
