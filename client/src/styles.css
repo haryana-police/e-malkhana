@@ -204,14 +204,14 @@ body{
 .row-actions-vertical{ display:flex; flex-direction:column; gap:2px; align-items:stretch; }
 .act-btn{
   display:inline-flex; align-items:center; gap:4px;
-  font-family:'IBM Plex Sans', sans-serif; font-size:10.5px; font-weight:600;
-  padding:2px 6px; border-radius:3px; cursor:pointer;
+  font-family:'IBM Plex Sans', sans-serif; font-size:10px; font-weight:600;
+  padding:1px 5px; border-radius:3px; cursor:pointer;
   border:1px solid var(--line); background:var(--white-paper); color:var(--ink-navy);
-  white-space:nowrap; line-height:1.25;
+  white-space:nowrap; line-height:1.2;
   justify-content:flex-start;
 }
 .act-btn:hover{ opacity:0.9; }
-.act-ico{ font-size:12px; }
+.act-ico{ font-size:11px; }
 .act-tag{ border-color:rgba(31,122,61,0.5); color:#1f7a3d; }
 .act-log{ border-color:rgba(140,122,84,0.5); color:var(--ink-navy); }
 .act-status{ border-color:rgba(192,57,43,0.5); color:#c0392b; }
@@ -329,12 +329,12 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
   font-weight:600;
   letter-spacing:0.06em;
   text-transform:uppercase;
-  padding:11px 12px;
+  padding:8px 6px;
   border-bottom:2px solid rgba(0,0,0,0.25);
   position:sticky; top:0; z-index:1;
 }
 .register-table tbody td{
-  padding:10px 12px;
+  padding:6px 6px;
   font-size:12.5px;
   border-bottom:1px solid var(--paper-dark);
 }
@@ -346,7 +346,7 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 .panel table .col-sno{ width:44px; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }
 .register-table .col-quant{ width:56px; text-align:center; }
 .register-table .quant{ text-align:center; font-family:'IBM Plex Mono',monospace; font-weight:600; }
-.register-table .col-actions{ width:92px; text-align:left; padding-left:6px; padding-right:6px; }
+.register-table .col-actions{ width:86px; text-align:left; padding-left:4px; padding-right:4px; }
 .register-table .date-col{ font-family:'IBM Plex Mono',monospace; font-size:12px; white-space:nowrap; }
 .register-table .type{ font-weight:600; color:var(--slate); }
 .register-table .bns-chip{ margin-top:4px; }
