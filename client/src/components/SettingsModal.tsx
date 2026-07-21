@@ -680,6 +680,36 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
             finally { setBusy(false); }
           }
 
+          // Move the active category up/down within the same section.
+          // Reorders by swapping sortOrder with the neighbour and persists.
+          async function moveCat(c: CategoryOfItem, dir: -1 | 1) {
+            // Build the ordered list of categories in the SAME section as `c`,
+            // using the persisted sort_order (fall back to the displayed order).
+            const inSection = cats
+              .filter(x => x.sectionLetter === c.sectionLetter)
+              .slice()
+              .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id.localeCompare(b.id));
+            const i = inSection.findIndex(x => x.id === c.id);
+            const ni = i + dir;
+            if (i < 0 || ni < 0 || ni >= inSection.length) return;
+            const a = inSection[i];
+            const b = inSection[ni];
+            // Swap by re-stamping both with a clean (10-spaced) sort_order so the
+            // unique value avoids any drift from previous edits.
+            const newOrderA = ni * 10;
+            const newOrderB = i * 10;
+            setBusy(true); setMsg(null);
+            try {
+              await Promise.all([
+                api.upsertItemCategory({ id: a.id, sortOrder: newOrderA }),
+                api.upsertItemCategory({ id: b.id, sortOrder: newOrderB }),
+              ]);
+              await reload();
+              setMsg({ kind: 'ok', text: `Moved "${a.label}" ${dir === -1 ? 'up' : 'down'}.` });
+            } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+            finally { setBusy(false); }
+          }
+
           // ---------- field (column) CRUD for the active category ----------
           function openAddField() { setFieldDraft({ label: '', type: 'text', options: '', unit: '', placeholder: '', required: false }); }
           function openEditField(f: CategoryFieldDef) {
@@ -765,15 +795,31 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
 
           {!loading && active && (
             <>
-              {/* edit / delete the active category */}
+              {/* edit / delete / reorder the active category */}
               <div className="itemtype-section-head">
                 <b>{active.label}</b>
                 <span className="itemtype-count">{(active.fields || []).length} column{(active.fields || []).length === 1 ? '' : 's'}</span>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                  <button type="button" className="icon-btn tiny" title="Edit category" onClick={() => openEditCat(active)} disabled={busy}>✎</button>
-                  <button type="button" className="icon-btn tiny" title="Delete category"
-                    onClick={() => deleteCat(active)} disabled={busy}
-                    style={{ color: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}>×</button>
+                  {(() => {
+                    // Same-section neighbours for ↑↓ enable/disable state.
+                    const inSection = cats
+                      .filter(x => x.sectionLetter === active.sectionLetter)
+                      .slice()
+                      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id.localeCompare(b.id));
+                    const i = inSection.findIndex(x => x.id === active.id);
+                    const atTop = i <= 0;
+                    const atBottom = i < 0 || i >= inSection.length - 1;
+                    return (
+                      <>
+                        <button type="button" className="icon-btn tiny" title="Move category up" onClick={() => moveCat(active, -1)} disabled={busy || atTop}>↑</button>
+                        <button type="button" className="icon-btn tiny" title="Move category down" onClick={() => moveCat(active, 1)} disabled={busy || atBottom}>↓</button>
+                        <button type="button" className="icon-btn tiny" title="Edit category" onClick={() => openEditCat(active)} disabled={busy}>✎</button>
+                        <button type="button" className="icon-btn tiny" title="Delete category"
+                          onClick={() => deleteCat(active)} disabled={busy}
+                          style={{ color: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}>×</button>
+                      </>
+                    );
+                  })()}
                 </span>
               </div>
 
