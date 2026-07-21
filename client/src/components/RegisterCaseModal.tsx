@@ -719,7 +719,11 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                   // register layout it shows only Category, Malkhana Section, Total Amount,
                   // Description and Photo.  Force-suppress any Type dropdown (even if a
                   // stale DB row ever carries subTypes) so Cash never renders a Type.
+                  // Excise (Liquor) is the same: per the trimmed register layout the
+                  // item row only keeps Category, Malkhana Section, Quantity, Description
+                  // and Photo — no Type dropdown, even if a stale DB row carries subTypes.
                   const cashNoType = cat?.id === 'cash';
+                  const liquorNoType = cat?.id === 'liquor';
                   const seqHint = `MK-2026-${(items.length ? String(idx + 1).padStart(6, '0') : '000001')} (server-assigned)`;
                   return (
                     <div key={it.localId} className="item-card">
@@ -756,7 +760,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           </label>
                         )}
 
-                        {!isMinimal && !cashNoType && cat?.subTypes && cat.subTypeControl === 'radio' ? (
+                        {!isMinimal && !cashNoType && !liquorNoType && cat?.subTypes && cat.subTypeControl === 'radio' ? (
                           <div className={`rc-radio req${cat?.id === 'arms' ? ' inline' : ''}${it.subType ? ' filled' : ''}`}>
                             <span className="rc-field-label">{cat.subTypeLabel || 'Type'}</span>
                             <div className="rc-radio-row">
@@ -770,7 +774,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                               ))}
                             </div>
                           </div>
-                        ) : !isMinimal && !cashNoType && cat?.subTypes && (
+                        ) : !isMinimal && !cashNoType && !liquorNoType && cat?.subTypes && (
                           <label>{cat.subTypeLabel || 'Type'}
                             <select value={it.subType} onChange={e => patchItem(it.localId, { subType: e.target.value })}>
                               <option value="">— select —</option>

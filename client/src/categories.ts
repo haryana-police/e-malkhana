@@ -131,9 +131,10 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     // Category, Malkhana Section, Quantity, Item Description, Photo.  The
     // detailed liquor columns (Type, Place of Seizure, Sealed/Unsealed,
     // Seal No./Mark, Sealed By, No. of Bottles/Pouches, Brand Name, Sample
-    // Sent) are removed per request — they are hidden in RegisterCaseModal
-    // for the 'liquor' category, matching the trimmed narcotics/arms/cash/
-    // vehicle layout (each item row stays a clean 3-column grid).
+    // Sent) are removed per request — the Type dropdown is force-suppressed
+    // in RegisterCaseModal for the 'liquor' category (liquorNoType flag),
+    // matching the trimmed narcotics/arms/cash/vehicle layout (each item
+    // row stays a clean 3-column grid).
     fields: [
       { key: 'quantity2', label: 'Quantity', type: 'text', placeholder: 'Liters / Bottles / Pouches' },
     ],
