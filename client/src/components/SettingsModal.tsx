@@ -13,6 +13,10 @@ interface Props {
   // user clicks a specific System Setting part from the sidebar, so they
   // land on that one part instead of the whole settings surface.
   single?: boolean;
+  // When true, render as a full inline PAGE (no overlay / dimmed backdrop).
+  // Used by the /settings route. The focused "Configure threshold" popup
+  // from the Alerts screen still uses the modal (single=true, asPage=false).
+  asPage?: boolean;
 }
 
 // Title shown in the focused (single-part) header strip.
@@ -41,7 +45,7 @@ function fmtTime(iso: string) {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab, single }: Props) {
+export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab, single, asPage = false }: Props) {
   const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
@@ -57,7 +61,7 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
   const [logError, setLogError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) {
+    if (open || asPage) {
       setMsg(null);
       setFieldErrors({});
       api.alertConfig().then(setCfg).catch(e => setMsg({ kind: 'error', text: (e as Error).message }));
@@ -69,19 +73,18 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
         api.backupLog(20).then(setBackupLog).catch(() => {});
       }
     }
-  }, [open, tab]);
+  }, [open, asPage, tab]);
 
   // Jump to the tab requested by the caller (e.g. a sidebar deep-link)
   // whenever the modal is (re)opened with an `initialTab`.  In single-part
   // mode we focus that one part and hide the tab bar (see `showTabs`).
   useEffect(() => {
-    if (open && initialTab) setTab(initialTab);
-  }, [open, initialTab]);
-
+    if ((open || asPage) && initialTab) setTab(initialTab);
+  }, [open, asPage, initialTab]);
   const showTabs = !single;
   const activeTab = single && initialTab ? initialTab : tab;
 
-  if (!open) return null;
+  if (!open && !asPage) return null;
 
   // Mirror the backend rules. Keep these in sync with server/server.js
   // PATCH /api/alerts/config validation. Positive integers only (1–3650 days),
@@ -177,254 +180,270 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
   const userSummary: Record<string, number> = {};
   for (const e of visibleLog) userSummary[e.userId] = (userSummary[e.userId] || 0) + 1;
 
+  const content = (
+    <>
+      {showTabs ? (
+        <>
+          <h3>System Setting</h3>
+          <div className="sub">
+            Configure thresholds, per-item-type registration fields, backups, and review
+            who made what changes — <b>every action is logged with the MM Login ID</b>.
+          </div>
+
+          <div className="audit-tabs">
+            <button
+              className={`audit-tab${tab === 'fields' ? ' active' : ''}`}
+              onClick={() => setTab('fields')}
+            >Item Type Fields</button>
+            {onOpenItemTypeManager && (
+              <button
+                className="audit-tab"
+                type="button"
+                onClick={() => { onOpenItemTypeManager(); }}
+                style={{ marginLeft: 0 }}
+              >Item Types</button>
+            )}
+            <button
+              className={`audit-tab${tab === 'backup' ? ' active' : ''}`}
+              onClick={() => setTab('backup')}
+            >Backup &amp; Restore</button>
+            <button
+              className={`audit-tab${tab === 'log' ? ' active' : ''}`}
+              onClick={() => setTab('log')}
+            >Activity log <span className="audit-tab-count">{visibleLog.length}</span></button>
+            {onOpenSectionsManager && (
+              <button
+                className="audit-tab"
+                type="button"
+                onClick={() => { onOpenSectionsManager(); }}
+                style={{ marginLeft: 'auto' }}
+              >Edit Malkhana Sections</button>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="settings-focus-head">
+          <span className="settings-focus-eyebrow">System Setting</span>
+          <h3 className="settings-focus-title">{FOCUS_TITLE[activeTab] ?? 'Settings'}</h3>
+        </div>
+      )}
+
+      {tab === 'thresholds' && cfg && (
+        <>
+          <div className="settings-list">
+            {single && (
+              <div className="sub" style={{ marginBottom: 12 }}>
+                Set the day-count thresholds that drive the <b>Alerts &amp; Compliance</b> report.
+                Changes apply on save and re-run the alert scan immediately.
+              </div>
+            )}
+            {!single && (
+            <div className="settings-row">
+              <label>
+                Police Station name
+                <div className="help">
+                  Shown in the dashboard subheader and on every report letterhead
+                  (e.g.&nbsp;<i>PS Sector-5, Panchkula</i>).  3–80 characters.
+                </div>
+              </label>
+              <input
+                type="text"
+                maxLength={80}
+                value={cfg.station || ''}
+                placeholder="PS Sector-5, Panchkula"
+                aria-invalid={!!fieldErrors.station}
+                aria-describedby={fieldErrors.station ? 'err-station' : undefined}
+                onChange={e => set('station', e.target.value)}
+                style={{ minWidth: 240 }}
+              />
+              {fieldErrors.station && (
+                <div id="err-station" className="field-error" role="alert">{fieldErrors.station}</div>
+              )}
+            </div>
+            )}
+            <div className="settings-row">
+              <label>
+                FSL report overdue
+                <div className="help">Number of days before an FSL case triggers an alert.</div>
+              </label>
+              <input type="number" min={1} max={3650} step={1} value={cfg.fslDays}
+                aria-invalid={!!fieldErrors.fslDays} aria-describedby={fieldErrors.fslDays ? 'err-fslDays' : undefined}
+                onChange={e => set('fslDays', Number(e.target.value))} />
+              <span className="settings-unit">days</span>
+              {fieldErrors.fslDays && <div id="err-fslDays" className="field-error" role="alert">{fieldErrors.fslDays}</div>}
+            </div>
+            <div className="settings-row">
+              <label>
+                Expert opinion overdue
+                <div className="help">Number of days before an Expert Opinion case is flagged.</div>
+              </label>
+              <input type="number" min={1} max={3650} step={1} value={cfg.expertDays}
+                aria-invalid={!!fieldErrors.expertDays} aria-describedby={fieldErrors.expertDays ? 'err-expertDays' : undefined}
+                onChange={e => set('expertDays', Number(e.target.value))} />
+              <span className="settings-unit">days</span>
+              {fieldErrors.expertDays && <div id="err-expertDays" className="field-error" role="alert">{fieldErrors.expertDays}</div>}
+            </div>
+            <div className="settings-row">
+              <label>
+                Court-order / disposal overdue
+                <div className="help">Number of days before a case awaiting court order is flagged.</div>
+              </label>
+              <input type="number" min={1} max={3650} step={1} value={cfg.courtDays}
+                aria-invalid={!!fieldErrors.courtDays} aria-describedby={fieldErrors.courtDays ? 'err-courtDays' : undefined}
+                onChange={e => set('courtDays', Number(e.target.value))} />
+              <span className="settings-unit">days</span>
+              {fieldErrors.courtDays && <div id="err-courtDays" className="field-error" role="alert">{fieldErrors.courtDays}</div>}
+            </div>
+            <div className="settings-row">
+              <label>
+                Quarterly inspection cycle
+                <div className="help">Cycle length for the next-due inspection alert.</div>
+              </label>
+              <input type="number" min={1} max={3650} step={1} value={cfg.inspectionCycleDays}
+                aria-invalid={!!fieldErrors.inspectionCycleDays} aria-describedby={fieldErrors.inspectionCycleDays ? 'err-inspectionCycleDays' : undefined}
+                onChange={e => set('inspectionCycleDays', Number(e.target.value))} />
+              <span className="settings-unit">days</span>
+              {fieldErrors.inspectionCycleDays && <div id="err-inspectionCycleDays" className="field-error" role="alert">{fieldErrors.inspectionCycleDays}</div>}
+            </div>
+            {!single && (
+            <div className="settings-row">
+              <label>
+                Last inspection
+                <div className="help">Date of the most-recent quarterly inspection.</div>
+              </label>
+              <input type="date" value={cfg.lastInspection}
+                aria-invalid={!!fieldErrors.lastInspection} aria-describedby={fieldErrors.lastInspection ? 'err-lastInspection' : undefined}
+                onChange={e => set('lastInspection', e.target.value)} />
+              {fieldErrors.lastInspection && <div id="err-lastInspection" className="field-error" role="alert">{fieldErrors.lastInspection}</div>}
+            </div>
+            )}
+          </div>
+          {msg && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
+          <div className="form-actions">
+            <button className="btn ghost" onClick={reset} disabled={busy}>Reset</button>
+            <button className="btn ghost" onClick={onClose} disabled={busy}>Close</button>
+            <button className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'fields' && (
+        <ItemTypeFieldsManager />
+      )}
+
+      {activeTab === 'backup' && (
+        <BackupTabContent
+          backup={backup}
+          backupLog={backupLog}
+          busy={backupBusy}
+          msg={backupMsg}
+          onRun={async () => {
+            setBackupBusy(true); setBackupMsg(null);
+            try {
+              const r = await api.backupRun();
+              setBackupMsg({
+                kind: r.ok ? 'ok' : 'error',
+                text: r.ok ? `Backup uploaded: ${r.fileName || 'success'}` : `Backup failed: ${r.error || 'unknown'}`,
+              });
+              // refresh status + log
+              api.backupStatus().then(setBackup).catch(() => {});
+              api.backupLog(20).then(setBackupLog).catch(() => {});
+            } catch (e) {
+              setBackupMsg({ kind: 'error', text: (e as Error).message });
+            } finally {
+              setBackupBusy(false);
+            }
+          }}
+        />
+      )}
+      {activeTab === 'log' && (
+        <>
+          {Object.keys(userSummary).length > 0 && (
+            <div className="audit-summary">
+              <div className="audit-summary-label">Activity by MM Login ID</div>
+              <div className="audit-summary-chips">
+                {Object.entries(userSummary).map(([uid, n]) => (
+                  <button
+                    key={uid}
+                    className={`audit-chip${logFilter.toUpperCase() === uid ? ' active' : ''}`}
+                    onClick={() => setLogFilter(logFilter.toUpperCase() === uid ? '' : uid)}
+                  >
+                    <span className="chip-id">{uid}</span>
+                    <span className="chip-n">{n}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="scan-bar">
+            <span className="scan-label">Filter</span>
+            <input
+              placeholder="Filter by MM id, name, action, target, details…"
+              value={logFilter}
+              onChange={e => setLogFilter(e.target.value)}
+            />
+          </div>
+
+          {logError && <div className="form-msg show error">{logError}</div>}
+
+          <div className="audit-list">
+            {log === null
+              ? <div className="sub" style={{ padding: 14 }}>Loading…</div>
+              : filteredLog.length === 0
+                ? <div className="sub" style={{ padding: 14, textAlign: 'center' }}>
+                    {visibleLog.length === 0
+                      ? 'No activity yet. Once any MM updates a case, the change will be logged here with their ID.'
+                      : 'No entries match the current filter.'}
+                  </div>
+                : filteredLog.map(e => {
+                    const meta = ACTION_LABELS[e.action] || { label: e.action.toUpperCase(), tone: 'info' };
+                    return (
+                      <div key={e.id} className={`audit-row tone-${meta.tone}`}>
+                        <div className="audit-row-left">
+                          <span className={`audit-action tone-${meta.tone}`}>{meta.label}</span>
+                          <span className="audit-target">{e.target || '—'}</span>
+                        </div>
+                        <div className="audit-row-right">
+                          <span className="audit-detail">{e.details}</span>
+                        </div>
+                        <div className="audit-row-foot">
+                          <span className="audit-user">
+                            <span className="audit-user-id">{e.userId}</span>
+                            <span className="audit-user-name">{e.userName}</span>
+                          </span>
+                          <span className="audit-time">{fmtTime(e.timestamp)}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+            }
+          </div>
+
+          <div className="form-actions">
+            <button className="btn ghost" onClick={onClose}>Close</button>
+          </div>
+        </>
+      )}
+    </>
+  );
+
+  if (asPage) {
+    return (
+      <div className="ss-page-wrap">
+        <div className="ss-page-card">
+          <button className="ss-page-back" onClick={onClose} aria-label="Back">← Back</button>
+          {content}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="overlay open overlay-fs" onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div className="form-card audit-card">
         <button className="tag-close" onClick={onClose} aria-label="Close">✕</button>
-
-        {showTabs ? (
-          <>
-            <h3>System Setting</h3>
-            <div className="sub">
-              Configure thresholds, per-item-type registration fields, backups, and review
-              who made what changes — <b>every action is logged with the MM Login ID</b>.
-            </div>
-
-            <div className="audit-tabs">
-              <button
-                className={`audit-tab${tab === 'fields' ? ' active' : ''}`}
-                onClick={() => setTab('fields')}
-              >Item Type Fields</button>
-              {onOpenItemTypeManager && (
-                <button
-                  className="audit-tab"
-                  type="button"
-                  onClick={() => { onOpenItemTypeManager(); }}
-                  style={{ marginLeft: 0 }}
-                >Item Types</button>
-              )}
-              <button
-                className={`audit-tab${tab === 'backup' ? ' active' : ''}`}
-                onClick={() => setTab('backup')}
-              >Backup &amp; Restore</button>
-              <button
-                className={`audit-tab${tab === 'log' ? ' active' : ''}`}
-                onClick={() => setTab('log')}
-              >Activity log <span className="audit-tab-count">{visibleLog.length}</span></button>
-              {onOpenSectionsManager && (
-                <button
-                  className="audit-tab"
-                  type="button"
-                  onClick={() => { onOpenSectionsManager(); }}
-                  style={{ marginLeft: 'auto' }}
-                >Edit Malkhana Sections</button>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="settings-focus-head">
-            <span className="settings-focus-eyebrow">System Setting</span>
-            <h3 className="settings-focus-title">{FOCUS_TITLE[activeTab] ?? 'Settings'}</h3>
-          </div>
-        )}
-
-        {tab === 'thresholds' && cfg && (
-          <>
-            <div className="settings-list">
-              {single && (
-                <div className="sub" style={{ marginBottom: 12 }}>
-                  Set the day-count thresholds that drive the <b>Alerts &amp; Compliance</b> report.
-                  Changes apply on save and re-run the alert scan immediately.
-                </div>
-              )}
-              {!single && (
-              <div className="settings-row">
-                <label>
-                  Police Station name
-                  <div className="help">
-                    Shown in the dashboard subheader and on every report letterhead
-                    (e.g.&nbsp;<i>PS Sector-5, Panchkula</i>).  3–80 characters.
-                  </div>
-                </label>
-                <input
-                  type="text"
-                  maxLength={80}
-                  value={cfg.station || ''}
-                  placeholder="PS Sector-5, Panchkula"
-                  aria-invalid={!!fieldErrors.station}
-                  aria-describedby={fieldErrors.station ? 'err-station' : undefined}
-                  onChange={e => set('station', e.target.value)}
-                  style={{ minWidth: 240 }}
-                />
-                {fieldErrors.station && (
-                  <div id="err-station" className="field-error" role="alert">{fieldErrors.station}</div>
-                )}
-              </div>
-              )}
-              <div className="settings-row">
-                <label>
-                  FSL report overdue
-                  <div className="help">Number of days before an FSL case triggers an alert.</div>
-                </label>
-                <input type="number" min={1} max={3650} step={1} value={cfg.fslDays}
-                  aria-invalid={!!fieldErrors.fslDays} aria-describedby={fieldErrors.fslDays ? 'err-fslDays' : undefined}
-                  onChange={e => set('fslDays', Number(e.target.value))} />
-                <span className="settings-unit">days</span>
-                {fieldErrors.fslDays && <div id="err-fslDays" className="field-error" role="alert">{fieldErrors.fslDays}</div>}
-              </div>
-              <div className="settings-row">
-                <label>
-                  Expert opinion overdue
-                  <div className="help">Number of days before an Expert Opinion case is flagged.</div>
-                </label>
-                <input type="number" min={1} max={3650} step={1} value={cfg.expertDays}
-                  aria-invalid={!!fieldErrors.expertDays} aria-describedby={fieldErrors.expertDays ? 'err-expertDays' : undefined}
-                  onChange={e => set('expertDays', Number(e.target.value))} />
-                <span className="settings-unit">days</span>
-                {fieldErrors.expertDays && <div id="err-expertDays" className="field-error" role="alert">{fieldErrors.expertDays}</div>}
-              </div>
-              <div className="settings-row">
-                <label>
-                  Court-order / disposal overdue
-                  <div className="help">Number of days before a case awaiting court order is flagged.</div>
-                </label>
-                <input type="number" min={1} max={3650} step={1} value={cfg.courtDays}
-                  aria-invalid={!!fieldErrors.courtDays} aria-describedby={fieldErrors.courtDays ? 'err-courtDays' : undefined}
-                  onChange={e => set('courtDays', Number(e.target.value))} />
-                <span className="settings-unit">days</span>
-                {fieldErrors.courtDays && <div id="err-courtDays" className="field-error" role="alert">{fieldErrors.courtDays}</div>}
-              </div>
-              <div className="settings-row">
-                <label>
-                  Quarterly inspection cycle
-                  <div className="help">Cycle length for the next-due inspection alert.</div>
-                </label>
-                <input type="number" min={1} max={3650} step={1} value={cfg.inspectionCycleDays}
-                  aria-invalid={!!fieldErrors.inspectionCycleDays} aria-describedby={fieldErrors.inspectionCycleDays ? 'err-inspectionCycleDays' : undefined}
-                  onChange={e => set('inspectionCycleDays', Number(e.target.value))} />
-                <span className="settings-unit">days</span>
-                {fieldErrors.inspectionCycleDays && <div id="err-inspectionCycleDays" className="field-error" role="alert">{fieldErrors.inspectionCycleDays}</div>}
-              </div>
-              {!single && (
-              <div className="settings-row">
-                <label>
-                  Last inspection
-                  <div className="help">Date of the most-recent quarterly inspection.</div>
-                </label>
-                <input type="date" value={cfg.lastInspection}
-                  aria-invalid={!!fieldErrors.lastInspection} aria-describedby={fieldErrors.lastInspection ? 'err-lastInspection' : undefined}
-                  onChange={e => set('lastInspection', e.target.value)} />
-                {fieldErrors.lastInspection && <div id="err-lastInspection" className="field-error" role="alert">{fieldErrors.lastInspection}</div>}
-              </div>
-              )}
-            </div>
-            {msg && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
-            <div className="form-actions">
-              <button className="btn ghost" onClick={reset} disabled={busy}>Reset</button>
-              <button className="btn ghost" onClick={onClose} disabled={busy}>Close</button>
-              <button className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
-            </div>
-          </>
-        )}
-
-        {activeTab === 'fields' && (
-          <ItemTypeFieldsManager />
-        )}
-
-        {activeTab === 'backup' && (
-          <BackupTabContent
-            backup={backup}
-            backupLog={backupLog}
-            busy={backupBusy}
-            msg={backupMsg}
-            onRun={async () => {
-              setBackupBusy(true); setBackupMsg(null);
-              try {
-                const r = await api.backupRun();
-                setBackupMsg({
-                  kind: r.ok ? 'ok' : 'error',
-                  text: r.ok ? `Backup uploaded: ${r.fileName || 'success'}` : `Backup failed: ${r.error || 'unknown'}`,
-                });
-                // refresh status + log
-                api.backupStatus().then(setBackup).catch(() => {});
-                api.backupLog(20).then(setBackupLog).catch(() => {});
-              } catch (e) {
-                setBackupMsg({ kind: 'error', text: (e as Error).message });
-              } finally {
-                setBackupBusy(false);
-              }
-            }}
-          />
-        )}
-        {activeTab === 'log' && (
-          <>
-            {Object.keys(userSummary).length > 0 && (
-              <div className="audit-summary">
-                <div className="audit-summary-label">Activity by MM Login ID</div>
-                <div className="audit-summary-chips">
-                  {Object.entries(userSummary).map(([uid, n]) => (
-                    <button
-                      key={uid}
-                      className={`audit-chip${logFilter.toUpperCase() === uid ? ' active' : ''}`}
-                      onClick={() => setLogFilter(logFilter.toUpperCase() === uid ? '' : uid)}
-                    >
-                      <span className="chip-id">{uid}</span>
-                      <span className="chip-n">{n}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="scan-bar">
-              <span className="scan-label">Filter</span>
-              <input
-                placeholder="Filter by MM id, name, action, target, details…"
-                value={logFilter}
-                onChange={e => setLogFilter(e.target.value)}
-              />
-            </div>
-
-            {logError && <div className="form-msg show error">{logError}</div>}
-
-            <div className="audit-list">
-              {log === null
-                ? <div className="sub" style={{ padding: 14 }}>Loading…</div>
-                : filteredLog.length === 0
-                  ? <div className="sub" style={{ padding: 14, textAlign: 'center' }}>
-                      {visibleLog.length === 0
-                        ? 'No activity yet. Once any MM updates a case, the change will be logged here with their ID.'
-                        : 'No entries match the current filter.'}
-                    </div>
-                  : filteredLog.map(e => {
-                      const meta = ACTION_LABELS[e.action] || { label: e.action.toUpperCase(), tone: 'info' };
-                      return (
-                        <div key={e.id} className={`audit-row tone-${meta.tone}`}>
-                          <div className="audit-row-left">
-                            <span className={`audit-action tone-${meta.tone}`}>{meta.label}</span>
-                            <span className="audit-target">{e.target || '—'}</span>
-                          </div>
-                          <div className="audit-row-right">
-                            <span className="audit-detail">{e.details}</span>
-                          </div>
-                          <div className="audit-row-foot">
-                            <span className="audit-user">
-                              <span className="audit-user-id">{e.userId}</span>
-                              <span className="audit-user-name">{e.userName}</span>
-                            </span>
-                            <span className="audit-time">{fmtTime(e.timestamp)}</span>
-                          </div>
-                        </div>
-                      );
-                    })
-              }
-            </div>
-
-            <div className="form-actions">
-              <button className="btn ghost" onClick={onClose}>Close</button>
-            </div>
-          </>
-        )}
+        {content}
       </div>
     </div>
   );

@@ -1425,6 +1425,21 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
   background: var(--khaki); color: var(--ink-navy);
   text-align: center;
 }
+/* Back-to-dashboard shortcut shown in place of the System Setting card
+   while the user is on /settings.  The arrow is a small inline marker so
+   it works on the dark sidebar background. */
+.sys-back-arrow{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px;
+  font-size: 16px; line-height: 1;
+  color: var(--paper);
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 999px;
+  margin-right: 2px;
+}
+/* When the system-setting-card is in "back" mode we drop the head strip
+   and let the single item fill the card cleanly. */
+.system-setting-card.settings-route-back .system-setting-head{ display: none; }
 
 /* Sidebar Sign-out button — same shape as System Setting but in seal-red */
 .sidebar-logout-btn{
@@ -2518,3 +2533,363 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .cp-card-grid .stamp{ margin-top: 2px; }
 .cp-photo-cell{ grid-column: 1 / -1; flex-direction: row !important; align-items: center; gap: 12px !important; border-bottom: none !important; }
 .cp-thumb{ width: 96px; height: 96px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; }
+
+/* ============================================================
+   MOBILE RESPONSIVENESS AUDIT PASS — 9-point spec
+   Layers ON TOP of the existing 1024/768/480 media queries above.
+   No existing rule is overridden destructively; these refine for
+   mobile usability, touch targets, typography, overflow safety.
+   Standard breakpoints used here: ≤480 (phone), 481–768 (tablet),
+   769+ (desktop — the base styles).
+   ============================================================ */
+
+/* --- 6. Typography & visual hierarchy (all breakpoints) --- */
+/* Fluid heading scaling so titles never overflow or shrink unreadably. */
+.page-head h1{ font-size: clamp(19px, 2.2vw + 12px, 26px); }
+.panel-head h2{ font-size: clamp(13px, 1vw + 11px, 16px); }
+.form-card h3{ font-size: clamp(16px, 1.2vw + 13px, 18px); }
+.stat-tile .value{ font-size: clamp(22px, 2vw + 18px, 32px); }
+.stat-tile .label{ font-size: clamp(10px, 0.5vw + 9px, 11.5px); }
+
+/* --- 7. Images & icons — overflow safety (all breakpoints) --- */
+img, video, canvas, svg{ max-width: 100%; height: auto; }
+.register-table .thumb,
+.cp-thumb{ max-width: 100%; }
+.qr-visual, .qr-image{ max-width: 100%; box-sizing: border-box; }
+
+/* --- 1. Responsive layout — eliminate horizontal overflow (all bps) --- */
+/* Ensure the app shell and every direct child can shrink, never force
+   the page wider than the viewport. */
+html, body{ overflow-x: hidden; max-width: 100vw; }
+.app{ width: 100%; max-width: 100vw; min-width: 0; }
+.main{ width: 100%; min-width: 0; max-width: 1280px; }
+.register-wrap{ min-width: 0; }
+.panel{ min-width: 0; }
+/* Reserve space for images/dynamic content to minimise layout shift (§8). */
+.register-table .thumb,
+.cp-thumb{ aspect-ratio: 1 / 1; }
+.qr-visual, .qr-image{ aspect-ratio: 1 / 1; }
+
+/* --- 5. Touch & usability (all breakpoints) --- */
+/* Minimum 44×44px tap targets on all tappable controls, and enough gap
+   between adjacent interactive elements to prevent mis-taps.  We raise
+   the floor without enlarging desktop layouts: the 44px minimum applies
+   via `min-height` so text buttons keep their padding rhythm. */
+.act-btn,
+.pg-btn,
+.icon-btn,
+.btn.small,
+.letterhead-menu,
+.sidebar-close-btn,
+.sections-action,
+.sm-status,
+.login-quick-btn,
+.itemtype-tab,
+.audit-tab,
+.audit-chip,
+.sys-setting-item,
+.sidebar-logout-btn,
+.section-banner-clear,
+.tag-close,
+.cfp-check input,
+.cfp-actions .btn{ min-height: 44px; min-width: 44px; }
+/* Icon-only buttons get a square 44 box; text buttons keep their width. */
+.icon-btn,
+.letterhead-menu,
+.sidebar-close-btn,
+.sections-action{ width: 44px; height: 44px; padding: 0; }
+/* Stretch the action-row icon buttons to 44px tall and add inter-button gap. */
+.row-actions-vertical{ gap: 8px; }
+.row-actions-vertical .act-btn{ min-height: 44px; padding: 6px 10px; }
+.sections-action-bar{ gap: 8px; }
+.itemtype-row-actions{ gap: 8px; }
+
+/* Slightly larger, finger-friendly hit area for inline links in tables. */
+.case-link{ display: inline-block; padding: 4px 2px; min-height: 36px; }
+
+/* --- 4. Forms (all breakpoints → stronger on mobile) --- */
+/* Font-size ≥16px on inputs/selects/textareas prevents iOS auto-zoom on
+   focus.  We apply 16px globally (desktop can absorb it; it reads as
+   the same size since the base body is 14px but form fields already
+   render larger). */
+input, select, textarea{
+  font-size: 16px;
+  min-height: 44px;        /* touch target floor for inputs too */
+}
+/* The .rc-grid and .form-grid already collapse to 1 col on mobile; make
+   sure labels sit ABOVE inputs (flex column) not beside, and inputs go
+   full-width. */
+.form-grid{ gap: 12px; }
+.form-grid label,
+.rc-grid label{
+  display: flex; flex-direction: column; gap: 6px;
+  width: 100%; min-width: 0;
+}
+.form-grid input,
+.form-grid select,
+.form-grid textarea,
+.rc-grid input,
+.rc-grid select,
+.rc-grid textarea{
+  width: 100%; box-sizing: border-box;
+}
+/* Inline validation errors — clear, inline, not tiny tooltips. */
+.field-error{
+  display: block; margin-top: 4px;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--seal-red);
+  background: var(--seal-red-bg);
+  border: 1px solid rgba(162,62,44,0.25);
+  border-radius: 4px; padding: 6px 10px;
+}
+
+/* --- 3. Tables & data (all breakpoints → refined on mobile) --- */
+/* Visible scroll indicator on horizontally-scrollable panels so users on
+   touch devices see there is more content to the right. */
+.panel{ position: relative; }
+.panel::after{
+  content: "";
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: 28px;
+  background: linear-gradient(to left, var(--paper) 0%, transparent 100%);
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.2s;
+}
+.panel.can-scroll-right::after{ opacity: 1; }
+/* On mobile we also drop a subtle hint under the table caption. */
+.panel .scroll-hint{
+  display: none; font-size: 11px; color: var(--slate-soft);
+  padding: 6px 12px 0; font-style: italic;
+}
+
+/* --- 2. Navigation (mobile ≤768) — keep the existing drawer, refine --- */
+@media (max-width: 768px){
+  /* Full-width nav links with generous spacing — no mis-taps. */
+  .nav-list{ gap: 2px; }
+  .nav-item{
+    padding: 14px 22px; font-size: 15px; min-height: 48px;
+    border-left-width: 4px;
+  }
+  /* System Setting list items get taller touch targets in the drawer. */
+  .sys-setting-item{
+    min-height: 48px; padding: 12px 16px; font-size: 14px;
+    display: flex; align-items: center;
+  }
+  .system-setting-list{ gap: 6px; }
+  .rack-row{ min-height: 44px; padding: 9px 10px; }
+  .rack-letter{ width: 28px; height: 28px; font-size: 14px; }
+  .rack-name-input{ font-size: 16px; }     /* ≥16px: no iOS zoom */
+
+  /* Sticky header is fine — it's short (no rank, icon-only logout) on mobile. */
+  .letterhead{ padding: 8px 12px; }
+  .letterhead-menu{ width: 44px; height: 44px; font-size: 20px; }
+  .logout-btn{ min-height: 44px; min-width: 44px; padding: 6px 10px !important; }
+
+  /* Form-actions buttons full-width + 44px tall, stacked on small phones. */
+  .form-actions .btn{ min-height: 44px; padding: 10px 16px; font-size: 14px; }
+
+  /* Section banner close button: 44px hit area. */
+  .section-banner-clear{ min-height: 44px; padding: 6px 12px; font-size: 13px; }
+
+  /* Scan-bar input ≥16px + full-width. */
+  .scan-bar input{ font-size: 16px; min-height: 44px; }
+  .scan-bar .scan-btn{ min-height: 44px; }
+
+  /* Tables: already horizontally scrollable (panel overflow-x:auto).
+     Drop the min-width a touch so 375px shows ~4 cols before scrolling,
+     and show the scroll hint. */
+  .panel table{ min-width: 600px; }
+  .panel .scroll-hint{ display: block; }
+  .panel{ -webkit-overflow-scrolling: touch; }
+  /* Sticky header inside a scroll container is fine; keep it. */
+  .register-table thead th{ font-size: 9.5px; padding: 9px 10px; }
+  .register-table tbody td{ padding: 9px 10px; font-size: 12px; }
+  /* Action buttons stretch full-width inside their column for easier taps. */
+  .row-actions-vertical .act-btn{ width: 100%; }
+  .act-btn .act-lbl{ font-size: 12px; }
+
+  /* Pager buttons: 44px hit area, wrap on narrow screens. */
+  .rt-pager{ gap: 8px; justify-content: center; }
+  .pg-btn{ min-height: 44px; min-width: 44px; padding: 6px 12px; font-size: 13px; }
+  .pg-info{ width: 100%; text-align: center; margin-left: 0; }
+
+  /* Modals that are STILL popups (Tag/Timeline/Scan/ChangeStatus): ensure
+     they don't overflow and inputs are 16px. */
+  .overlay{ padding: 10px; align-items: flex-start; padding-top: 14px; }
+  .form-card{ width: 100% !important; max-width: calc(100vw - 20px) !important; max-height: 88vh; }
+  .audit-card{ width: 100% !important; max-width: calc(100vw - 20px) !important; }
+  .form-card input,
+  .form-card select,
+  .form-card textarea{ font-size: 16px; }
+
+  /* Item-type / sections manager rows: stack actions, 44px targets. */
+  .itemtype-row{ flex-wrap: wrap; gap: 8px; }
+  .itemtype-row-name input{ font-size: 16px; min-height: 44px; }
+  .sections-manager-row{ flex-wrap: wrap; gap: 8px; }
+  .sections-manager-row input{ font-size: 16px; min-height: 44px; }
+  .sm-status{ min-height: 44px; }
+
+  /* Inspection filter bar + sheet — stack and 16px inputs. */
+  .insp-filter-bar{ flex-wrap: wrap; gap: 8px; }
+  .insp-filter-bar input,
+  .insp-filter-bar select{ font-size: 16px; min-height: 44px; width: 100%; }
+  .insp-table .col-actions{ width: auto; min-width: 140px; }
+  .insp-sheet{ width: 100% !important; max-width: calc(100vw - 20px) !important; padding: 18px 16px; }
+  .insp-sheet .sh-k{ min-width: 120px; font-size: 13px; }
+
+  /* Login quick buttons: 44px min, full-width-ish. */
+  .login-quick-btn{ min-height: 56px; padding: 10px 12px; }
+  .login-quick-id{ font-size: 14px; }
+  .login-creds{ width: 100%; }
+  .login-creds th, .login-creds td{ padding: 8px 6px; font-size: 12px; }
+
+  /* Dashboard recent-movement + alert rows: keep readable, 44px hit. */
+  .alert-row{ padding: 12px 14px; }
+  .alert-icon{ width: 36px; height: 36px; }
+  .alert-body .title{ font-size: 13px; }
+  .alert-body .desc{ font-size: 11.5px; }
+}
+
+/* --- Small phone refinements (≤480) --- */
+@media (max-width: 480px){
+  /* Letterhead: keep emblem + title + hamburger only; hide officer-meta
+     entirely (already done above) and shrink title. */
+  .letterhead-title .line2{ font-size: 14px; }
+  .emblem{ width: 32px; height: 32px; font-size: 12px; }
+
+  /* Stat tiles: 2-col grid, slightly smaller value font. */
+  .stat-row{ grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-tile{ padding: 10px 10px 8px; }
+  .stat-tile .value{ font-size: 20px; }
+  .stat-tile .label{ font-size: 9.5px; }
+
+  /* Page head: title + actions stacked, actions full-width. */
+  .page-head h1{ font-size: 18px; }
+  .page-head > div:last-child{ width: 100%; justify-content: stretch; }
+  .page-head > div:last-child .btn{ flex: 1 1 100%; width: 100%; }
+
+  /* Tables: tighten min-width so 375px shows 3 cols before scroll. */
+  .panel table{ min-width: 520px; }
+  .register-table thead th{ padding: 8px 8px; font-size: 9px; }
+  .register-table tbody td{ padding: 8px 8px; font-size: 11.5px; }
+
+  /* Form actions stacked full-width (column-reverse keeps primary on top). */
+  .form-actions{ flex-direction: column-reverse; gap: 8px; }
+  .form-actions .btn{ width: 100%; }
+
+  /* Modals: nearly full-bleed on small phones. */
+  .form-card{ max-width: calc(100vw - 12px) !important; padding: 16px 14px; }
+  .tag-card{ max-width: calc(100vw - 12px); }
+  .timeline-card{ max-width: calc(100vw - 12px); padding: 14px 12px; }
+  .audit-card{ max-width: calc(100vw - 12px) !important; padding: 16px 14px; }
+
+  /* Pager: compact, wrap. */
+  .pg-btn{ min-width: 40px; padding: 6px 8px; font-size: 12px; }
+  .pg-info{ font-size: 11px; }
+}
+
+/* ============================================================
+   System Setting — INLINE PAGE mode (not a popup)
+   Used by SettingsModal / SectionsManagerModal / ItemTypeManagerModal
+   when asPage=true.  Renders as a full-width card on the page (no
+   dimmed overlay), so the sidebar + header stay visible and the user
+   scrolls the document naturally.  Mobile: no horizontal scroll.
+   ============================================================ */
+.ss-page-wrap{
+  width: 100%; min-width: 0;
+  display: flex; justify-content: center;
+  padding: 22px 20px 48px;
+  box-sizing: border-box;
+}
+.ss-page-card{
+  width: 100%; max-width: 1120px; min-width: 0;
+  max-height: none; overflow: visible;
+  background: var(--white-paper);
+  border: 1px solid var(--paper-darker);
+  border-radius: 12px;
+  box-shadow: 0 2px 14px rgba(20,36,61,0.10);
+  padding: 24px 28px 28px;
+  box-sizing: border-box;
+  display: flex; flex-direction: column;
+}
+/* In page mode there is no overlay close button; use a "← Back" bar. */
+.ss-page-back{
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; border: 0; padding: 0 0 16px;
+  color: var(--ink-navy); font: inherit; font-weight: 600; font-size: 13px;
+  cursor: pointer; min-height: 44px;
+}
+.ss-page-back:hover{ opacity: 0.8; }
+@media (max-width: 768px){
+  .ss-page-wrap{ padding: 12px 10px 36px; }
+  .ss-page-card{ padding: 16px 14px 20px; border-radius: 10px; }
+  .ss-page-card input,
+  .ss-page-card select,
+  .ss-page-card textarea{ font-size: 16px; }
+  .ss-page-card .settings-row{ grid-template-columns: 1fr; gap: 6px; }
+  .ss-page-card .audit-tabs{ flex-wrap: wrap; gap: 6px; }
+  .ss-page-card .itemtype-tabs{ flex-wrap: wrap; gap: 6px; }
+  .ss-page-card .itemtype-tab{ min-height: 44px; }
+  .ss-page-card .sections-manager-row{ flex-wrap: wrap; }
+}
+@media (max-width: 480px){
+  .ss-page-card{ padding: 14px 12px 18px; }
+  .ss-page-card .form-actions{ flex-direction: column-reverse; }
+  .ss-page-card .form-actions .btn{ width: 100%; }
+}
+
+/* ============================================================
+   Register head action buttons (Download Excel / PDF /
+   + Register New) — keep them small and inline next to the
+   "Case Property Register" title on every viewport, including
+   mobile.  Two normalisations:
+     1. buttons themselves stay compact (defeat the 480px
+        `.page-head > div:last-child .btn{ flex: 1 1 100% }`
+        stretch rule).
+     2. the surrounding .page-head stays in row layout so the
+        heading and the actions share the same row (the global
+        ≤768 rule flips .page-head to flex-direction: column
+        and pushes actions to the next line).
+   ============================================================ */
+.register-head-actions{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.register-head-actions .btn{
+  flex: 0 0 auto !important;
+  width: auto !important;
+  white-space: nowrap;
+}
+/* Keep heading + actions on one row even on mobile.  Shrink the
+   heading + buttons so the full title and the 3 action buttons
+   fit in a single 437px row (instead of buttons wrapping to
+   their own row and looking like a separate action group). */
+.page-head:has(.register-head-actions){
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;             /* force single line */
+  gap: 8px;
+}
+.page-head:has(.register-head-actions) > div:first-child{
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.page-head:has(.register-head-actions) > div:first-child h1{
+  font-size: 15px;               /* tighter on mobile so heading + 3 buttons fit one line */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.page-head:has(.register-head-actions) > .register-head-actions{
+  flex: 0 0 auto !important;
+  width: auto !important;
+  margin-left: 0 !important;
+  justify-content: flex-end !important;
+}
+.page-head:has(.register-head-actions) > .register-head-actions .btn{
+  padding: 4px 8px;              /* even tighter padding for mobile */
+  font-size: 10.5px;
+}

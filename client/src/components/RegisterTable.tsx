@@ -308,10 +308,10 @@ export function RegisterTable({
           <div>
             <h1>Case Property Register</h1>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {onDownloadReport && <button className="btn btn-excel" onClick={() => onDownloadReport('xlsx', shown.map(c => c.id))} title="Download currently filtered cases as Excel">⬇ Download Report (Excel)</button>}
-            {onDownloadReport && <button className="btn btn-pdf" onClick={() => onDownloadReport('pdf', shown.map(c => c.id))}  title="Download currently filtered cases as PDF">⬇ Download Report (PDF)</button>}
-            {onOpenRegister && <button className="btn" onClick={onOpenRegister}>+ Register New Case Property</button>}
+          <div className="register-head-actions">
+            {onDownloadReport && <button className="btn small btn-excel" onClick={() => onDownloadReport('xlsx', shown.map(c => c.id))} title="Download currently filtered cases as Excel">⬇ Excel</button>}
+            {onDownloadReport && <button className="btn small btn-pdf" onClick={() => onDownloadReport('pdf', shown.map(c => c.id))}   title="Download currently filtered cases as PDF">⬇ PDF</button>}
+            {onOpenRegister && <button className="btn small register-head-add" onClick={onOpenRegister}>+ Register New</button>}
           </div>
         </div>
       )}

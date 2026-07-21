@@ -347,16 +347,18 @@ export default function App() {
           onNav={navWith}
           racks={data.racks}
           onRacksChange={onRacksChange}
-          onOpenSettings={(tab) => { if (tab) setSettingsTab(tab); setSettingsSingle(true); setOpenSettings(true); }}
-          onOpenSettingsFull={() => { setSettingsSingle(false); setSettingsTab(null); setOpenSettings(true); }}
-          onOpenSectionsManager={() => { setOpenSettings(false); setOpenSectionsManager(true); }}
-          onOpenItemTypeManager={() => setOpenItemTypeManager(true)}
+          onOpenSettings={(tab) => { setSidebarOpen(false); navigate('/settings', { state: tab ? { tab } : {} }); }}
+          onOpenSettingsFull={() => { setSidebarOpen(false); navigate('/settings'); }}
+          onOpenSectionsManager={() => { setOpenSettings(false); setOpenSectionsManager(true); setSidebarOpen(false); }}
+          onOpenSectionsManagerPage={() => { setSidebarOpen(false); navigate('/settings/sections'); }}
+          onOpenItemTypeManager={() => { setSidebarOpen(false); setOpenItemTypeManager(true); }}
           activeSection={activeSection}
           onSectionFilter={setActiveSection}
           user={user}
           onLogout={handleLogout}
           mobileOpen={sidebarOpen}
           onCloseMobile={() => setSidebarOpen(false)}
+          onSettingsRoute={location.pathname.startsWith('/settings')}
         />
         <div className="main">
           <Routes>
@@ -434,6 +436,53 @@ export default function App() {
               />
             } />
             <Route path="/templates" element={<Templates />} />
+            <Route path="/settings" element={
+              (() => {
+                // Deep-link from the sidebar passes a tab in router state — in
+                // that case the page opens in "single" (focused) mode so the
+                // tab bar isn't re-shown on top of the focused content (which
+                // is what the user complained about on mobile + desktop).
+                const stateTab = (location.state as { tab?: 'thresholds' | 'fields' | 'backup' | 'log' } | null)?.tab;
+                return (
+                  <SettingsModal
+                    open
+                    asPage
+                    single={!!stateTab}
+                    initialTab={stateTab}
+                    onClose={() => navigate('/')}
+                    onUpdated={onAlertsUpdated}
+                    onOpenSectionsManager={() => setOpenSectionsManager(true)}
+                    onOpenItemTypeManager={() => setOpenItemTypeManager(true)}
+                  />
+                );
+              })()
+            } />
+            <Route path="/settings/sections" element={
+              <SectionsManagerModal
+                open
+                asPage
+                racks={data.racks}
+                onClose={() => navigate('/settings')}
+                onSaved={(racks) => {
+                  onRacksChange(racks);
+                  setScanFlash({ kind: 'ok', text: 'Section names saved' });
+                  setTimeout(() => setScanFlash(null), 2500);
+                }}
+              />
+            } />
+            <Route path="/settings/item-types" element={
+              <ItemTypeManagerModal
+                open
+                asPage
+                racks={data.racks}
+                onClose={() => navigate('/settings')}
+                onSaved={() => {
+                  setScanFlash({ kind: 'ok', text: 'Item types saved' });
+                  setTimeout(() => setScanFlash(null), 2500);
+                  reload();
+                }}
+              />
+            } />
             <Route path="/inspection" element={
               <Inspection
                 user={user}

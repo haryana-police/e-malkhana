@@ -16,8 +16,10 @@ interface Props {
   user?: { id: string; name: string } | null;
   onLogout?: () => void;
   mobileOpen?: boolean;
-  onCloseMobile?: () => void;
-}
+    onCloseMobile?: () => void;
+    onSettingsRoute?: boolean;
+    onOpenSectionsManagerPage?: () => void;
+  }
 
 const navItems: { view: ViewName; label: string }[] = [
   { view: 'dashboard',     label: 'Case Property' },
@@ -25,7 +27,7 @@ const navItems: { view: ViewName; label: string }[] = [
   { view: 'alerts',        label: 'Alerts & Compliance' },
 ];
 
-export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, onOpenSettingsFull, onOpenSectionsManager, onOpenItemTypeManager, activeSection, onSectionFilter, user, onLogout, mobileOpen, onCloseMobile }: Props) {
+export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, onOpenSettingsFull, onOpenSectionsManager, onOpenSectionsManagerPage, onOpenItemTypeManager, activeSection, onSectionFilter, user, onLogout, mobileOpen, onCloseMobile, onSettingsRoute }: Props) {
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries(racks.map(r => [r.letter, r.name]))
   );
@@ -134,35 +136,54 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
           the Case Property list to that section.
         </div>
 
-        <div className="system-setting-card">
-          <div className="system-setting-head">
-            <span className="system-setting-title">System Setting</span>
-          </div>
-          <div className="system-setting-list">
+        {onSettingsRoute ? (
+          // On the /settings page the System Setting card would just repeat
+          // what the page already shows — and on mobile it stacks on top of
+          // the page content, hiding the focused Item Type Fields view.
+          // Replace it with a single back-to-dashboard link so the user has
+          // one obvious way out of the settings page.
+          <div className="system-setting-card settings-route-back">
             <button
               type="button"
               className="sys-setting-item"
-              onClick={() => onOpenSettings('fields')}
-            >Item Type Fields</button>
-            <button
-              type="button"
-              className="sys-setting-item"
-              onClick={() => onOpenSettings('backup')}
-            >Backup &amp; Restore</button>
-            <button
-              type="button"
-              className="sys-setting-item"
-              onClick={() => onOpenSettings('log')}
-            >Activity log
-              {auditCount != null && <span className="sys-setting-count">{auditCount}</span>}
+              onClick={() => onNav('dashboard')}
+              title="Back to dashboard"
+            >
+              <span className="sys-back-arrow" aria-hidden="true">←</span>
+              Back to Dashboard
             </button>
-            <button
-              type="button"
-              className="sys-setting-item"
-              onClick={() => onOpenSectionsManager()}
-            >Malkhana Locations</button>
           </div>
-        </div>
+        ) : (
+          <div className="system-setting-card">
+            <div className="system-setting-head">
+              <span className="system-setting-title">System Setting</span>
+            </div>
+            <div className="system-setting-list">
+              <button
+                type="button"
+                className="sys-setting-item"
+                onClick={() => onOpenSettings('fields')}
+              >Item Type Fields</button>
+              <button
+                type="button"
+                className="sys-setting-item"
+                onClick={() => onOpenSettings('backup')}
+              >Backup &amp; Restore</button>
+              <button
+                type="button"
+                className="sys-setting-item"
+                onClick={() => onOpenSettings('log')}
+              >Activity log
+                {auditCount != null && <span className="sys-setting-count">{auditCount}</span>}
+              </button>
+              <button
+                              type="button"
+                              className="sys-setting-item"
+                              onClick={() => onOpenSectionsManagerPage ? onOpenSectionsManagerPage() : onOpenSectionsManager()}
+                            >Malkhana Locations</button>
+            </div>
+          </div>
+        )}
 
         {user && onLogout && (
           <button

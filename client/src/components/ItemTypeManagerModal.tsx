@@ -10,6 +10,7 @@ interface Props {
   racks: RackItem[];
   onClose: () => void;
   onSaved?: (racks: RackItem[]) => void;
+  asPage?: boolean;
 }
 
 // One section's editable working state.  `draft` holds the live name of
@@ -52,7 +53,7 @@ function buildStates(rows: ItemType[], racks: RackItem[]): Record<string, Sectio
   return out;
 }
 
-export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
+export function ItemTypeManagerModal({ open, racks, onClose, onSaved, asPage = false }: Props) {
   const activeRacks = racks.length ? racks : ([
     { letter: 'A', name: 'Narcotics Rack', count: 0, active: true },
     { letter: 'B', name: 'Weapons Almirah', count: 0, active: true },
@@ -86,7 +87,7 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
 
   // Seed once when opened.
   useEffect(() => {
-    if (!open) return;
+    if (!open && !asPage) return;
     setMsg(null); setNewName(''); setDelTarget(null); setDirty({});
     api.itemTypes().then(rows => {
       const s = buildStates(rows, activeRacks);
@@ -94,7 +95,7 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
       const first = activeRacks[0]?.letter || Object.keys(s)[0] || 'A';
       setTab(first);
     }).catch(e => setMsg({ kind: 'error', text: (e as Error).message }));
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, asPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sec = states[tab] || blankSection();
   const rackName = liveRacks.find(r => r.letter === tab)?.name || `Part ${tab}`;
@@ -108,7 +109,7 @@ export function ItemTypeManagerModal({ open, racks, onClose, onSaved }: Props) {
     return sec.order.map(id => sec.byId[id]).filter(Boolean);
   }, [sec]);
 
-  if (!open) return null;
+  if (!open && !asPage) return null;
 
   function markDirty(letter: string) {
     setDirty(d => ({ ...d, [letter]: true }));

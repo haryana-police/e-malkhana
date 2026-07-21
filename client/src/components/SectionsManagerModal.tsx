@@ -7,6 +7,7 @@ interface Props {
   racks: RackItem[];          // active subset, used for the live count
   onClose: () => void;
   onSaved: (racks: RackItem[]) => void;
+  asPage?: boolean;
 }
 
 interface DeleteTarget {
@@ -20,7 +21,7 @@ const byOrder = (a: RackItem, b: RackItem) =>
   a.letter.length - b.letter.length ||
   a.letter.localeCompare(b.letter);
 
-export function SectionsManagerModal({ open, racks, onClose, onSaved }: Props) {
+export function SectionsManagerModal({ open, racks, onClose, onSaved, asPage = false }: Props) {
   const [all, setAll]               = useState<RackItem[]>([]);  // includes deactivated, in display order
   const [draft, setDraft]           = useState<Record<string, string>>({});
   const [activeMap, setActiveMap]   = useState<Record<string, boolean>>({});
@@ -36,7 +37,7 @@ export function SectionsManagerModal({ open, racks, onClose, onSaved }: Props) {
   // sidebar's `racks` prop only contains active sections, but the manager
   // must show the deactivated ones too so admins can re-activate them.
   useEffect(() => {
-    if (!open) return;
+    if (!open && !asPage) return;
     setMsg(null);
     setNewName('');
     setDelTarget(null);
@@ -48,9 +49,9 @@ export function SectionsManagerModal({ open, racks, onClose, onSaved }: Props) {
       setDraft(Object.fromEntries(ordered.map(r => [r.letter, r.name])));
       setActiveMap(Object.fromEntries(ordered.map(r => [r.letter, r.active !== false])));
     }).catch(e => setMsg({ kind: 'error', text: (e as Error).message }));
-  }, [open]);
+  }, [open, asPage]);
 
-  if (!open) return null;
+  if (!open && !asPage) return null;
 
   function set(letter: string, name: string) {
     setDraft(d => ({ ...d, [letter]: name }));
@@ -207,143 +208,186 @@ export function SectionsManagerModal({ open, racks, onClose, onSaved }: Props) {
     return true;
   });
 
+  const content = (
+    <>
+      <h3>System Setting — Malkhana Sections</h3>
+      <div className="sub">
+        Edit section labels, add new racks, or <b>deactivate</b> sections that are
+        out of use. Deactivated sections disappear from the "Register New
+        Case Property" dropdown but their cases still resolve correctly to
+        the name shown here. Deletion is only allowed for empty sections.
+        Use the <b>↑ / ↓</b> buttons to reorder how sections appear.
+      </div>
+
+      {/* Toolbar: status filter + counters */}
+      <div className="sections-manager-toolbar">
+        <div className="sub" style={{ margin: 0 }}>
+          {all.length} total · {all.filter(r => activeMap[r.letter] !== false).length} active · {all.filter(r => activeMap[r.letter] === false).length} inactive
+        </div>
+        <div className="sections-manager-filter">
+          {(['all', 'active', 'inactive'] as const).map(f => (
+            <button
+              key={f}
+              type="button"
+              className={`btn small ${filter === f ? '' : 'ghost'}`}
+              onClick={() => setFilter(f)}
+              disabled={busy}
+            >{f[0].toUpperCase() + f.slice(1)}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="sections-manager-list">
+        {visible.length === 0 && (
+          <div className="sub" style={{ padding: 18, textAlign: 'center' }}>
+            No sections match this filter.
+          </div>
+        )}
+        {visible.map(r => {
+          const inactive = activeMap[r.letter] === false;
+          const ordered = [...all].sort(byOrder);
+          const visibleSet = new Set(visible.map(x => x.letter));
+          const idx = ordered.findIndex(x => x.letter === r.letter);
+          const hasUp = [...Array(idx).keys()].some(i => visibleSet.has(ordered[i].letter));
+          const hasDown = ordered.slice(idx + 1).some(x => visibleSet.has(x.letter));
+          const rowBusy = busyLetter === r.letter;
+          return (
+            <div
+              key={r.letter}
+              className="sections-manager-row"
+              style={inactive ? { opacity: 0.6, background: 'rgba(162,62,44,0.05)' } : undefined}
+            >
+              <div className="sections-manager-letter">{r.letter}</div>
+              <input
+                ref={el => { inputRefs.current[r.letter] = el; }}
+                value={draft[r.letter] ?? r.name}
+                onChange={e => set(r.letter, e.target.value)}
+                placeholder={`Part ${r.letter} label`}
+                disabled={busy}
+              />
+              <div className="sections-manager-count">{r.count} item{r.count === 1 ? '' : 's'}</div>
+
+              <button
+                type="button"
+                className={`sm-status ${inactive ? 'sm-status--off' : ''}`}
+                title={inactive ? 'Reactivate this section' : 'Deactivate (hide from new-case dropdown)'}
+                onClick={() => toggleActive(r)}
+                disabled={busy || rowBusy}
+              >
+                <span className="sm-dot" />{inactive ? 'Inactive' : 'Active'}
+              </button>
+
+              {/* Action toolbar: reorder up / down · edit · delete */}
+              <div className="sections-action-bar">
+                <button
+                  type="button"
+                  className="sections-action"
+                  title="Move up"
+                  aria-label="Move up"
+                  onClick={() => move(r.letter, 'up')}
+                  disabled={busy || rowBusy || !hasUp}
+                >↑</button>
+                <button
+                  type="button"
+                  className="sections-action"
+                  title="Move down"
+                  aria-label="Move down"
+                  onClick={() => move(r.letter, 'down')}
+                  disabled={busy || rowBusy || !hasDown}
+                >↓</button>
+                <button
+                  type="button"
+                  className="sections-action"
+                  title="Edit label"
+                  aria-label="Edit label"
+                  onClick={() => editName(r.letter)}
+                  disabled={busy || rowBusy}
+                >✎</button>
+                <button
+                  type="button"
+                  className="sections-action sections-action--danger"
+                  title={r.count > 0
+                    ? `Cannot delete — ${r.count} case(s) in Part ${r.letter}`
+                    : `Delete Part ${r.letter}`}
+                  aria-label="Delete section"
+                  onClick={() => setDelTarget({ letter: r.letter, name: r.name, count: r.count })}
+                  disabled={busy || rowBusy || r.count > 0}
+                >×</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="sections-manager-add">
+        <div className="sub" style={{ margin: 0, flex: '0 0 auto', paddingRight: 8 }}>
+          + Add new section
+        </div>
+        <input
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          placeholder="e.g. Digital Evidence, Explosives, …"
+          disabled={busy}
+          onKeyDown={e => { if (e.key === 'Enter') addSection(); }}
+          style={{ flex: 1 }}
+        />
+        <button className="btn" type="button" onClick={addSection} disabled={busy || !newName.trim()}>
+          Add
+        </button>
+      </div>
+
+      {msg && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
+
+      <div className="form-actions">
+        <button className="btn ghost" onClick={reset} disabled={busy}>Reset</button>
+        <button className="btn ghost" onClick={onClose} disabled={busy}>Close</button>
+        <button className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save all'}</button>
+      </div>
+    </>
+  );
+
+  if (asPage) {
+    return (
+      <div className="ss-page-wrap">
+        <div className="ss-page-card">
+          <button className="ss-page-back" onClick={onClose} aria-label="Back">← Back</button>
+          {content}
+        </div>
+        {delTarget && (
+          <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !busy) setDelTarget(null); }}>
+            <div className="form-card" style={{ maxWidth: 380 }}>
+              <h3>Delete Part {delTarget.letter}?</h3>
+              <div className="sub" style={{ marginBottom: 16 }}>
+                Section <b>"{delTarget.name}"</b> will be removed from the register.
+                {delTarget.count > 0 && (
+                  <div style={{ color: 'var(--seal-red)', marginTop: 6 }}>
+                    {delTarget.count} case(s) are still stored here — move or dispose them first.
+                  </div>
+                )}
+              </div>
+              <div className="form-actions">
+                <button className="btn ghost" onClick={() => setDelTarget(null)} disabled={busy}>Cancel</button>
+                <button
+                  className="btn"
+                  onClick={confirmDelete}
+                  disabled={busy || delTarget.count > 0}
+                  style={{ background: 'var(--seal-red)', borderColor: 'var(--seal-red)' }}
+                >
+                  {busy ? 'Deleting…' : 'Delete section'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={`overlay open`} onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div className="form-card" style={{ maxWidth: 720, maxHeight: '90vh', overflow: 'auto' }}>
         <button className="tag-close" onClick={onClose} aria-label="Close">✕</button>
-        <h3>System Setting — Malkhana Sections</h3>
-        <div className="sub">
-          Edit section labels, add new racks, or <b>deactivate</b> sections that are
-          out of use. Deactivated sections disappear from the "Register New
-          Case Property" dropdown but their cases still resolve correctly to
-          the name shown here. Deletion is only allowed for empty sections.
-          Use the <b>↑ / ↓</b> buttons to reorder how sections appear.
-        </div>
-
-        {/* Toolbar: status filter + counters */}
-        <div className="sections-manager-toolbar">
-          <div className="sub" style={{ margin: 0 }}>
-            {all.length} total · {all.filter(r => activeMap[r.letter] !== false).length} active · {all.filter(r => activeMap[r.letter] === false).length} inactive
-          </div>
-          <div className="sections-manager-filter">
-            {(['all', 'active', 'inactive'] as const).map(f => (
-              <button
-                key={f}
-                type="button"
-                className={`btn small ${filter === f ? '' : 'ghost'}`}
-                onClick={() => setFilter(f)}
-                disabled={busy}
-              >{f[0].toUpperCase() + f.slice(1)}</button>
-            ))}
-          </div>
-        </div>
-
-        <div className="sections-manager-list">
-          {visible.length === 0 && (
-            <div className="sub" style={{ padding: 18, textAlign: 'center' }}>
-              No sections match this filter.
-            </div>
-          )}
-          {visible.map(r => {
-            const inactive = activeMap[r.letter] === false;
-            const ordered = [...all].sort(byOrder);
-            const visibleSet = new Set(visible.map(x => x.letter));
-            const idx = ordered.findIndex(x => x.letter === r.letter);
-            const hasUp = [...Array(idx).keys()].some(i => visibleSet.has(ordered[i].letter));
-            const hasDown = ordered.slice(idx + 1).some(x => visibleSet.has(x.letter));
-            const rowBusy = busyLetter === r.letter;
-            return (
-              <div
-                key={r.letter}
-                className="sections-manager-row"
-                style={inactive ? { opacity: 0.6, background: 'rgba(162,62,44,0.05)' } : undefined}
-              >
-                <div className="sections-manager-letter">{r.letter}</div>
-                <input
-                  ref={el => { inputRefs.current[r.letter] = el; }}
-                  value={draft[r.letter] ?? r.name}
-                  onChange={e => set(r.letter, e.target.value)}
-                  placeholder={`Part ${r.letter} label`}
-                  disabled={busy}
-                />
-                <div className="sections-manager-count">{r.count} item{r.count === 1 ? '' : 's'}</div>
-
-                <button
-                  type="button"
-                  className={`sm-status ${inactive ? 'sm-status--off' : ''}`}
-                  title={inactive ? 'Reactivate this section' : 'Deactivate (hide from new-case dropdown)'}
-                  onClick={() => toggleActive(r)}
-                  disabled={busy || rowBusy}
-                >
-                  <span className="sm-dot" />{inactive ? 'Inactive' : 'Active'}
-                </button>
-
-                {/* Action toolbar: reorder up / down · edit · delete */}
-                <div className="sections-action-bar">
-                  <button
-                    type="button"
-                    className="sections-action"
-                    title="Move up"
-                    aria-label="Move up"
-                    onClick={() => move(r.letter, 'up')}
-                    disabled={busy || rowBusy || !hasUp}
-                  >↑</button>
-                  <button
-                    type="button"
-                    className="sections-action"
-                    title="Move down"
-                    aria-label="Move down"
-                    onClick={() => move(r.letter, 'down')}
-                    disabled={busy || rowBusy || !hasDown}
-                  >↓</button>
-                  <button
-                    type="button"
-                    className="sections-action"
-                    title="Edit label"
-                    aria-label="Edit label"
-                    onClick={() => editName(r.letter)}
-                    disabled={busy || rowBusy}
-                  >✎</button>
-                  <button
-                    type="button"
-                    className="sections-action sections-action--danger"
-                    title={r.count > 0
-                      ? `Cannot delete — ${r.count} case(s) in Part ${r.letter}`
-                      : `Delete Part ${r.letter}`}
-                    aria-label="Delete section"
-                    onClick={() => setDelTarget({ letter: r.letter, name: r.name, count: r.count })}
-                    disabled={busy || rowBusy || r.count > 0}
-                  >×</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="sections-manager-add">
-          <div className="sub" style={{ margin: 0, flex: '0 0 auto', paddingRight: 8 }}>
-            + Add new section
-          </div>
-          <input
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            placeholder="e.g. Digital Evidence, Explosives, …"
-            disabled={busy}
-            onKeyDown={e => { if (e.key === 'Enter') addSection(); }}
-            style={{ flex: 1 }}
-          />
-          <button className="btn" type="button" onClick={addSection} disabled={busy || !newName.trim()}>
-            Add
-          </button>
-        </div>
-
-        {msg && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
-
-        <div className="form-actions">
-          <button className="btn ghost" onClick={reset} disabled={busy}>Reset</button>
-          <button className="btn ghost" onClick={onClose} disabled={busy}>Close</button>
-          <button className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save all'}</button>
-        </div>
+        {content}
       </div>
 
       {/* Delete confirmation */}
