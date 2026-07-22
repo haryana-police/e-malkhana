@@ -2,6 +2,30 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { CaseRow, CaseStatus } from '../types';
 
+const MOBILE_MQ = '(max-width: 768px)';
+
+function useIsMobile(): boolean {
+  // SSR-safe default = false. Hydrate from current matchMedia state, then
+  // subscribe to breakpoint changes so re-sizing the window keeps the layout
+  // correct (e.g. rotating a tablet splits/joins the layout live).
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(MOBILE_MQ).matches;
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia(MOBILE_MQ);
+    const onChange = () => setIsMobile(mq.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else mq.addListener(onChange);                // Safari < 14 fallback
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+  return isMobile;
+}
+
 interface Props {
   cases: CaseRow[];
   compact?: boolean;                 // Dashboard: cap rows + show "view all" link
@@ -81,6 +105,7 @@ export function RegisterTable({
   const [textFilter, setTextFilter] = useState('');
   const order: ColKey[] = DEFAULT_ORDER;
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const PAGE_SIZE = 8;
   const [page, setPage] = useState(1);
   const [openCol, setOpenCol] = useState<ColKey | null>(null);
@@ -348,91 +373,185 @@ export function RegisterTable({
         )}
       </div>
 
-      <div className="panel">
-        <table className="register-table">
-          <thead>
-            <tr>
-              {order.map((key) => {
-                const col = columns[key];
-                return (
-                  <th
-                    key={key}
-                    data-colpop
-                    className={[col.className, openCol === key ? 'col-filter-open' : '', isColFiltered(key) ? 'col-filtered' : ''].filter(Boolean).join(' ')}
-                    title={`Click heading to filter by ${col.label}`}
-                    onClick={() => setOpenCol(o => o === key ? null : key)}
-                  >
-                    {col.label}
-                    {isColFiltered(key) && <span className="col-filter-dot" title="Column filtered">▾</span>}
-                    {openCol === key && (
-                      <div className="col-filter-pop" onClick={e => e.stopPropagation()}>
-                        {key === 'status' ? (
-                          <>
-                            <div className="cfp-title">Filter by Status</div>
-                            <div className="cfp-checks">
-                              {ALL_STATUSES.map(s => (
-                                <label key={s} className="cfp-check">
-                                  <input
-                                    type="checkbox"
-                                    checked={statusFilter.includes(s)}
-                                    onChange={() => setStatusFilter(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s])}
-                                  />
-                                  <span className={`stamp ${statusClass(s)}`}>{s}</span>
-                                </label>
-                              ))}
-                            </div>
-                            <div className="cfp-actions">
-                              <button className="btn tiny ghost" onClick={() => setStatusFilter([])}>Clear</button>
-                              <button className="btn tiny" onClick={() => setOpenCol(null)}>Done</button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="cfp-title">Filter by {col.label}</div>
-                            <input
-                              autoFocus
-                              className="cfp-input"
-                              placeholder={`Type ${col.label}…`}
-                              value={colFilters[key] || ''}
-                              onChange={e => setColFilters(p => ({ ...p, [key]: e.target.value }))}
-                            />
-                            <div className="cfp-actions">
-                              <button className="btn tiny ghost" onClick={() => clearColFilter(key)}>Clear</button>
-                              <button className="btn tiny" onClick={() => setOpenCol(null)}>Done</button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 && (
-              <tr><td colSpan={order.length} style={{ textAlign: 'center', color: 'var(--slate-soft)' }}>
-                No matching cases. {activeSection && <a href="#" onClick={e => { e.preventDefault(); if (onClearSection) onClearSection(); }}>Clear location filter</a>}
-                {textFilter && <a href="#" onClick={e => { e.preventDefault(); setTextFilter(''); }}>Clear text filter</a>}
-              </td></tr>
-            )}
-            {shown.map((c, i) => (
-              <tr
+      {visible.length === 0 && (
+        <div className="panel" style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--slate-soft)' }}>
+          No matching cases. {activeSection && <a href="#" onClick={e => { e.preventDefault(); if (onClearSection) onClearSection(); }}>Clear location filter</a>}
+          {textFilter && <a href="#" onClick={e => { e.preventDefault(); setTextFilter(''); }}>Clear text filter</a>}
+        </div>
+      )}
+
+      {visible.length > 0 && isMobile && (
+        <div className="register-cards" role="list">
+          {shown.map((c, i) => {
+            const us = usSectionText(c);
+            const dod = c.firDate ? c.firDate : '—';
+            const lm = c.lastMovement ? c.lastMovement : '—';
+            const rb = c.receivedBy ? c.receivedBy : '—';
+            return (
+              <article
                 key={c.id}
-                className="row-clickable"
+                role="link"
+                tabIndex={0}
+                className="rc-card row-clickable"
                 onClick={() => navigate(`/case-property/${encodeURIComponent(c.id)}`, { state: { sno: i + 1 } })}
                 onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/case-property/${encodeURIComponent(c.id)}`, { state: { sno: i + 1 } }); }}
-                tabIndex={0}
-                role="link"
                 aria-label={`Open ${c.id} detail page`}
-                title={`Open ${c.id} detail page`}
               >
-                {order.map((key) => columns[key].render(c, i))}
+                <header className="rc-head">
+                  <span className="rc-sno">{i + 1}</span>
+                  <Link
+                    to={`/case-property/${encodeURIComponent(c.id)}`}
+                    className="rc-fir"
+                    onClick={(e) => e.stopPropagation()}
+                    title={`Open ${c.id} detail page`}
+                  >{c.id}</Link>
+                  <span className={`stamp ${statusClass(c.status)} rc-status`}>{c.status}</span>
+                </header>
+
+                <dl className="rc-body">
+                  <div className="rc-row">
+                    <dt>Category</dt>
+                    <dd className="rc-cat">{c.itemType}</dd>
+                  </div>
+                  <div className="rc-row">
+                    <dt>FIR Date</dt>
+                    <dd className="rc-mono">{dod}</dd>
+                  </div>
+                  <div className="rc-row">
+                    <dt>Section</dt>
+                    <dd className="rc-mono">{us || '—'}</dd>
+                  </div>
+                  <div className="rc-row">
+                    <dt>Location</dt>
+                    <dd>
+                      <span
+                        className="section-tag rc-loc"
+                        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        onClick={(e) => { e.stopPropagation(); if (onClearSection) onClearSection(); }}
+                        title={`Part ${c.section?.replace('PART ', '') || '?'} — click rack name in sidebar to filter`}
+                      >
+                        <small style={{ opacity: 0.7, fontWeight: 500 }}>{c.section?.replace('PART ', '')}</small>
+                        <span>{c.sectionName}</span>
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="rc-row">
+                    <dt>Received By</dt>
+                    <dd>{rb}</dd>
+                  </div>
+                  <div className="rc-row">
+                    <dt>Last Movement</dt>
+                    <dd className="rc-mono">{lm}</dd>
+                  </div>
+                </dl>
+
+                <footer className="rc-foot" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="act-btn act-tag"
+                    title="View QR code tag"
+                    onClick={(e) => { e.stopPropagation(); if (onOpenTag) onOpenTag(c); }}
+                  ><span className="act-ico">▦</span><span className="act-lbl">QR code</span></button>
+                  <button
+                    type="button"
+                    className="act-btn act-log"
+                    title="View movement log"
+                    onClick={(e) => { e.stopPropagation(); if (onOpenTimeline) onOpenTimeline(c.id); }}
+                  ><span className="act-ico">⏱</span><span className="act-lbl">Movement log</span></button>
+                  <button
+                    type="button"
+                    className="act-btn act-status"
+                    title="Change status (record a movement)"
+                    onClick={(e) => { e.stopPropagation(); if (onChangeStatus) onChangeStatus(c); }}
+                  ><span className="act-ico">↻</span><span className="act-lbl">Change status</span></button>
+                </footer>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {visible.length > 0 && !isMobile && (
+        <div className="panel">
+          <table className="register-table">
+            <thead>
+              <tr>
+                {order.map((key) => {
+                  const col = columns[key];
+                  return (
+                    <th
+                      key={key}
+                      data-colpop
+                      className={[col.className, openCol === key ? 'col-filter-open' : '', isColFiltered(key) ? 'col-filtered' : ''].filter(Boolean).join(' ')}
+                      title={`Click heading to filter by ${col.label}`}
+                      onClick={() => setOpenCol(o => o === key ? null : key)}
+                    >
+                      {col.label}
+                      {isColFiltered(key) && <span className="col-filter-dot" title="Column filtered">▾</span>}
+                      {openCol === key && (
+                        <div className="col-filter-pop" onClick={e => e.stopPropagation()}>
+                          {key === 'status' ? (
+                            <>
+                              <div className="cfp-title">Filter by Status</div>
+                              <div className="cfp-checks">
+                                {ALL_STATUSES.map(s => (
+                                  <label key={s} className="cfp-check">
+                                    <input
+                                      type="checkbox"
+                                      checked={statusFilter.includes(s)}
+                                      onChange={() => setStatusFilter(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s])}
+                                    />
+                                    <span className={`stamp ${statusClass(s)}`}>{s}</span>
+                                  </label>
+                                ))}
+                              </div>
+                              <div className="cfp-actions">
+                                <button className="btn tiny ghost" onClick={() => setStatusFilter([])}>Clear</button>
+                                <button className="btn tiny" onClick={() => setOpenCol(null)}>Done</button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="cfp-title">Filter by {col.label}</div>
+                              <input
+                                autoFocus
+                                className="cfp-input"
+                                placeholder={`Type ${col.label}…`}
+                                value={colFilters[key] || ''}
+                                onChange={e => setColFilters(p => ({ ...p, [key]: e.target.value }))}
+                              />
+                              <div className="cfp-actions">
+                                <button className="btn tiny ghost" onClick={() => clearColFilter(key)}>Clear</button>
+                                <button className="btn tiny" onClick={() => setOpenCol(null)}>Done</button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {shown.map((c, i) => (
+                <tr
+                  key={c.id}
+                  className="row-clickable"
+                  onClick={() => navigate(`/case-property/${encodeURIComponent(c.id)}`, { state: { sno: i + 1 } })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/case-property/${encodeURIComponent(c.id)}`, { state: { sno: i + 1 } }); }}
+                  tabIndex={0}
+                  role="link"
+                  aria-label={`Open ${c.id} detail page`}
+                  title={`Open ${c.id} detail page`}
+                >
+                  {order.map((key) => columns[key].render(c, i))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
