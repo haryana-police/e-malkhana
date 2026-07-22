@@ -1309,9 +1309,9 @@ function parseLegalKey(raw) {
   const s = String(raw).trim();
   if (!s) return null;
   const m = s.match(/^([A-Za-z]{2,10})\s*[:\-]\s*(\S+)$/);
-  if (m) return { actCode: m.group(1).toUpperCase(), sectionNo: m.group(2) };
+  if (m) return { actCode: m[1].toUpperCase(), sectionNo: m[2] };
   const m2 = s.match(/^([A-Za-z]{2,10})\s+(\S+)$/);
-  if (m2) return { actCode: m2.group(1).toUpperCase(), sectionNo: m2.group(2) };
+  if (m2) return { actCode: m2[1].toUpperCase(), sectionNo: m2[2] };
   return { actCode: 'BNS', sectionNo: s };   // legacy: bare number = BNS
 }
 
