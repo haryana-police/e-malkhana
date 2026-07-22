@@ -363,7 +363,6 @@ export function RegisterTable({
           onChange={e => setTextFilter(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && textFilter.trim() && onOpenScan) onOpenScan(); }}
         />
-        {onOpenScan && <button className="btn small scan-btn" onClick={onOpenScan}>Scan QR</button>}
         {totalPages > 1 && (
           <div className="rt-pager rt-pager-inline">
             <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>

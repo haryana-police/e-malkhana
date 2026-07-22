@@ -60,8 +60,9 @@ export function Dashboard({
             {stats.station} &nbsp;·&nbsp; As of {stats.asOf}
           </div>
         </div>
-        {/* "+ Register New Case Property" button removed —
-            registration now lives in the Case Property view. */}
+        <button className="btn scan-btn" type="button" onClick={onOpenScan}>
+          Scan QR
+        </button>
       </div>
 
       <div className="stat-row">
