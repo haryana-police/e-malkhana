@@ -274,6 +274,40 @@ function detailUsNumbers(c: CaseRow): string {
   return '';
 }
 
+// Build the `common` payload for POST /api/case-property from the current
+// CasePropertyData record, applying any single-field overrides.  We send the
+// WHOLE common object back (not just the edited field) so a one-field edit
+// never silently drops the other registration-time values (receivedBy,
+// seal block, witnesses, remarks, …).  `undefined` overrides are skipped so
+// we don't overwrite an existing value with undefined — pass `''` only when
+// the user actually cleared the field.
+function commonFrom(cp: CasePropertyData, overrides: Record<string, string | undefined>): Record<string, string> {
+  const base: Record<string, string | undefined> = {
+    seizedTime: cp.seizedTime,
+    witness1: cp.witness1,
+    witness2: cp.witness2,
+    quantity: cp.quantity,
+    placeOfSeizure: cp.placeOfSeizure,
+    storageLocation: cp.storageLocation ?? cp.placeOfSeizure,
+    physicalStorage: cp.physicalStorage,
+    photoUrl: cp.photoUrl,
+    remarks: cp.remarks,
+    status: cp.status || 'Seized',
+    dateOfReceipt: cp.dateOfReceipt,
+    receivedBy: cp.receivedBy,
+    malkhanaLocation: cp.malkhanaLocation,
+    sealSealed: cp.sealSealed,
+    sealNo: cp.sealNo,
+    sealBy: cp.sealBy,
+  };
+  const merged = { ...base, ...overrides };
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(merged)) {
+    if (v !== undefined && v !== null) out[k] = v;
+  }
+  return out;
+}
+
 function fmtTime(iso: string) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
@@ -872,29 +906,182 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         <div className="case-property-card" style={{ marginTop: 16 }}>
           <h3>MM / Malkhana Details</h3>
           <div className="cp-card-grid">
-            {[
-              ['Quantity', caseProperty.quantity],
-              ['Place of Seizure', caseProperty.placeOfSeizure],
-              ['Physical Storage', caseProperty.physicalStorage || caseProperty.storageLocation || caseProperty.malkhanaLocation],
-              ['Received By', caseProperty.receivedBy],
-              ['Sealed / Unsealed', caseProperty.sealSealed],
-              ['Seal No. / Mark', caseProperty.sealNo],
-              ['Sealed By', caseProperty.sealBy],
-              ['Witness 1', caseProperty.witness1],
-              ['Witness 2', caseProperty.witness2],
-              ['Seized Time', caseProperty.seizedTime],
-              ['Remarks', caseProperty.remarks],
-            ].filter(([, value]) => value).map(([label, value]) => (
-              <div key={label}>
-                <span className="k">{label}</span>
-                <span className="v">{value}</span>
-              </div>
-            ))}
+            {/* Common MM block — inline editable.  Saving merges the whole
+                common object back so a single-field edit never wipes the
+                other registration-time values (receivedBy, seal, etc.). */}
+            <InlineEditCell
+              label="Quantity"
+              value={caseProperty.quantity}
+              mono
+              placeholder="e.g. 50"
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { quantity: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            <InlineEditCell
+              label="Place of Seizure"
+              value={caseProperty.placeOfSeizure}
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { placeOfSeizure: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            <InlineEditCell
+              label="Physical Storage"
+              value={caseProperty.physicalStorage || caseProperty.storageLocation || caseProperty.malkhanaLocation}
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { physicalStorage: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            <InlineEditCell
+              label="Received By"
+              value={caseProperty.receivedBy}
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { receivedBy: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+                // Reflect immediately on the register card above.
+                setCaseRow(prev => prev ? { ...prev, receivedBy: next || '' } : prev);
+              }}
+            />
+            <InlineEditCell
+              label="Sealed / Unsealed"
+              value={caseProperty.sealSealed}
+              type="select"
+              options={[
+                { value: 'Yes', label: 'Yes' },
+                { value: 'No', label: 'No' },
+              ]}
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { sealSealed: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            <InlineEditCell
+              label="Seal No. / Mark"
+              value={caseProperty.sealNo}
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { sealNo: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            <InlineEditCell
+              label="Sealed By"
+              value={caseProperty.sealBy}
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { sealBy: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            <InlineEditCell
+              label="Witness 1"
+              value={caseProperty.witness1}
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { witness1: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            <InlineEditCell
+              label="Witness 2"
+              value={caseProperty.witness2}
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { witness2: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            <InlineEditCell
+              label="Seized Time"
+              value={caseProperty.seizedTime}
+              mono
+              placeholder="HH:MM"
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { seizedTime: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            <InlineEditCell
+              label="Remarks"
+              value={caseProperty.remarks}
+              onSave={async (next) => {
+                const saved = await api.saveCaseProperty({
+                  itemId: caseProperty!.itemId,
+                  firNo: caseProperty!.firNo,
+                  common: commonFrom(caseProperty!, { remarks: next ?? undefined }),
+                  fields: caseProperty!.fields || [],
+                });
+                setCaseProperty(saved);
+              }}
+            />
+            {/* Type-specific fields recorded at registration — editable too. */}
             {caseProperty.fields?.map(field => (
-              <div key={field.key}>
-                <span className="k">{field.key.replace(/_/g, ' ')}</span>
-                <span className="v">{field.value || '—'}</span>
-              </div>
+              <InlineEditCell
+                key={field.key}
+                label={field.key.replace(/_/g, ' ')}
+                value={field.value}
+                onSave={async (next) => {
+                  const updatedFields = (caseProperty!.fields || []).map(f =>
+                    f.key === field.key ? { ...f, value: next ?? '' } : f
+                  );
+                  const saved = await api.saveCaseProperty({
+                    itemId: caseProperty!.itemId,
+                    firNo: caseProperty!.firNo,
+                    common: commonFrom(caseProperty!, {}),
+                    fields: updatedFields,
+                  });
+                  setCaseProperty(saved);
+                }}
+              />
             ))}
           </div>
         </div>

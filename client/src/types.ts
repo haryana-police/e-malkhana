@@ -238,6 +238,7 @@ export interface CasePropertyData {
   sealSealed?: string;         // Yes / No
   sealNo?: string;             // Seal No. / Mark
   sealBy?: string;             // Sealed By (officer)
+  dateOfReceipt?: string;       // when the item was received at the Malkhana
   createdAt?: string;
   fields: { key: string; value: string }[];  // type-specific popup values
 }
