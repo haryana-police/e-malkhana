@@ -3048,7 +3048,7 @@ input, select, textarea{
 .settings-list-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .settings-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--slate); cursor: pointer; white-space: nowrap; }
 .settings-list { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--paper); }
-.settings-row { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.settings-row { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; align-items: stretch; gap: 10px; text-align: left; }
 .settings-row:last-child { border-bottom: none; }
 .settings-row-head { display: flex; align-items: center; justify-content: flex-start; gap: 12px; flex-wrap: wrap; }
 .settings-row-title { font-size: 14px; font-weight: 600; color: var(--ink-navy); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; flex: 1 1 auto; }
