@@ -110,6 +110,12 @@ export default function App() {
   const [openItemTypeManager, setOpenItemTypeManager] = useState(false);
   const [changeCase, setChangeCase]             = useState<CaseRow | null>(null);
   const [scanFlash, setScanFlash]               = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // Bumped whenever a scan records a movement (or any action that mutates a
+  // single case) so the open Case Property Detail page re-fetches its own
+  // caseRow + movements.  App.reload() only refreshes the dashboard/lists,
+  // not the detail page's local state — without this the user sees stale
+  // "no movements recorded" / old status right after a successful scan.
+  const [detailRefresh, setDetailRefresh] = useState(0);
 
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [activeStatus,  setActiveStatus]  = useState<CaseStatus | null>(null);
@@ -402,7 +408,7 @@ export default function App() {
               />
             } />
             <Route path="/case-property/:item_id" element={
-              <CasePropertyDetail />
+              <CasePropertyDetail refresh={detailRefresh} />
             } />
             <Route path="/movements" element={
               <Movements
@@ -510,6 +516,7 @@ export default function App() {
         onSuccess={(c, recorded) => {
           setScanFlash({ kind: 'ok', text: recorded ? `Recorded movement for ${c.id}` : `Recognised ${c.id}` });
           setTimeout(() => setScanFlash(null), 3000);
+          setDetailRefresh(k => k + 1);
           reload();
         }}
       />

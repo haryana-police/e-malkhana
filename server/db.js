@@ -370,10 +370,15 @@ CREATE TABLE IF NOT EXISTS movements (
   moved_by      TEXT NOT NULL,
   purpose       TEXT,
   doc_ref       TEXT,
+  status        TEXT,            -- optional status set on the case by this movement (e.g. 'In Malkhana')
   ts            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS movements_case_id_idx ON movements (case_id);
 CREATE INDEX IF NOT EXISTS movements_ts_idx      ON movements (ts DESC);
+-- Optional status set on the case by this movement (e.g. 'In Malkhana').
+-- Lets the Movement Logs editor back-correct a case's status, and keeps
+-- the historical status alongside each movement row.
+ALTER TABLE movements ADD COLUMN IF NOT EXISTS status TEXT;
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id        BIGSERIAL PRIMARY KEY,

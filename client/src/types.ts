@@ -73,6 +73,7 @@ export interface MovementLogRow {
   timestamp: string;
   purpose: string;
   docRef: string;
+  status?: string | null;
 }
 
 // Movement Type — one row of the admin-managed "Move to status"

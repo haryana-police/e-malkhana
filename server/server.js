@@ -1274,10 +1274,16 @@ app.patch('/api/movement-logs/:id', async (req, res, next) => {
       timestamp: normaliseMovementTimestamp(b.timestamp, existing.timestamp),
       purpose: b.purpose != null ? movementText(b.purpose) : existing.purpose,
       docRef: b.docRef != null ? movementText(b.docRef) : existing.docRef,
+      status: b.status != null ? movementText(b.status) : existing.status,
     };
     await mutate(d => {
       const index = d.movements.findIndex(m => m.id === id);
       if (index >= 0) d.movements[index] = movement;
+      // Keep the case's current status in sync if this movement carries one.
+      if (movement.status && STATUSES.includes(movement.status)) {
+        const x = d.cases.find(y => y.id === targetCase.id);
+        if (x) x.status = movement.status;
+      }
     });
     await auditMm(req, 'movement.update', targetCase.id,
       `Updated movement #${id}: ${movement.fromLocation} → ${movement.toLocation}`);
@@ -1315,6 +1321,7 @@ app.post('/api/movements', async (req, res, next) => {
       timestamp:    nowISO(),
       purpose:      b.purpose || `Scan @ ${b.toLocation}`,
       docRef:       b.docRef || `SCAN-${Date.now()}`,
+      status:       (b.setStatus && STATUSES.includes(b.setStatus)) ? b.setStatus : null,
     };
     await mutate(d => { d.movements.push(movement); });
     if (b.setStatus && STATUSES.includes(b.setStatus)) {
@@ -1401,6 +1408,7 @@ app.post('/api/scan', async (req, res, next) => {
         timestamp:    nowISO(),
         purpose:      b.purpose || `Scan @ ${b.toLocation}`,
         docRef:       b.docRef || `SCAN-${Date.now()}`,
+        status:       (b.setStatus && STATUSES.includes(b.setStatus)) ? b.setStatus : null,
       };
       await mutate(d => { d.movements.push(movement); });
       if (b.setStatus && STATUSES.includes(b.setStatus)) {

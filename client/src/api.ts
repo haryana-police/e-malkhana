@@ -195,9 +195,9 @@ export const api = {
   // toLocation, movedBy, purpose, docRef, and timestamp fields apply
   // that the case-detail timeline already shows.
   movementLogs: () => get<MovementLogRow[]>('/movement-logs'),
-  createMovementLog: (row: { caseId: string; fromLocation?: string; toLocation: string; movedBy: string; timestamp?: string; purpose?: string; docRef?: string }) =>
+  createMovementLog: (row: { caseId: string; fromLocation?: string; toLocation: string; movedBy: string; timestamp?: string; purpose?: string; docRef?: string; status?: string | null }) =>
     send<MovementLogRow>('POST', '/movement-logs', row),
-  updateMovementLog: (id: number, patch: { caseId?: string; fromLocation?: string; toLocation?: string; movedBy?: string; timestamp?: string; purpose?: string; docRef?: string }) =>
+  updateMovementLog: (id: number, patch: { caseId?: string; fromLocation?: string; toLocation?: string; movedBy?: string; timestamp?: string; purpose?: string; docRef?: string; status?: string | null }) =>
     send<MovementLogRow>('PATCH', `/movement-logs/${id}`, patch),
   deleteMovementLog: (id: number) =>
     send<{ id: number; deleted: boolean }>('DELETE', `/movement-logs/${id}`, {}),

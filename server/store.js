@@ -98,7 +98,7 @@ export async function loadMirror() {
                             created_at
                      FROM cases ORDER BY created_at`),
         client.query(`SELECT id, case_id, from_location, to_location, moved_by,
-                             purpose, doc_ref, ts
+                             purpose, doc_ref, status, ts
                       FROM movements ORDER BY ts, id`),
         client.query(`SELECT id, ts, user_id, user_name, action, target, details
                       FROM audit_log ORDER BY id`),
@@ -207,6 +207,7 @@ export async function loadMirror() {
           movedBy: r.moved_by,
           purpose: r.purpose || '',
           docRef: r.doc_ref || '',
+          status: r.status || null,
           timestamp: new Date(r.ts).toISOString(),
         })),
         alertConfig: kv.alertConfig || { fslDays: 30, expertDays: 15, courtDays: 30, inspectionCycleDays: 90, lastInspection: '2026-04-05' },
@@ -496,17 +497,19 @@ async function persistDiff(client, pre, post) {
       // otherwise let the BIGSERIAL pick the next value.
       if (m.id != null) {
         await client.query(
-          `INSERT INTO movements (id, case_id, from_location, to_location, moved_by, purpose, doc_ref, ts)
-           VALUES ($1,$2,$3,$4,$5,$6,$7, $8)
+          `INSERT INTO movements (id, case_id, from_location, to_location, moved_by, purpose, doc_ref, status, ts)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
            ON CONFLICT (id) DO NOTHING`,
           [m.id, m.caseId, m.fromLocation, m.toLocation, m.movedBy, m.purpose || null, m.docRef || null,
+           m.status || null,
            m.timestamp || new Date().toISOString()]
         );
       } else {
         await client.query(
-          `INSERT INTO movements (case_id, from_location, to_location, moved_by, purpose, doc_ref, ts)
-           VALUES ($1,$2,$3,$4,$5,$6, $7)`,
+          `INSERT INTO movements (case_id, from_location, to_location, moved_by, purpose, doc_ref, status, ts)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
           [m.caseId, m.fromLocation, m.toLocation, m.movedBy, m.purpose || null, m.docRef || null,
+           m.status || null,
            m.timestamp || new Date().toISOString()]
         );
       }
@@ -518,9 +521,10 @@ async function persistDiff(client, pre, post) {
     for (const m of updated) {
       await client.query(
         `UPDATE movements SET case_id=$2, from_location=$3, to_location=$4,
-                             moved_by=$5, purpose=$6, doc_ref=$7, ts=$8
+                             moved_by=$5, purpose=$6, doc_ref=$7, status=$8, ts=$9
          WHERE id=$1`,
         [m.id, m.caseId, m.fromLocation, m.toLocation, m.movedBy, m.purpose || null, m.docRef || null,
+         m.status || null,
          m.timestamp || new Date().toISOString()]
       );
     }
@@ -719,6 +723,7 @@ export async function getMovements(caseId) {
     id: Number(r.id), caseId: r.case_id,
     fromLocation: r.from_location, toLocation: r.to_location, movedBy: r.moved_by,
     purpose: r.purpose || '', docRef: r.doc_ref || '',
+    status: r.status || null,
     timestamp: new Date(r.ts).toISOString(),
   }));
 }

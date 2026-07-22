@@ -291,7 +291,7 @@ function renderDocRef(ref: string) {
   return <> · {ref}</>;
 }
 
-export function CasePropertyDetail() {
+export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const { item_id: itemIdParam } = useParams<{ item_id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -362,7 +362,7 @@ export function CasePropertyDetail() {
         setBusy(false);
       }
     })();
-  }, [itemIdParam]);
+  }, [itemIdParam, refresh]);
 
   // ---- Print ----
   function printTag() {

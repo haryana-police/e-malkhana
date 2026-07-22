@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { AlertConfig, AuditEntry, CaseRow, CategoryFieldDef, CategoryOfItem, MovementLogRow, MovementType } from '../types';
+import type { AlertConfig, AuditEntry, CaseRow, CaseStatus, CategoryFieldDef, CategoryOfItem, MovementLogRow, MovementType } from '../types';
 
 interface Props {
   open: boolean;
@@ -982,7 +982,14 @@ type MovementDraft = {
   timestamp: string;     // datetime-local string (YYYY-MM-DDTHH:MM)
   purpose: string;
   docRef: string;
+  status: string;        // optional case status set by this movement (e.g. 'In Malkhana')
 };
+
+// Status options for the movement's optional "Set case status" column.
+const MOVEMENT_STATUSES: CaseStatus[] = [
+  'Seized', 'Expert Opinion Pending', 'In Malkhana',
+  'With FSL', 'In Court', 'Disposed', 'Transfer',
+];
 
 function emptyMovementDraft(): MovementDraft {
   return {
@@ -993,6 +1000,7 @@ function emptyMovementDraft(): MovementDraft {
     timestamp: '',
     purpose: '',
     docRef: '',
+    status: '',
   };
 }
 
@@ -1066,6 +1074,7 @@ function MovementLogsManager() {
       timestamp: toLocalInput(r.timestamp),
       purpose: r.purpose || '',
       docRef: r.docRef || '',
+      status: r.status || '',
     } });
     setCreating(null);
     setMsg(null);
@@ -1101,6 +1110,7 @@ function MovementLogsManager() {
         movedBy: creating.movedBy.trim(),
         purpose: creating.purpose.trim(),
         docRef: creating.docRef.trim(),
+        ...(creating.status.trim() ? { status: creating.status.trim() } : {}),
         ...(ts ? { timestamp: ts } : {}),
       });
       setRows(prev => prev ? [created, ...prev] : [created]);
@@ -1123,6 +1133,7 @@ function MovementLogsManager() {
         movedBy: editing.draft.movedBy.trim(),
         purpose: editing.draft.purpose.trim(),
         docRef: editing.draft.docRef.trim(),
+        ...(editing.draft.status.trim() ? { status: editing.draft.status.trim() } : {}),
         ...(ts ? { timestamp: ts } : {}),
       });
       setRows(prev => prev ? prev.map(r => r.id === updated.id ? updated : r) : [updated]);
@@ -1176,6 +1187,13 @@ function MovementLogsManager() {
         </div>
         <label className="sub" style={{ margin: 0 }}>Purpose</label>
         <input value={d.purpose} onChange={e => onChange(patchDraft(d, 'purpose', e.target.value))} placeholder="e.g. Seizure check-in, FSL dispatch" />
+        <label className="sub" style={{ margin: 0 }}>Set case status (optional)</label>
+        <select value={d.status} onChange={e => onChange(patchDraft(d, 'status', e.target.value))}>
+          <option value="">— no change —</option>
+          {MOVEMENT_STATUSES.map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
         <label className="sub" style={{ margin: 0 }}>Doc Ref</label>
         <input value={d.docRef} onChange={e => onChange(patchDraft(d, 'docRef', e.target.value))} placeholder="e.g. SM-2026-0214" />
       </div>
