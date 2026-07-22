@@ -1513,14 +1513,6 @@ function MovementTypesManager() {
   return (
     <div className="settings-list-wrap">
       <div className="settings-list-head">
-        <div className="sub">
-          The <b>Move to status</b> vocabulary shown on the Change Status modal,
-          the Register filter, the Dashboard tiles, and used to validate every
-          case PATCH.  Add new statuses (e.g. <i>With Police Custody</i>),
-          rename existing ones, or set the default location + purpose that
-          pre-fill the Change Status form.  Built-in statuses are protected
-          from deletion but can still be renamed + deactivated.
-        </div>
         <div className="settings-list-actions">
           <label className="settings-toggle">
             <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
