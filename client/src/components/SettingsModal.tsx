@@ -1513,10 +1513,19 @@ function MovementTypesManager() {
 
         {!isEditing && (
           <div className="settings-row-body compact">
-            <span className="muted small">Location: {m.defaultLocation || <em>(none)</em>}</span>
-            <span className="muted small">Purpose: {m.defaultPurpose || <em>(none)</em>}</span>
+            <span className="mt-meta">
+              <span className="mt-label">Location:</span>
+              <span className="mt-value">{m.defaultLocation || <em>(none)</em>}</span>
+            </span>
+            <span className="mt-meta">
+              <span className="mt-label">Purpose:</span>
+              <span className="mt-value">{m.defaultPurpose || <em>(none)</em>}</span>
+            </span>
             {Array.isArray(m.next) && m.next.length > 0 && (
-              <span className="muted small">Next: {m.next.join(', ')}</span>
+              <span className="mt-meta">
+                <span className="mt-label">Next:</span>
+                <span className="mt-value">{m.next.join(', ')}</span>
+              </span>
             )}
           </div>
         )}

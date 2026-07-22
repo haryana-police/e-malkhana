@@ -3052,7 +3052,10 @@ input, select, textarea{
 .settings-row-title { font-size: 14px; font-weight: 600; color: var(--ink-navy); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; flex: 1 1 auto; }
 .settings-row-actions { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
 .settings-row-body { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; text-align: left; }
-.settings-row-body.compact { flex-direction: row; flex-wrap: wrap; gap: 4px 16px; }
+.settings-row-body.compact { flex-direction: row; flex-wrap: wrap; gap: 4px 18px; }
+.settings-row-body.compact .mt-meta { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+.settings-row-body.compact .mt-label { flex: none; min-width: 60px; color: var(--slate-soft); font-weight: 600; }
+.settings-row-body.compact .mt-value { color: var(--ink-navy); overflow-wrap: anywhere; }
 .settings-row-body label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--slate); font-weight: 600; text-align: left; }
 .settings-row-body label input { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink-navy); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); font-weight: 500; text-align: left; }
 .settings-row.create { background: var(--paper-tint, #faf9f6); border: 1px solid var(--ocean, #2b5d8c); }
