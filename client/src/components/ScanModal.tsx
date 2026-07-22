@@ -56,6 +56,9 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
   const [movement, setMovement] = useState<MovementLogRow | null>(null);
   // Previous (FROM) location for the movement form — auto from last movement.
   const [fromLocation, setFromLocation] = useState('—');
+  // Disambiguation candidates returned by the server when a bare query
+  // (e.g. "125") matches more than one case.  Rendered as clickable chips.
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   // Manual fallback input
   const [manualPayload, setManualPayload] = useState('');
@@ -177,12 +180,15 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
     } catch (e) {
       const err = e as ApiError;
       const detail = (err.body && err.body.error) || err.message;
-      const suggestions: string[] = (err.body && Array.isArray(err.body.suggestions)) ? err.body.suggestions : [];
+      const sug: string[] = (err.body && Array.isArray(err.body.suggestions)) ? err.body.suggestions : [];
+      setSuggestions(sug);
+      // Stay on the manual-entry screen (don't bounce to idle) and keep the
+      // typed value so the user can disambiguate by tapping a suggestion chip
+      // rather than retyping the full FIR/DD number.
       setMsg({
         kind: 'error',
-        text: `Could not recognise: ${detail}${suggestions.length ? ` — try: ${suggestions.join(', ')}` : ''}`,
+        text: `Could not recognise: ${detail}${sug.length ? ' — pick one below:' : ''}`,
       });
-      setPhase('idle');
     } finally {
       setBusy(false);
     }
@@ -234,7 +240,7 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
     setPhase('idle');
     setMatched(null); setMovement(null);
     setMsg(null); setScanError(null);
-    setManualPayload('');
+    setManualPayload(''); setSuggestions([]);
   }
 
   if (!open) return null;
@@ -304,12 +310,32 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
               Tag id / QR payload
               <input
                 value={manualPayload}
-                onChange={e => setManualPayload(e.target.value)}
+                onChange={e => { setManualPayload(e.target.value); setSuggestions([]); }}
                 placeholder='e.g. MK-2026-000214  ·  FIR 214/2026  ·  {"v":1,"id":"FIR 214/2026",…}'
                 autoFocus
                 onKeyDown={e => { if (e.key === 'Enter') submitManual(); }}
               />
             </label>
+
+            {/* Disambiguation chips: when a bare number (e.g. "125") matches
+                more than one case, let the user tap the exact one instead of
+                retyping "FIR 125" / "DD FIR 125". */}
+            {suggestions.length > 0 && (
+              <div className="full" style={{ marginTop: 4 }}>
+                <div className="sub" style={{ marginBottom: 6 }}>Multiple matches — tap to open:</div>
+                <div className="sugg-chips">
+                  {suggestions.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="btn ghost small"
+                      onClick={() => { setManualPayload(s); setSuggestions([]); submitManual(); }}
+                    >{s}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="full" style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="btn" onClick={submitManual} disabled={busy || !manualPayload.trim()} style={{ flex: 1 }}>
                 {busy ? 'Looking up…' : 'Look up'}

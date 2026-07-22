@@ -1111,9 +1111,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
               ))}
             </ul>
           )}
-          <div style={{ marginTop: 12 }}>
-            <button className="btn small" type="button" onClick={openLog}>✎ Edit / Log Movement</button>
-          </div>
         </div>
 
         {/* RIGHT — QR Code (below the header, on the right) */}
@@ -1126,10 +1123,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           {caseRow.imageUrl && (
             <img className="case-detail-photo" src={caseRow.imageUrl} alt="Evidence photo" style={{ marginTop: 12 }} />
           )}
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button className="btn ghost small" type="button" onClick={printQr}>🖨 Print QR</button>
-            <button className="btn ghost small" type="button" onClick={downloadQr} disabled={!qrUrl}>⬇ Download QR</button>
-          </div>
         </div>
       </div>
 

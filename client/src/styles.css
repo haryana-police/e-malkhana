@@ -874,6 +874,8 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .attach-chip a{ color:var(--ink-navy); text-decoration:underline; word-break:break-all; }
 .attach-chip .x{ cursor:pointer; color:var(--seal-red); font-weight:700; margin-left:2px; }
 .attach-chip .x:hover{ opacity:0.7; }
+.sugg-chips{ display:flex; flex-wrap:wrap; gap:8px; }
+.sugg-chips .btn{ text-transform:none; letter-spacing:0; }
 .form-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:18px; }
 .form-msg{ font-size:12px; padding: 8px 10px; border-radius:4px; margin-top: 12px; display:none; }
 .form-msg.show{ display:block; }
