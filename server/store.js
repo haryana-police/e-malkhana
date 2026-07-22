@@ -105,7 +105,7 @@ export async function loadMirror() {
         // FIR/DD master (FIR Date lives here) + case_property (Received By)
         // are loaded into the mirror so the Case Property Register can show
         // those two columns without a per-row round-trip to Postgres.
-        client.query(`SELECT fir_no, fir_date, record_type, dd_date FROM fir_master`),
+        client.query(`SELECT fir_no, fir_date, record_type, dd_date, us_sections FROM fir_master`),
         client.query(`SELECT item_id, received_by FROM case_property`),
         // Movement Types — the configurable "Move to status" vocabulary.
         // Loaded into the mirror so the Change Status modal and the
@@ -193,6 +193,7 @@ export async function loadMirror() {
           firNo: r.fir_no,
           firDate: r.fir_date || r.dd_date || null,
           recordType: r.record_type || 'FIR',
+          usSections: r.us_sections || null,
         })),
         // case_property → keyed by item_id (lowercased).  `receivedBy` is the
         // Malkhana Moharrir who received the item (register column).

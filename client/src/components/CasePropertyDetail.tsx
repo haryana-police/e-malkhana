@@ -258,10 +258,23 @@ function PhotoCell(props: {
 function detailUsText(c: CaseRow): string {
   if (c.legalSections && c.legalSections.length) {
     return c.legalSections
-      .map((s, i) => `BNS ${s}${c.legalSectionsTitles && c.legalSectionsTitles[i] ? ' — ' + c.legalSectionsTitles[i] : ''}`)
+      .map((s, i) => {
+        const title = c.legalSectionsTitles && c.legalSectionsTitles[i] ? ' — ' + c.legalSectionsTitles[i] : '';
+        const str = String(s).trim();
+        const hasPrefix = /^[a-zA-Z]/.test(str);
+        return hasPrefix ? `${str}${title}` : `BNS ${str}${title}`;
+      })
       .join(' · ');
   }
-  if (c.legalSection) return `BNS ${c.legalSection}${c.legalSectionTitle ? ' — ' + c.legalSectionTitle : ''}`;
+  if (c.legalSection) {
+    const title = c.legalSectionTitle ? ' — ' + c.legalSectionTitle : '';
+    const str = String(c.legalSection).trim();
+    const hasPrefix = /^[a-zA-Z]/.test(str);
+    return hasPrefix ? `${str}${title}` : `BNS ${str}${title}`;
+  }
+  if ((c as any).usSections) {
+    return String((c as any).usSections);
+  }
   return '—';
 }
 

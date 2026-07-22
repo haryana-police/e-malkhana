@@ -324,6 +324,9 @@ function decorateCaseRow(c, db) {
     f.firNo.toLowerCase() === fmKey || f.firNo.toLowerCase() === fmFirNo
   ));
   c.firDate = fm && fm.firDate ? fm.firDate : '';
+  if (!c.legalSection && (!c.legalSections || !c.legalSections.length) && fm && fm.usSections) {
+    c.legalSection = fm.usSections;
+  }
 
   // Received By (Malkhana Moharrir) — joined from case_property.received_by,
   // keyed by the item's unique item_id (MK-xxxx).  Empty when the receipt
@@ -653,21 +656,38 @@ async function createOneCase(req, body) {
     for (const raw of body.legalSections) {
       const secNo = String(raw).replace(/^BNS\s+/i, '').trim();
       const hit = db_bnsSectionByNo(secNo);
-      if (!hit) { const e = new Error(`unknown BNS section: ${raw}`); e.status = 400; throw e; }
-      legalSections.push(hit.sectionNo);
-      legalSectionsTitles.push(hit.title);
+      if (hit) {
+        legalSections.push(hit.sectionNo);
+        legalSectionsTitles.push(hit.title);
+      } else {
+        legalSections.push(String(raw).trim());
+        legalSectionsTitles.push('');
+      }
     }
-    legalSection = legalSections[0];
-    legalSectionTitle = legalSectionsTitles[0];
+    legalSection = legalSections[0] || null;
+    legalSectionTitle = legalSectionsTitles[0] || null;
   } else if (body.legalSection) {
-    // Backward-compat: single section still accepted.
     const secNo = String(body.legalSection).replace(/^BNS\s+/i, '').trim();
     const hit = db_bnsSectionByNo(secNo);
-    if (!hit) { const e = new Error(`unknown BNS section: ${body.legalSection}`); e.status = 400; throw e; }
-    legalSection = hit.sectionNo;
-    legalSectionTitle = hit.title;
-    legalSections = [hit.sectionNo];
-    legalSectionsTitles = [hit.title];
+    if (hit) {
+      legalSection = hit.sectionNo;
+      legalSectionTitle = hit.title;
+      legalSections = [hit.sectionNo];
+      legalSectionsTitles = [hit.title];
+    } else {
+      legalSection = String(body.legalSection).trim();
+      legalSectionTitle = '';
+      legalSections = [legalSection];
+      legalSectionsTitles = [''];
+    }
+  } else if (body.usSections || body.us_sections) {
+    const rawUs = String(body.usSections || body.us_sections).trim();
+    if (rawUs) {
+      legalSection = rawUs;
+      legalSectionTitle = '';
+      legalSections = [rawUs];
+      legalSectionsTitles = [''];
+    }
   }
 
   const newCase = {
@@ -2587,10 +2607,20 @@ const REPORT_COLUMNS = [
 function usSectionText(c) {
   if (Array.isArray(c.legalSections) && c.legalSections.length) {
     return c.legalSections
-      .map((s, i) => `BNS ${s}${Array.isArray(c.legalSectionsTitles) && c.legalSectionsTitles[i] ? ' — ' + c.legalSectionsTitles[i] : ''}`)
+      .map((s, i) => {
+        const title = Array.isArray(c.legalSectionsTitles) && c.legalSectionsTitles[i] ? ' — ' + c.legalSectionsTitles[i] : '';
+        const str = String(s).trim();
+        const hasPrefix = /^[a-zA-Z]/.test(str);
+        return hasPrefix ? `${str}${title}` : `BNS ${str}${title}`;
+      })
       .join(' · ');
   }
-  if (c.legalSection) return `BNS ${c.legalSection}${c.legalSectionTitle ? ' — ' + c.legalSectionTitle : ''}`;
+  if (c.legalSection) {
+    const title = c.legalSectionTitle ? ' — ' + c.legalSectionTitle : '';
+    const str = String(c.legalSection).trim();
+    const hasPrefix = /^[a-zA-Z]/.test(str);
+    return hasPrefix ? `${str}${title}` : `BNS ${str}${title}`;
+  }
   return '';
 }
 
