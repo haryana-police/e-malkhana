@@ -18,8 +18,13 @@ Thumbs.db
 .env
 .env.local
 
-# Runtime data — case records + uploaded evidence (do NOT commit)
+# Runtime data — case records + uploaded evidence (do NOT commit).
+# `legal_sections.json` is the multi-act legal-section reference table
+# (BNS + IPC + NDPS + POCSO + ...) extracted from the input PDFs and is
+# committed alongside the codebase so the server can load it on every
+# cold start; everything else under server/data/ stays ignored.
 server/data/
+!server/data/legal_sections.json
 
 # Editor
 .vscode/
