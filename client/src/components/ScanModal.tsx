@@ -47,8 +47,10 @@ function parsePayload(raw: string): { id: string; itemId: string; encrypted: boo
 export function ScanModal({ open, onClose, onSuccess }: Props) {
   const [phase, setPhase]       = useState<'idle' | 'scanning' | 'confirm' | 'manual'>('idle');
   const [scanError, setScanError] = useState<string | null>(null);
-  const [cameras, setCameras]     = useState<{ id: string; label: string }[]>([]);
-  const [activeCamId, setActiveCamId] = useState<string | null>(null);
+  // Cameras are still enumerated (so we can detect "no camera detected"
+  // and disable the Start button), but the user no longer picks from a
+  // dropdown — Start camera always opens the rear (environment) lens.
+  const [hasCamera, setHasCamera] = useState(false);
   const [scanner, setScanner]     = useState<Html5Qrcode | null>(null);
 
   // Matched case (set after a successful scan) + optional movement form
@@ -82,31 +84,19 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
     Html5Qrcode.getCameras()
       .then(list => {
         if (list.length === 0) {
-          setCameras(list);
+          setHasCamera(false);
           setScanError('No camera detected on this device. Use the manual tag-ID entry below.');
           return;
         }
-        // Sort rear cameras first so the default selection is the one the
-        // user wants for scanning a QR tag (front cameras on most phones
-        // return first from getUserMedia, which produced the wrong default).
-        const isRear = (c: { id: string; label: string }) =>
-          /back|rear|environment/i.test(c.label) ||
-          // deviceId strings from Chromium often encode the facing: a token
-          // containing "back" or the absence of "front" is a strong signal.
-          (/back/i.test(c.id) || !/front/i.test(c.id));
-        const sorted = [...list].sort((a, b) =>
-          (isRear(b) ? 1 : 0) - (isRear(a) ? 1 : 0),
-        );
-        setCameras(sorted);
-        // Default to a NULL selection so startScanner() falls back to
-        // facingMode:'environment' (the REAR camera).  This is the correct
-        // default for scanning a physical QR tag — on many phones the front
-        // lens is enumerated first and would otherwise open by mistake.
-        // The user can still pick a specific lens from the dropdown; until
-        // they do, we always use the rear camera.
-        setActiveCamId(null);
+        // At least one camera is present.  We no longer ask the user to
+        // pick one — Start camera always opens the REAR lens via
+        // facingMode:'environment' (set in startScanner).  This is what
+        // you want for scanning a physical QR tag; the front camera used
+        // to open by mistake on phones that enumerated it first.
+        setHasCamera(true);
       })
       .catch(e => {
+        setHasCamera(false);
         setScanError(`Camera unavailable: ${e?.message || e}. Use the manual entry below.`);
       });
   }, [open]);
@@ -262,26 +252,14 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
 
         {phase === 'idle' && (
           <div className="form-grid" style={{ paddingTop: 8 }}>
-            {cameras.length > 0 && (
-              <label className="full">
-                Camera
-                <select
-                  value={activeCamId || ''}
-                  onChange={e => { setActiveCamId(e.target.value || null); }}
-                >
-                  <option value="">Auto · rear camera (facingMode)</option>
-                  {cameras.map(c => <option key={c.id} value={c.id}>{c.label || c.id}</option>)}
-                </select>
-              </label>
-            )}
             {scanError && <div className="form-msg show error full">{scanError}</div>}
 
             <div className="full" style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"
                 className="btn"
-                onClick={() => startScanner(activeCamId)}
-                disabled={cameras.length === 0}
+                onClick={() => startScanner(null)}
+                disabled={!hasCamera}
                 style={{ flex: 1 }}
               >▶ Start camera</button>
               <button
