@@ -562,6 +562,27 @@ CREATE TABLE IF NOT EXISTS inspections (
 CREATE INDEX IF NOT EXISTS inspections_date_idx ON inspections (inspection_date DESC);
 CREATE INDEX IF NOT EXISTS inspections_status_idx ON inspections (overall_status);
 CREATE INDEX IF NOT EXISTS inspections_station_idx ON inspections (police_station);
+
+-- movement_types: the configurable "Move to status" vocabulary.  Drives
+-- the Change Status dropdown, the Register filter, the Dashboard tiles
+-- (per status), and the status-validation gate on every case PATCH.
+-- Admins can add / rename / reorder / soft-delete / set defaults from
+-- System Settings -> Movement Types.  "next" is a JSONB array of status
+-- NAMES allowed as the next status from THIS status (the transition
+-- graph).  Empty array = "any other active status is allowed".  The
+-- is_system flag protects the built-in seed rows from accidental
+-- deletion (rename / edit defaults are still allowed).
+CREATE TABLE IF NOT EXISTS movement_types (
+  id               BIGSERIAL PRIMARY KEY,
+  name             TEXT NOT NULL UNIQUE,
+  default_location TEXT NOT NULL DEFAULT '',
+  default_purpose  TEXT NOT NULL DEFAULT '',
+  "next"           JSONB NOT NULL DEFAULT '[]'::jsonb,
+  sort_order       INTEGER NOT NULL DEFAULT 0,
+  active           BOOLEAN NOT NULL DEFAULT TRUE,
+  is_system        BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS movement_types_sort_idx ON movement_types (sort_order, id);
 `;
 
 export async function initSchema() {
@@ -1415,4 +1436,146 @@ export async function ensureReady() {
   await seedItemTypeFieldsIfEmpty();
   await seedItemCategoriesIfEmpty();
   await seedInspectionsIfEmpty();
+  await seedMovementTypesIfEmpty();
+}
+
+// ---------------------------------------------------------------------------
+// Movement Types — the configurable "Move to status" vocabulary (System
+// Settings -> Movement Types).  Seeded from MOVEMENT_TYPES_SEED on first
+// boot; subsequent boots are no-ops because the table already has rows.
+// "next" is the JSONB array of status NAMES allowed as the next status
+// from THIS status (the transition graph).  An empty array means
+// "any other active status is allowed" — that's how "Seized" is modelled.
+// ---------------------------------------------------------------------------
+const MOVEMENT_TYPES_SEED = [
+  { name: 'Seized',                 defaultLocation: 'Scene',                 defaultPurpose: 'Seizure check-in',         next: ['In Malkhana', 'With FSL', 'Expert Opinion Pending'], sort: 10 },
+  { name: 'In Malkhana',            defaultLocation: 'Malkhana',              defaultPurpose: 'Returned to malkhana',    next: ['With FSL', 'Expert Opinion Pending', 'In Court', 'Disposed'], sort: 20 },
+  { name: 'With FSL',               defaultLocation: 'FSL Madhuban',          defaultPurpose: 'Sent for forensic analysis', next: ['In Malkhana', 'In Court'], sort: 30 },
+  { name: 'Expert Opinion Pending', defaultLocation: 'Civil Hospital Panchkula', defaultPurpose: 'Sent for chemical opinion', next: ['In Malkhana', 'In Court'], sort: 40 },
+  { name: 'In Court',               defaultLocation: 'Court',                 defaultPurpose: 'Produced as exhibit',     next: ['In Malkhana', 'Disposed'], sort: 50 },
+  { name: 'Disposed',               defaultLocation: 'Disposed',              defaultPurpose: 'Disposed per court order', next: ['In Malkhana'], sort: 60 },
+  { name: 'Transfer',               defaultLocation: '',                      defaultPurpose: 'Inter-station transfer',  next: ['In Malkhana', 'With FSL', 'Expert Opinion Pending', 'In Court', 'Disposed'], sort: 70 },
+];
+
+export async function seedMovementTypesIfEmpty() {
+  await initSchema();
+  const { rows: cur } = await pool.query('SELECT count(*)::int AS n FROM movement_types');
+  if (cur[0] && cur[0].n > 0) return;    // already populated
+  for (const m of MOVEMENT_TYPES_SEED) {
+    await pool.query(
+      `INSERT INTO movement_types (name, default_location, default_purpose, "next", sort_order, active, is_system)
+       VALUES ($1, $2, $3, $4::jsonb, $5, TRUE, TRUE)
+       ON CONFLICT (name) DO NOTHING`,
+      [m.name, m.defaultLocation || '', m.defaultPurpose || '',
+       JSON.stringify(m.next || []), m.sort || 0]
+    );
+  }
+  const { rows: after } = await pool.query('SELECT count(*)::int AS n FROM movement_types');
+  if (after[0] && after[0].n > 0) {
+    console.log(`[db] seeded movement_types with ${after[0].n} rows`);
+  }
+}
+
+function movementRowToType(r) {
+  return {
+    id:              Number(r.id),
+    name:            r.name,
+    defaultLocation: r.default_location || '',
+    defaultPurpose:  r.default_purpose  || '',
+    next:            Array.isArray(r.next) ? r.next : [],
+    sortOrder:       Number(r.sort_order || 0),
+    active:          r.active !== false,
+    isSystem:        r.is_system === true,
+  };
+}
+
+export async function getMovementTypes() {
+  const { rows } = await pool.query(
+    `SELECT id, name, default_location, default_purpose, "next", sort_order, active, is_system
+       FROM movement_types
+       ORDER BY sort_order ASC, id ASC`
+  );
+  return rows.map(movementRowToType);
+}
+
+export async function createMovementType(input) {
+  const name = String(input?.name || '').trim();
+  if (!name) { const e = new Error('name is required'); e.status = 400; throw e; }
+  if (name.length > 80) { const e = new Error('name must be 80 characters or fewer'); e.status = 400; throw e; }
+  const next = Array.isArray(input?.next)
+    ? input.next.map(s => String(s).trim()).filter(Boolean).slice(0, 200)
+    : [];
+  const sortOrder = Number.isInteger(input?.sortOrder) ? input.sortOrder : 0;
+  const defaultLocation = String(input?.defaultLocation || '').slice(0, 200);
+  const defaultPurpose  = String(input?.defaultPurpose  || '').slice(0, 200);
+  const active = input?.active === false ? false : true;
+  const { rows } = await pool.query(
+    `INSERT INTO movement_types (name, default_location, default_purpose, "next", sort_order, active, is_system)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, FALSE)
+     ON CONFLICT (name) DO NOTHING
+     RETURNING id, name, default_location, default_purpose, "next", sort_order, active, is_system`,
+    [name, defaultLocation, defaultPurpose, JSON.stringify(next), sortOrder, active]
+  );
+  if (!rows[0]) { const e = new Error(`Movement type "${name}" already exists`); e.status = 409; throw e; }
+  return movementRowToType(rows[0]);
+}
+
+export async function updateMovementType(id, patch) {
+  const existing = await pool.query(
+    `SELECT id, name, default_location, default_purpose, "next", sort_order, active, is_system
+       FROM movement_types WHERE id = $1`, [id]);
+  if (!existing.rows[0]) { const e = new Error(`movement type not found: ${id}`); e.status = 404; throw e; }
+  const cur = movementRowToType(existing.rows[0]);
+  const next = { ...cur };
+  if (patch.name !== undefined) {
+    const name = String(patch.name || '').trim();
+    if (!name) { const e = new Error('name cannot be empty'); e.status = 400; throw e; }
+    if (name.length > 80) { const e = new Error('name must be 80 characters or fewer'); e.status = 400; throw e; }
+    next.name = name;
+  }
+  if (patch.defaultLocation !== undefined) next.defaultLocation = String(patch.defaultLocation || '').slice(0, 200);
+  if (patch.defaultPurpose  !== undefined) next.defaultPurpose  = String(patch.defaultPurpose  || '').slice(0, 200);
+  if (patch.next !== undefined && Array.isArray(patch.next)) {
+    next.next = patch.next.map(s => String(s).trim()).filter(Boolean).slice(0, 200);
+  }
+  if (patch.sortOrder !== undefined && Number.isInteger(patch.sortOrder)) next.sortOrder = patch.sortOrder;
+  if (patch.active !== undefined) next.active = patch.active !== false;
+
+  const { rows } = await pool.query(
+    `UPDATE movement_types
+        SET name             = $2,
+            default_location = $3,
+            default_purpose  = $4,
+            "next"             = $5::jsonb,
+            sort_order       = $6,
+            active           = $7
+      WHERE id = $1
+      RETURNING id, name, default_location, default_purpose, "next", sort_order, active, is_system`,
+    [id, next.name, next.defaultLocation, next.defaultPurpose,
+     JSON.stringify(next.next), next.sortOrder, next.active]
+  );
+  return movementRowToType(rows[0]);
+}
+
+export async function deleteMovementType(id) {
+  const existing = await pool.query(
+    `SELECT id, name, is_system FROM movement_types WHERE id = $1`, [id]);
+  if (!existing.rows[0]) { const e = new Error(`movement type not found: ${id}`); e.status = 404; throw e; }
+  if (existing.rows[0].is_system === true) {
+    const e = new Error(`"${existing.rows[0].name}" is a built-in status and cannot be deleted (you can deactivate it instead)`);
+    e.status = 400;
+    throw e;
+  }
+  const inUse = await pool.query(
+    `SELECT count(*)::int AS n FROM cases WHERE status = $1`, [existing.rows[0].name]);
+  if (inUse.rows[0] && inUse.rows[0].n > 0) {
+    const e = new Error(
+      `Cannot delete "${existing.rows[0].name}" — ${inUse.rows[0].n} case(s) still use this status. ` +
+      `Move those cases to a different status first, or deactivate instead of deleting.`
+    );
+    e.status = 400;
+    throw e;
+  }
+  await pool.query(`DELETE FROM movement_types WHERE id = $1`, [id]);
+  return { id: Number(id), deleted: true, name: existing.rows[0].name };
 }

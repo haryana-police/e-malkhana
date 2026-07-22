@@ -2,7 +2,7 @@ import type { AlertRow } from '../types';
 
 interface Props {
   alerts: AlertRow[];
-  onOpenSettings: (tab?: 'thresholds' | 'fields' | 'backup' | 'log') => void;
+  onOpenSettings: (tab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes') => void;
   active?: boolean;
 }
 

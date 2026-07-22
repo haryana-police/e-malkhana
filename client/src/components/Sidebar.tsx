@@ -7,7 +7,7 @@ interface Props {
   onNav: (v: ViewName) => void;
   racks: RackItem[];
   onRacksChange: (racks: RackItem[]) => void;
-  onOpenSettings: (tab?: 'thresholds' | 'fields' | 'backup' | 'log') => void;
+  onOpenSettings: (tab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes') => void;
   onOpenSettingsFull: () => void;
   onOpenSectionsManager: () => void;
   onOpenItemTypeManager: () => void;
@@ -177,10 +177,16 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
                 {auditCount != null && <span className="sys-setting-count">{auditCount}</span>}
               </button>
               <button
-                              type="button"
-                              className="sys-setting-item"
-                              onClick={() => onOpenSectionsManagerPage ? onOpenSectionsManagerPage() : onOpenSectionsManager()}
-                            >Malkhana Locations</button>
+                type="button"
+                className="sys-setting-item"
+                onClick={() => onOpenSettings('movementTypes')}
+                title="Configure the Move-to-status vocabulary"
+              >Movement Types</button>
+              <button
+                type="button"
+                className="sys-setting-item"
+                onClick={() => onOpenSectionsManagerPage ? onOpenSectionsManagerPage() : onOpenSectionsManager()}
+              >Malkhana Locations</button>
             </div>
           </div>
         )}

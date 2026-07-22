@@ -104,7 +104,7 @@ export default function App() {
 
   const [openScan, setOpenScan]                 = useState(false);
   const [openSettings, setOpenSettings]         = useState(false);
-  const [settingsTab, setSettingsTab]           = useState<'thresholds' | 'fields' | 'backup' | 'log' | null>(null);
+  const [settingsTab, setSettingsTab]           = useState<'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes' | null>(null);
   const [settingsSingle, setSettingsSingle]     = useState(false);
   const [openSectionsManager, setOpenSectionsManager] = useState(false);
   const [openItemTypeManager, setOpenItemTypeManager] = useState(false);
@@ -420,7 +420,7 @@ export default function App() {
                 // that case the page opens in "single" (focused) mode so the
                 // tab bar isn't re-shown on top of the focused content (which
                 // is what the user complained about on mobile + desktop).
-                const stateTab = (location.state as { tab?: 'thresholds' | 'fields' | 'backup' | 'log' } | null)?.tab;
+                const stateTab = (location.state as { tab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes' } | null)?.tab;
                 return (
                   <SettingsModal
                     open

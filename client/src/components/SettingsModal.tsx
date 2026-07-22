@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { AlertConfig, AuditEntry, CaseRow, CategoryFieldDef, CategoryOfItem, MovementLogRow } from '../types';
+import type { AlertConfig, AuditEntry, CaseRow, CategoryFieldDef, CategoryOfItem, MovementLogRow, MovementType } from '../types';
 
 interface Props {
   open: boolean;
@@ -8,7 +8,7 @@ interface Props {
   onUpdated: (cfg: AlertConfig) => void;
   onOpenSectionsManager?: () => void;
   onOpenItemTypeManager?: () => void;
-  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements';
+  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes';
   // When true, show ONLY the requested part (no tab bar). Used when the
   // user clicks a specific System Setting part from the sidebar, so they
   // land on that one part instead of the whole settings surface.
@@ -26,6 +26,7 @@ const FOCUS_TITLE: Record<string, string> = {
   backup: 'Backup & Restore',
   log: 'Activity log',
   movements: 'Movement Logs',
+  movementTypes: 'Movement Types',
 };
 
 const ACTION_LABELS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' | 'critical' }> = {
@@ -50,7 +51,7 @@ function fmtTime(iso: string) {
 }
 
 export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab, single, asPage = false }: Props) {
-  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup' | 'movements'>('thresholds');
+  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup' | 'movements' | 'movementTypes'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
   const [backupLog, setBackupLog] = useState<any[]>([]);
@@ -219,6 +220,11 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
               className={`audit-tab${tab === 'movements' ? ' active' : ''}`}
               onClick={() => setTab('movements')}
             >Movement Logs</button>
+            <button
+              className={`audit-tab${tab === 'movementTypes' ? ' active' : ''}`}
+              onClick={() => setTab('movementTypes')}
+              title="Configure the Move-to-status vocabulary"
+            >Movement Types</button>
             {onOpenSectionsManager && (
               <button
                 className="audit-tab"
@@ -436,6 +442,10 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
 
       {activeTab === 'movements' && (
         <MovementLogsManager />
+      )}
+
+      {activeTab === 'movementTypes' && (
+        <MovementTypesManager />
       )}
     </>
   );
@@ -1263,3 +1273,408 @@ function MovementLogsManager() {
   );
 }
 
+
+// =============================================================================
+// Movement Types manager — admin CRUD for the "Move to status" vocabulary.
+// Drives the Change Status dropdown, the Register filter, the Dashboard
+// tiles, and the validation gate on every case PATCH.  Admins can add,
+// rename, reorder, soft-delete, and tweak default location / purpose /
+// allowed-next statuses here.  The seven seeded rows are flagged
+// `isSystem` and cannot be deleted (only renamed + deactivated).
+// =============================================================================
+function MovementTypesManager() {
+  const [rows, setRows]           = useState<MovementType[] | null>(null);
+  const [caseCounts, setCaseCounts] = useState<Record<string, number>>({});
+  const [showInactive, setShowInactive] = useState(false);
+  const [busy, setBusy]           = useState(false);
+  const [msg, setMsg]             = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  const [editing, setEditing]     = useState<{ id: number; draft: MovementTypeDraft } | null>(null);
+  const [creating, setCreating]   = useState<MovementTypeDraft | null>(null);
+  const [delTarget, setDelTarget] = useState<MovementType | null>(null);
+
+  function reload() {
+    setBusy(true);
+    Promise.all([
+      api.movementTypes('all'),
+      api.cases().catch(() => [] as CaseRow[]),
+    ]).then(([list, cases]) => {
+      const counts: Record<string, number> = {};
+      for (const c of cases as any[]) {
+        const k = String(c.status || '').toLowerCase();
+        counts[k] = (counts[k] || 0) + 1;
+      }
+      setRows(list);
+      setCaseCounts(counts);
+      setMsg(null);
+    }).catch(e => setMsg({ kind: 'error', text: (e as Error).message }))
+      .finally(() => setBusy(false));
+  }
+
+  useEffect(() => { reload(); }, []);
+
+  const visible = useMemo(() => {
+    if (!rows) return [];
+    const list = showInactive ? rows : rows.filter(r => r.active !== false);
+    return [...list].sort((a, b) =>
+      (a.sortOrder || 0) - (b.sortOrder || 0) ||
+      (a.id || 0) - (b.id || 0)
+    );
+  }, [rows, showInactive]);
+
+  function startEdit(m: MovementType) {
+    setEditing({ id: m.id, draft: rowToDraft(m) });
+    setCreating(null);
+  }
+  function cancelEdit() { setEditing(null); }
+  async function saveEdit() {
+    if (!editing) return;
+    const d = editing.draft;
+    const err = validateDraft(d);
+    if (err) { setMsg({ kind: 'error', text: err }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      await api.updateMovementType(editing.id, draftToPatch(d));
+      setEditing(null);
+      setMsg({ kind: 'ok', text: `Updated "${d.name}".` });
+      await reload();
+    } catch (e) {
+      setMsg({ kind: 'error', text: (e as Error).message });
+    } finally { setBusy(false); }
+  }
+
+  function startCreate() {
+    const maxSort = (rows || []).reduce((m, r) => Math.max(m, r.sortOrder || 0), 0);
+    setCreating({
+      name: '', defaultLocation: '', defaultPurpose: '',
+      next: [], sortOrder: maxSort + 10, active: true,
+    });
+    setEditing(null);
+  }
+  async function saveCreate() {
+    if (!creating) return;
+    const err = validateDraft(creating);
+    if (err) { setMsg({ kind: 'error', text: err }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      await api.createMovementType(draftToPatch(creating));
+      setCreating(null);
+      setMsg({ kind: 'ok', text: `Added "${creating.name}".` });
+      await reload();
+    } catch (e) {
+      setMsg({ kind: 'error', text: (e as Error).message });
+    } finally { setBusy(false); }
+  }
+
+  async function toggleActive(m: MovementType) {
+    if (m.isSystem && m.active) {
+      const count = caseCounts[m.name.toLowerCase()] || 0;
+      if (count > 0) {
+        setMsg({ kind: 'error', text: `Cannot deactivate "${m.name}" — ${count} case(s) still use it. Move them first.` });
+        return;
+      }
+    }
+    setBusy(true); setMsg(null);
+    try {
+      await api.updateMovementType(m.id, { active: !m.active });
+      setMsg({ kind: 'ok', text: `${m.active ? 'Deactivated' : 'Reactivated'} "${m.name}".` });
+      await reload();
+    } catch (e) {
+      setMsg({ kind: 'error', text: (e as Error).message });
+    } finally { setBusy(false); }
+  }
+
+  async function doDelete() {
+    if (!delTarget) return;
+    setBusy(true); setMsg(null);
+    try {
+      await api.deleteMovementType(delTarget.id);
+      setMsg({ kind: 'ok', text: `Removed "${delTarget.name}".` });
+      setDelTarget(null);
+      await reload();
+    } catch (e) {
+      setMsg({ kind: 'error', text: (e as Error).message });
+    } finally { setBusy(false); }
+  }
+
+  function shift(m: MovementType, dir: -1 | 1) {
+    if (!rows) return;
+    const sorted = [...rows].sort((a, b) =>
+      (a.sortOrder || 0) - (b.sortOrder || 0) || (a.id || 0) - (b.id || 0)
+    );
+    const idx = sorted.findIndex(r => r.id === m.id);
+    const swap = sorted[idx + dir];
+    if (!swap) return;
+    const aSort = m.sortOrder || 0;
+    const bSort = swap.sortOrder || 0;
+    setBusy(true);
+    Promise.all([
+      api.updateMovementType(m.id,   { sortOrder: bSort }),
+      api.updateMovementType(swap.id, { sortOrder: aSort }),
+    ]).then(() => reload())
+      .catch(e => setMsg({ kind: 'error', text: (e as Error).message }))
+      .finally(() => setBusy(false));
+  }
+
+  function renderRow(m: MovementType) {
+    const isEditing = editing && editing.id === m.id;
+    const count = caseCounts[m.name.toLowerCase()] || 0;
+    const draft = isEditing ? editing!.draft : null;
+    const inert = !m.active;
+
+    return (
+      <div key={m.id} className={`settings-row${inert ? ' inert' : ''}`}>
+        <div className="settings-row-head">
+          <div className="settings-row-title">
+            {isEditing ? (
+              <input
+                className="settings-inline-input"
+                value={draft!.name}
+                maxLength={80}
+                onChange={e => setEditing({ id: m.id, draft: { ...draft!, name: e.target.value } })}
+                placeholder="Status name"
+              />
+            ) : (
+              <>
+                <b>{m.name}</b>
+                {m.isSystem && <span className="badge built-in" title="Seeded by the system — cannot be deleted">built-in</span>}
+                {!m.active && <span className="badge inactive">inactive</span>}
+                <span className="muted small"> · used by {count} case{count === 1 ? '' : 's'}</span>
+              </>
+            )}
+          </div>
+          <div className="settings-row-actions">
+            {!isEditing && (
+              <>
+                <button type="button" className="btn ghost sm" onClick={() => shift(m, -1)} disabled={busy} title="Move up">↑</button>
+                <button type="button" className="btn ghost sm" onClick={() => shift(m, 1)}  disabled={busy} title="Move down">↓</button>
+                <button type="button" className="btn ghost sm" onClick={() => startEdit(m)} disabled={busy}>Edit</button>
+                <button type="button" className="btn ghost sm" onClick={() => toggleActive(m)} disabled={busy}>
+                  {m.active ? 'Deactivate' : 'Reactivate'}
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost sm danger"
+                  onClick={() => setDelTarget(m)}
+                  disabled={busy || m.isSystem}
+                  title={m.isSystem ? 'Built-in statuses cannot be deleted' : 'Delete this movement type'}
+                >Delete</button>
+              </>
+            )}
+            {isEditing && (
+              <>
+                <button type="button" className="btn ghost sm" onClick={cancelEdit} disabled={busy}>Cancel</button>
+                <button type="button" className="btn sm" onClick={saveEdit} disabled={busy}>Save</button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {isEditing && draft && (
+          <div className="settings-row-body">
+            <label>Default location
+              <input value={draft.defaultLocation} maxLength={200}
+                onChange={e => setEditing({ id: m.id, draft: { ...draft, defaultLocation: e.target.value } })}
+                placeholder="e.g. Malkhana, FSL Madhuban" />
+            </label>
+            <label>Default purpose
+              <input value={draft.defaultPurpose} maxLength={200}
+                onChange={e => setEditing({ id: m.id, draft: { ...draft, defaultPurpose: e.target.value } })}
+                placeholder="e.g. Returned to malkhana" />
+            </label>
+            <label>Allowed next statuses
+              <NextChips
+                all={visible}
+                selected={draft.next}
+                exclude={m.name}
+                onChange={next => setEditing({ id: m.id, draft: { ...draft, next } })}
+              />
+            </label>
+          </div>
+        )}
+
+        {!isEditing && (
+          <div className="settings-row-body compact">
+            <span className="muted small">Location: {m.defaultLocation || <em>(none)</em>}</span>
+            <span className="muted small">Purpose: {m.defaultPurpose || <em>(none)</em>}</span>
+            {Array.isArray(m.next) && m.next.length > 0 && (
+              <span className="muted small">Next: {m.next.join(', ')}</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (rows === null) {
+    return <div className="sub">Loading movement types…</div>;
+  }
+
+  return (
+    <div className="settings-list-wrap">
+      <div className="settings-list-head">
+        <div className="sub">
+          The <b>Move to status</b> vocabulary shown on the Change Status modal,
+          the Register filter, the Dashboard tiles, and used to validate every
+          case PATCH.  Add new statuses (e.g. <i>With Police Custody</i>),
+          rename existing ones, or set the default location + purpose that
+          pre-fill the Change Status form.  Built-in statuses are protected
+          from deletion but can still be renamed + deactivated.
+        </div>
+        <div className="settings-list-actions">
+          <label className="settings-toggle">
+            <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+            Show inactive
+          </label>
+          <button type="button" className="btn sm" onClick={startCreate} disabled={busy || !!creating}>+ Add movement type</button>
+        </div>
+      </div>
+
+      {msg && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
+
+      {creating && (
+        <div className="settings-row create">
+          <div className="settings-row-head">
+            <div className="settings-row-title"><b>New movement type</b></div>
+            <div className="settings-row-actions">
+              <button type="button" className="btn ghost sm" onClick={() => setCreating(null)} disabled={busy}>Cancel</button>
+              <button type="button" className="btn sm" onClick={saveCreate} disabled={busy}>Add</button>
+            </div>
+          </div>
+          <div className="settings-row-body">
+            <label>Name
+              <input value={creating.name} maxLength={80}
+                onChange={e => setCreating({ ...creating, name: e.target.value })}
+                placeholder="e.g. With Police Custody" />
+            </label>
+            <label>Default location
+              <input value={creating.defaultLocation} maxLength={200}
+                onChange={e => setCreating({ ...creating, defaultLocation: e.target.value })}
+                placeholder="e.g. Police Lines" />
+            </label>
+            <label>Default purpose
+              <input value={creating.defaultPurpose} maxLength={200}
+                onChange={e => setCreating({ ...creating, defaultPurpose: e.target.value })}
+                placeholder="e.g. Handed over for investigation" />
+            </label>
+            <label>Allowed next statuses
+              <NextChips
+                all={visible}
+                selected={creating.next}
+                exclude={creating.name}
+                onChange={next => setCreating({ ...creating, next })}
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
+      <div className="settings-list">
+        {visible.length === 0
+          ? <div className="sub">No movement types match the current filter.</div>
+          : visible.map(renderRow)
+        }
+      </div>
+
+      {delTarget && (
+        <div className="overlay open" onClick={e => {
+          if (e.target === e.currentTarget && !busy) setDelTarget(null);
+        }}>
+          <div className="form-card confirm">
+            <h3>Delete movement type?</h3>
+            <div className="sub">
+              This permanently removes <b>{delTarget.name}</b>. Cases that currently
+              use this status must be moved to a different status first — the server
+              will refuse the delete if any case still uses it.
+            </div>
+            <div className="form-actions">
+              <button type="button" className="btn ghost" onClick={() => setDelTarget(null)} disabled={busy}>Cancel</button>
+              <button type="button" className="btn danger" onClick={doDelete} disabled={busy}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="form-actions">
+        <button type="button" className="btn ghost" onClick={reload} disabled={busy}>Refresh</button>
+      </div>
+    </div>
+  );
+}
+
+interface MovementTypeDraft {
+  name: string;
+  defaultLocation: string;
+  defaultPurpose: string;
+  next: string[];
+  sortOrder: number;
+  active: boolean;
+}
+
+function rowToDraft(m: MovementType): MovementTypeDraft {
+  return {
+    name:            m.name,
+    defaultLocation: m.defaultLocation || '',
+    defaultPurpose:  m.defaultPurpose  || '',
+    next:            Array.isArray(m.next) ? m.next : [],
+    sortOrder:       m.sortOrder || 0,
+    active:          m.active !== false,
+  };
+}
+
+function draftToPatch(d: MovementTypeDraft) {
+  return {
+    name:            d.name.trim(),
+    defaultLocation: d.defaultLocation,
+    defaultPurpose:  d.defaultPurpose,
+    next:            d.next,
+    sortOrder:       d.sortOrder,
+    active:          d.active,
+  };
+}
+
+function validateDraft(d: MovementTypeDraft): string | null {
+  const n = (d.name || '').trim();
+  if (!n) return 'Name is required';
+  if (n.length > 80) return 'Name must be 80 characters or fewer';
+  return null;
+}
+
+function NextChips(props: {
+  all: MovementType[];
+  selected: string[];
+  exclude: string;
+  onChange: (next: string[]) => void;
+}) {
+  const candidates = props.all.filter(r =>
+    r.active !== false && r.name !== props.exclude);
+  function toggle(name: string) {
+    const has = props.selected.includes(name);
+    const next = has ? props.selected.filter(n => n !== name) : [...props.selected, name];
+    props.onChange(next);
+  }
+  return (
+    <div className="chip-row">
+      {candidates.length === 0
+        ? <span className="muted small">No other statuses available.</span>
+        : candidates.map(r => {
+            const on = props.selected.includes(r.name);
+            return (
+              <button
+                key={r.id}
+                type="button"
+                className={`chip${on ? ' on' : ''}`}
+                onClick={() => toggle(r.name)}
+                title={on ? 'Click to remove' : 'Click to add'}
+              >{r.name}</button>
+            );
+          })
+      }
+      <span className="muted small" style={{ marginLeft: 8 }}>
+        {props.selected.length === 0
+          ? '(empty = any active status)'
+          : `${props.selected.length} selected`}
+      </span>
+    </div>
+  );
+}

@@ -83,9 +83,9 @@ export async function loadMirror() {
     await ensureReady();
     const client = await pool.connect();
     try {
-      const [kvRes, usersRes, sectionsRes, itRes, bnsRes, casesRes, movRes, auditRes, fmRes, cpRes] = await Promise.all([
+      const [kvRes, usersRes, sectionsRes, itRes, bnsRes, casesRes, movRes, auditRes, fmRes, cpRes, mtRes] = await Promise.all([
         client.query("SELECT key, value FROM kv WHERE key IN ('meta','officer','alertConfig','alertIssues','backupLog')"),
-        client.query("SELECT id, initials, name, rank, designation, station, password FROM users ORDER BY id"),
+        client.query(`SELECT id, initials, name, rank, designation, station, password FROM users ORDER BY id`),
         client.query(`SELECT letter, name, count, active, sort_order FROM sections ORDER BY sort_order, length(letter), letter`),
         client.query(`SELECT id, section_letter, name, sort_order, active FROM item_types ORDER BY section_letter, sort_order, name`),
         client.query(`SELECT section_no, title, description, category FROM bns_sections ORDER BY length(section_no), section_no`),
@@ -107,6 +107,14 @@ export async function loadMirror() {
         // those two columns without a per-row round-trip to Postgres.
         client.query(`SELECT fir_no, fir_date, record_type, dd_date FROM fir_master`),
         client.query(`SELECT item_id, received_by FROM case_property`),
+        // Movement Types — the configurable "Move to status" vocabulary.
+        // Loaded into the mirror so the Change Status modal and the
+        // Register filter dropdown can read it synchronously.  Seeded by
+        // db.seedMovementTypesIfEmpty() on first boot.
+        client.query(`SELECT id, name, default_location, default_purpose, "next",
+                             sort_order, active, is_system
+                        FROM movement_types
+                       ORDER BY sort_order ASC, id ASC`),
       ]);
       const kv = Object.fromEntries(kvRes.rows.map(r => [r.key, r.value]));
       _mirror = {
@@ -142,6 +150,20 @@ export async function loadMirror() {
           sortOrder:     Number(r.sort_order) || 0,
           active:        r.active !== false,
           caseCount:    0,                 // filled by the pass below
+        })),
+        // Movement Types — admin-managed vocabulary for the Change Status
+        // dropdown, Register filter, Dashboard tiles, and status validation.
+        // The mirror is the source of truth at runtime; persistDiff() below
+        // syncs every mutation back to Postgres.
+        movementTypes: (mtRes?.rows || []).map(r => ({
+          id:              Number(r.id),
+          name:            r.name,
+          defaultLocation: r.default_location || '',
+          defaultPurpose:  r.default_purpose  || '',
+          next:            Array.isArray(r.next) ? r.next : [],
+          sortOrder:       Number(r.sort_order) || 0,
+          active:          r.active !== false,
+          isSystem:        r.is_system === true,
         })),
         cases: casesRes.rows.map(r => ({
           id: r.id,
@@ -378,6 +400,45 @@ async function persistDiff(client, pre, post) {
       // ON DELETE is RESTRICT-free here — we null the case link first
       // in the manager to avoid orphan rows).
       await client.query('DELETE FROM item_types WHERE id=$1', [t.id]);
+    }
+  }
+
+  // 3c. Movement Types (id key = id).  Admin-editable vocabulary
+  // that drives the Change Status dropdown + Register filter +
+  // status PATCH validation.  The is_system flag is preserved on
+  // UPDATE; the API layer refuses to DELETE a row where is_system
+  // = TRUE.
+  {
+    const preMT  = (pre.movementTypes || []).map(t => ({ ...t, next: t.next || [] }));
+    const postMT = (post.movementTypes || []).map(t => ({ ...t, next: t.next || [] }));
+    const { inserted, updated, deleted } = diffById(preMT, postMT, 'id');
+    for (const m of inserted) {
+      await client.query(
+        `INSERT INTO movement_types
+           (id, name, default_location, default_purpose, "next", sort_order, active, is_system)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8)
+         ON CONFLICT (id) DO NOTHING`,
+        [m.id, m.name,
+         m.defaultLocation || '', m.defaultPurpose || '',
+         JSON.stringify(m.next || []),
+         m.sortOrder || 0, m.active !== false, !!m.isSystem]
+      );
+    }
+    for (const m of updated) {
+      await client.query(
+        `UPDATE movement_types
+            SET name=$2, default_location=$3, default_purpose=$4,
+                "next"=$5::jsonb, sort_order=$6, active=$7
+          WHERE id=$1`,
+        [m.id, m.name,
+         m.defaultLocation || '', m.defaultPurpose || '',
+         JSON.stringify(m.next || []),
+         m.sortOrder || 0, m.active !== false]
+      );
+    }
+    for (const m of deleted) {
+      // API layer already blocks deletes of in-use or is_system rows.
+      await client.query('DELETE FROM movement_types WHERE id=$1', [m.id]);
     }
   }
 

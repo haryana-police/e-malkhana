@@ -19,6 +19,7 @@ import type {
   InspectionReport,
   InspectionMeta,
   CategoryOfItem,
+  MovementType,
 } from './types';
 
 const base = '/api';
@@ -159,6 +160,24 @@ export const api = {
     send<ItemType>('PATCH', `/item-types/${id}`, patch),
   deleteItemType:  (id: number) =>
     send<{ id: number; sectionLetter: string; name: string; deleted: boolean }>('DELETE', `/item-types/${id}`, {}),
+  // Movement Types — the configurable "Move to status" vocabulary shown
+  // on the Change Status modal, the Register filter, the Dashboard tiles,
+  // and used to validate every case PATCH.  Admins add/edit/delete/reorder
+  // these from System Settings -> Movement Types.  `active` defaults to
+  // "true" on the server; pass "all" to include deactivated rows so the
+  // manager can show them greyed out + offer reactivation.
+  movementTypes: (active: 'true' | 'false' | 'all' = 'true') =>
+    get<MovementType[]>(`/movement-types?active=${active}`),
+  createMovementType: (input: {
+    name: string; defaultLocation?: string; defaultPurpose?: string;
+    next?: string[]; sortOrder?: number; active?: boolean;
+  }) => send<MovementType>('POST', '/movement-types', input),
+  updateMovementType: (id: number, patch: Partial<{
+    name: string; defaultLocation: string; defaultPurpose: string;
+    next: string[]; sortOrder: number; active: boolean;
+  }>) => send<MovementType>('PATCH', `/movement-types/${id}`, patch),
+  deleteMovementType: (id: number) =>
+    send<{ id: number; name: string; deleted: boolean }>('DELETE', `/movement-types/${id}`, {}),
   // BNS (Bharatiya Nyaya Sanhita) section typeahead.  `q` is the live
   // search text from the Register form.  Empty `q` returns the first 15
   // (so the dropdown has content the moment the field is focused).
@@ -199,13 +218,16 @@ export const api = {
 
   // Edit editable fields of an existing case from the Case Property Detail
   // page (itemType, itemSub, section, seizingOfficer, itemId,
-  // legalSection).  Only present keys are sent to the server, so a partial
-  // update is fine.  Returns the updated CaseRow (with fresh sectionName
-  // joined server-side).
+  // legalSection, receivedBy, firDate, imageUrl, status).
+  // Only present keys are sent to the server, so a partial update is fine.
+  // Returns the updated CaseRow (with fresh sectionName joined server-side).
   updateCase:    (id: string, patch: Partial<{
     itemType: string; itemSub: string; section: string;
     seizingOfficer: string; itemId: string;
-    legalSection: string | null;
+    legalSection: string | null; legalSections?: string[];
+    description?: string; itemTypeId?: number | null;
+    receivedBy?: string | null; firDate?: string | null;
+    imageUrl?: string | null; status?: string;
   }>) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}`, patch),
 
   // downloads — the browser does the navigation; we just return the URL.

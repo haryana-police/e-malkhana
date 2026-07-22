@@ -75,6 +75,25 @@ export interface MovementLogRow {
   docRef: string;
 }
 
+// Movement Type — one row of the admin-managed "Move to status"
+// vocabulary (System Settings -> Movement Types).  Drives the Change
+// Status dropdown, the Register filter, the Dashboard tiles, and the
+// status-validation gate on every case PATCH.  `next` lists the status
+// NAMES allowed as the next status from THIS status; an empty array
+// means "any other active status is allowed".  `isSystem` is true for
+// the seven built-in rows seeded by the server — those cannot be deleted
+// (only deactivated), but they CAN be renamed and their defaults edited.
+export interface MovementType {
+  id: number;
+  name: string;
+  defaultLocation: string;
+  defaultPurpose: string;
+  next: string[];
+  sortOrder: number;
+  active: boolean;
+  isSystem: boolean;
+}
+
 export interface AlertRow {
   level: 'urgent' | 'warn';
   title: string;

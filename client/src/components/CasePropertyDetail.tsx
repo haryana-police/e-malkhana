@@ -2,7 +2,27 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import html2canvas from 'html2canvas';
-import type { CaseRow, FirMaster, MovementLogRow } from '../types';
+import type { CaseRow, CasePropertyData, FirMaster, MovementLogRow, CaseStatus } from '../types';
+
+// Status list mirrors server STATUSES in server.js.  Kept in sync via
+// the same allow-list check on the server, so a stray value here just
+// gets a 400 from PATCH.
+const STATUS_OPTIONS: CaseStatus[] = [
+  'Seized', 'Expert Opinion Pending', 'In Malkhana',
+  'With FSL', 'In Court', 'Disposed', 'Transfer',
+];
+
+// Lightweight HTML escaper for the print window so a malicious item name
+// can't break out of the print template.  We use this instead of pulling
+// in a dependency for one print function.
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 const STATUS_TONE: Record<string, string> = {
   'Seized': 'tone-info', 'In Malkhana': 'tone-info',
@@ -11,7 +31,229 @@ const STATUS_TONE: Record<string, string> = {
   'Transfer': 'tone-info',
 };
 
-// U/S (legal section) formatted for the compact detail view.
+// ============================================================
+// InlineEditCell
+// ============================================================
+//
+// A single clickable label/value pair in the Case Property card.  Clicking
+// the cell swaps the value for a `<input>` (text or date) or `<select>`
+// so the user can edit it inline.  Saves on blur or Enter; reverts on Esc.
+//
+// Used directly by the CasePropertyDetail page so every visible field is
+// editable without going through a separate "Edit details" form.
+//
+// Props:
+//   - label:        small uppercase header above the value
+//   - value:        current value (string | null | undefined)
+//   - type:         'text' | 'date' | 'select'
+//   - options?:     [{ value, label }] when type='select'
+//   - mono?:        monospaced font for IDs / numbers
+//   - placeholder?: input placeholder
+//   - onSave(next): async (string|null) => void  — caller persists via api.updateCase
+//   - disabled?:    when true, renders as static text only (system-derived fields)
+function InlineEditCell(props: {
+  label: string;
+  value: string | null | undefined;
+  type?: 'text' | 'date' | 'select';
+  options?: { value: string; label: string }[];
+  mono?: boolean;
+  placeholder?: string;
+  onSave?: (next: string | null) => Promise<void> | void;
+  disabled?: boolean;
+  rawValue?: React.ReactNode;          // when the value is JSX (e.g. status stamp)
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>(props.value || '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
+
+  // Re-sync draft when the source-of-truth value changes (after save).
+  useEffect(() => { setDraft(props.value || ''); }, [props.value]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      if ('select' in inputRef.current) (inputRef.current as HTMLInputElement).select?.();
+    }
+  }, [editing]);
+
+  async function commit() {
+    if (!props.onSave) { setEditing(false); return; }
+    const next = draft.trim();
+    const old = (props.value || '').trim();
+    if (next === old) { setEditing(false); return; }
+    setBusy(true); setErr(null);
+    try {
+      await props.onSave(next || null);
+      setEditing(false);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function cancel() {
+    setDraft(props.value || '');
+    setErr(null);
+    setEditing(false);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  }
+
+  // Read-only (system-derived or no onSave): just render the label/value.
+  if (props.disabled || !props.onSave) {
+    return (
+      <div>
+        <span className="k">{props.label}</span>
+        <span className={`v${props.mono ? ' mono' : ''}`}>
+          {props.rawValue ?? (props.value || '—')}
+        </span>
+      </div>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div>
+        <span className="k">{props.label}</span>
+        <div className="cp-cell-edit">
+          {props.type === 'select' ? (
+            <select
+              ref={inputRef as React.RefObject<HTMLSelectElement>}
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={onKeyDown}
+              disabled={busy}
+            >
+              {(props.options || []).map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              ref={inputRef as React.RefObject<HTMLInputElement>}
+              type={props.type === 'date' ? 'date' : 'text'}
+              value={draft}
+              placeholder={props.placeholder}
+              onChange={e => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={onKeyDown}
+              disabled={busy}
+            />
+          )}
+          {err && <div className="cp-cell-err" title={err}>⚠ {err}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="cp-cell-clickable"
+      onClick={() => setEditing(true)}
+      title="Click to edit"
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true); } }}
+    >
+      <span className="k">{props.label}</span>
+      <span className={`v${props.mono ? ' mono' : ''}`}>
+        {props.rawValue ?? (props.value || '—')}
+        <span className="cp-edit-pencil" aria-hidden>✎</span>
+      </span>
+    </div>
+  );
+}
+
+// PhotoCell — shows the current photo thumbnail + an upload affordance.
+// Picking a file uploads via api.upload, then PATCHes imageUrl.
+function PhotoCell(props: {
+  caseId: string;
+  itemId: string;
+  imageUrl?: string;
+  itemType: string;
+  onUpdated: (imageUrl: string | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setBusy(true); setErr(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Could not read file'));
+        reader.readAsDataURL(f);
+      });
+      // Filename: derive a stable, content-type-correct name.
+      const ext = (f.name.match(/\.[a-zA-Z0-9]+$/)?.[0] || '.jpg').toLowerCase();
+      const safe = `case-${props.caseId.replace(/[^\w]+/g, '_')}-${Date.now()}${ext}`;
+      const up = await api.upload(safe, dataUrl);
+      const url = up.url || (up as any).filename;
+      if (!url) throw new Error('upload returned no URL');
+      // Persist through the standard PATCH endpoint so the audit log fires.
+      await api.updateCase(props.caseId, { imageUrl: url });
+      props.onUpdated(url);
+    } catch (ex) {
+      setErr((ex as Error).message);
+    } finally {
+      setBusy(false);
+      // Clear the input so picking the same file again re-fires.
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  async function clearPhoto() {
+    setBusy(true); setErr(null);
+    try {
+      await api.updateCase(props.caseId, { imageUrl: null });
+      props.onUpdated(null);
+    } catch (ex) {
+      setErr((ex as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="cp-photo-cell">
+      <span className="k">Photo</span>
+      <div className="cp-photo-body">
+        {props.imageUrl
+          ? <img src={props.imageUrl} alt={props.itemType} className="cp-thumb" />
+          : <span className="cp-thumb cp-thumb-empty">—</span>}
+        <div className="cp-photo-actions">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={onPickFile}
+          />
+          <button type="button" className="btn ghost small" disabled={busy} onClick={() => inputRef.current?.click()}>
+            {busy ? 'Uploading…' : (props.imageUrl ? 'Replace photo' : '＋ Upload photo')}
+          </button>
+          {props.imageUrl && (
+            <button type="button" className="btn ghost small" disabled={busy} onClick={clearPhoto}>✕ Remove</button>
+          )}
+          {err && <span className="cp-cell-err" title={err}>⚠ {err}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// U/S (legal section) formatted for the compact detail view + print sheets.
 function detailUsText(c: CaseRow): string {
   if (c.legalSections && c.legalSections.length) {
     return c.legalSections
@@ -20,6 +262,15 @@ function detailUsText(c: CaseRow): string {
   }
   if (c.legalSection) return `BNS ${c.legalSection}${c.legalSectionTitle ? ' — ' + c.legalSectionTitle : ''}`;
   return '—';
+}
+
+// Render the case's legal-section list as the raw BNS numbers comma-
+// separated (no titles), so the inline-edit input shows what the user
+// is expected to type.
+function detailUsNumbers(c: CaseRow): string {
+  if (c.legalSections && c.legalSections.length) return c.legalSections.join(', ');
+  if (c.legalSection) return c.legalSection;
+  return '';
 }
 
 function fmtTime(iso: string) {
@@ -46,6 +297,7 @@ export function CasePropertyDetail() {
   const location = useLocation();
   const sno = (location.state as any)?.sno;
   const [caseRow, setCaseRow] = useState<CaseRow | null>(null);
+  const [caseProperty, setCaseProperty] = useState<CasePropertyData | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrMask, setQrMask] = useState<string | null>(null);
   const [firMaster, setFirMaster] = useState<FirMaster | null>(null);
@@ -53,12 +305,19 @@ export function CasePropertyDetail() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // ---- inline edit (Edit details) ----
-  const [editing, setEditing] = useState(false);
-  const [editErr, setEditErr] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [savedFlash, setSavedFlash] = useState(false);
+  // ---- dropdown options for the inline-edit cells ----
+  // sections: full list (for Location dropdown).
+  // itemTypes: scoped to the case's section letter (for Category dropdown).
   const [sections, setSections] = useState<{ letter: string; name: string }[]>([]);
+  const [itemTypes, setItemTypes] = useState<{ id: number; name: string }[]>([]);
+  const sectionLetter = caseRow?.section?.replace('PART ', '') || '';
+  useEffect(() => {
+    api.sections('all').then(s => setSections(s.map(x => ({ letter: x.letter, name: x.name })))).catch(() => setSections([]));
+  }, []);
+  useEffect(() => {
+    if (!sectionLetter) { setItemTypes([]); return; }
+    api.itemTypes(sectionLetter).then(t => setItemTypes(t.map(x => ({ id: x.id, name: x.name })))).catch(() => setItemTypes([]));
+  }, [sectionLetter]);
 
   // ---- log / edit movement modal ----
   const [showLog, setShowLog] = useState(false);
@@ -80,16 +339,19 @@ export function CasePropertyDetail() {
       try {
         const c = await api.case(itemIdParam);
         setCaseRow(c);
-        const [qr, fir, mv] = await Promise.all([
+        const [qr, fir, mv, property] = await Promise.all([
           api.qr(c.id).catch(() => ({ dataUrl: '', payload: '', encrypted: false, mask: null })),
           // FIR master details (police station, U/S, IO) — once per FIR.
           api.firMaster(c.firNo || c.id).catch(() => null),
           api.movements(c.id).catch(() => [] as MovementLogRow[]),
+          // MM/case-property details are keyed by the Malkhana item number.
+          api.caseProperty(c.itemId).catch(() => null),
         ]);
         setQrUrl(qr.dataUrl);
         setQrMask(qr.mask || null);
         setFirMaster(fir);
         setMovements(Array.isArray(mv) ? mv : []);
+        setCaseProperty(property);
       } catch (e) {
         setErr((e as Error).message);
       } finally {
@@ -331,52 +593,7 @@ export function CasePropertyDetail() {
     }
   }
 
-  // ---- Inline edit (Edit details) ----
-  function startEdit() {
-    if (!caseRow) return;
-    setEditing(true);
-    setEditErr(null);
-    setSavedFlash(false);
-    api.sections('all').then(s => setSections(s.map(x => ({ letter: x.letter, name: x.name })))).catch(() => setSections([]));
-  }
-  async function saveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!caseRow) return;
-    setSaving(true); setEditErr(null);
-    const form = new FormData(e.currentTarget as HTMLFormElement);
-    const patch: Record<string, any> = {};
-    const itemType = String(form.get('itemType') || '').trim();
-    const itemSub = String(form.get('itemSub') || '').trim();
-    const section = String(form.get('section') || '').trim();
-    const seizingOfficer = String(form.get('seizingOfficer') || '').trim();
-    const itemId = String(form.get('itemId') || '').trim();
-    const description = String(form.get('description') || '').trim();
-    const legalRaw = String(form.get('legalSections') || '').trim();
-    const legalSections = legalRaw
-      ? legalRaw.split(',').map(s => s.replace(/^BNS\s+/i, '').trim()).filter(Boolean)
-      : undefined;
-    if (itemType && itemType !== caseRow.itemType) patch.itemType = itemType;
-    if (itemSub !== (caseRow.itemSub || '')) patch.itemSub = itemSub;
-    if (section && section !== caseRow.section?.replace('PART ', '')) patch.section = section;
-    if (seizingOfficer && seizingOfficer !== caseRow.seizingOfficer) patch.seizingOfficer = seizingOfficer;
-    if (itemId && itemId !== caseRow.itemId) patch.itemId = itemId;
-    if (description !== (caseRow.description || '')) patch.description = description;
-    if (legalSections && JSON.stringify(legalSections) !== JSON.stringify(caseRow.legalSections || [])) patch.legalSections = legalSections;
-    if (Object.keys(patch).length === 0) { setEditing(false); setSaving(false); return; }
-    try {
-      const updated = await api.updateCase(caseRow.id, patch);
-      setCaseRow(updated);
-      setEditing(false);
-      setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 3000);
-    } catch (err) {
-      setEditErr((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ---- Log / Edit movement ----
+  // ---- Log / Edit movement modal ----
   async function openLog() {
     if (!caseRow) return;
     setShowLog(true);
@@ -429,11 +646,9 @@ export function CasePropertyDetail() {
       <div className="case-detail-bar">
         <Link to="/caseproperty" className="link-back">← All Case Property</Link>
         <div className="case-detail-actions">
-          <button className="btn" type="button" onClick={startEdit}>✎ Edit details</button>
           <button className="btn" type="button" onClick={openLog}>＋ Log New Movement</button>
           <button className="btn ghost" type="button" onClick={printTag}>🏷 Print Tag</button>
           <button className="btn ghost" type="button" onClick={printDetail}>🖨 Print full detail</button>
-          {savedFlash && <span className="case-detail-saved-flash">Saved ✓</span>}
         </div>
       </div>
 
@@ -447,65 +662,188 @@ export function CasePropertyDetail() {
         <span className={`stamp ${STATUS_TONE[caseRow.status] || ''}`}>{caseRow.status}</span>
       </header>
 
-      {/* Inline edit form */}
-      {editing && (
-        <form className="case-detail-edit" onSubmit={saveEdit}>
-          <h3>Edit Case Property Details</h3>
-          <div className="case-detail-edit-grid">
-            <label>Item Type
-              <input name="itemType" defaultValue={caseRow.itemType} />
-            </label>
-            <label>Description / Sub-type
-              <input name="itemSub" defaultValue={caseRow.itemSub || ''} />
-            </label>
-            <label>Section (Part)
-              <select name="section" defaultValue={caseRow.section?.replace('PART ', '') || ''}>
-                <option value="">— select —</option>
-                {sections.map(s => <option key={s.letter} value={s.letter}>{s.letter} — {s.name}</option>)}
-              </select>
-            </label>
-            <label>Seizing Officer
-              <input name="seizingOfficer" defaultValue={caseRow.seizingOfficer || ''} />
-            </label>
-            <label>Malkhana No.
-              <input name="itemId" defaultValue={caseRow.itemId || ''} />
-            </label>
-            <label>Free-text description
-              <input name="description" defaultValue={caseRow.description || ''} />
-            </label>
-            <label>Legal Section(s) — comma separated
-              <input name="legalSections" defaultValue={(caseRow.legalSections || []).join(', ')} placeholder="e.g. 244, 245" />
-            </label>
-          </div>
-          {editErr && <div className="case-detail-edit-err">{editErr}</div>}
-          <div className="case-detail-edit-actions">
-            <button type="submit" className="btn" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
-            <button type="button" className="btn ghost" onClick={() => setEditing(false)} disabled={saving}>Cancel</button>
-          </div>
-        </form>
-      )}
-
-      {/* Compact 11-column Case Property card (matches the register) — no scroll */}
+      {/* Compact 11-column Case Property card (matches the register) — no scroll.
+          Every cell is INLINE EDITABLE on click.  See InlineEditCell above. */}
       <div className="case-property-card" style={{ marginTop: 16 }}>
         <div className="cp-card-grid">
-          <div><span className="k">S.NO</span><span className="v mono">{sno != null ? sno : '—'}</span></div>
-          <div><span className="k">Malkhana No.</span><span className="v mono">{caseRow.itemId || '—'}</span></div>
-          <div><span className="k">FIR / DD No.</span><span className="v mono">{caseRow.id}</span></div>
-          <div><span className="k">FIR Date</span><span className="v mono">{caseRow.firDate ? caseRow.firDate : '—'}</span></div>
-          <div><span className="k">Section (U/S)</span><span className="v mono us">{detailUsText(caseRow)}</span></div>
-          <div><span className="k">Category of Item</span><span className="v">{caseRow.itemType}</span></div>
-          <div><span className="k">Location</span><span className="v">{caseRow.sectionName} (Part {caseRow.section?.replace('PART ', '')})</span></div>
-          <div><span className="k">Received By (Moharrir)</span><span className="v">{caseRow.receivedBy || '—'}</span></div>
-          <div><span className="k">Last Movement Date</span><span className="v mono">{caseRow.lastMovement ? caseRow.lastMovement : '—'}</span></div>
-          <div><span className="k">Status</span><span className="v"><span className={`stamp ${STATUS_TONE[caseRow.status] || ''}`}>{caseRow.status}</span></span></div>
-          <div className="cp-photo-cell">
-            <span className="k">Photo</span>
-            {caseRow.imageUrl
-              ? <img src={caseRow.imageUrl} alt={caseRow.itemType} className="cp-thumb" />
-              : <span className="v">—</span>}
+          {/* S.NO — server-assigned, read-only */}
+          <div>
+            <span className="k">S.NO</span>
+            <span className="v mono">{sno != null ? sno : '—'}</span>
           </div>
+
+          {/* Malkhana No. — unique identifier, but the user can fix typos */}
+          <InlineEditCell
+            label="Malkhana No."
+            value={caseRow.itemId}
+            mono
+            placeholder="MK-2026-000005"
+            onSave={async (next) => {
+              if (!next) throw new Error('Malkhana No. cannot be empty');
+              const updated = await api.updateCase(caseRow.id, { itemId: next });
+              setCaseRow(updated);
+            }}
+          />
+
+          {/* FIR / DD No. — primary key, IMMUTABLE on the server.  Display
+              as a static value but keep the label/value layout consistent. */}
+          <div>
+            <span className="k">FIR / DD No.</span>
+            <span className="v mono">{caseRow.id}</span>
+          </div>
+
+          {/* FIR Date — written to fir_master via the PATCH handler */}
+          <InlineEditCell
+            label="FIR Date"
+            value={caseRow.firDate || null}
+            type="date"
+            mono
+            onSave={async (next) => {
+              const updated = await api.updateCase(caseRow.id, { firDate: next });
+              setCaseRow(updated);
+              // Re-fetch so the server's decorateCaseRow() pass runs and
+              // the joined firDate is reflected without us having to mirror
+              // it locally.
+              const fresh = await api.case(caseRow.id).catch(() => updated);
+              setCaseRow(fresh);
+            }}
+          />
+
+          {/* Section (U/S) — the legal sections under which the case is booked.
+              Input is the raw BNS numbers comma-separated; the displayed
+              label keeps the formatted "BNS 244 — title" rendering. */}
+          <InlineEditCell
+            label="Section (U/S)"
+            value={detailUsNumbers(caseRow)}
+            mono
+            placeholder="e.g. 244, 245"
+            onSave={async (next) => {
+              const arr = (next || '').split(',').map(s => s.replace(/^BNS\s+/i, '').trim()).filter(Boolean);
+              if (arr.length === 0) throw new Error('Enter at least one section number');
+              const updated = await api.updateCase(caseRow.id, { legalSections: arr });
+              setCaseRow(updated);
+            }}
+          />
+
+          {/* Category of Item — mirrors itemType.  If item-types are loaded
+              for the case's section, offer a dropdown; otherwise plain text
+              (so the cell stays usable when the master list is empty). */}
+          <InlineEditCell
+            label="Category of Item"
+            value={caseRow.itemType}
+            type={itemTypes.length > 0 ? 'select' : 'text'}
+            options={itemTypes.map(t => ({ value: t.name, label: t.name }))}
+            onSave={async (next) => {
+              if (!next) throw new Error('Category cannot be empty');
+              const updated = await api.updateCase(caseRow.id, { itemType: next });
+              setCaseRow(updated);
+            }}
+          />
+
+          {/* Location — section letter dropdown (the sectionName is derived
+              from the letter server-side). */}
+          <InlineEditCell
+            label="Location"
+            value={caseRow.section?.replace('PART ', '') || ''}
+            type="select"
+            options={sections.map(s => ({ value: s.letter, label: `${s.letter} — ${s.name}` }))}
+            rawValue={
+              <span>
+                {caseRow.sectionName || '—'} (Part {caseRow.section?.replace('PART ', '') || '—'})
+                <span className="cp-edit-pencil" aria-hidden>✎</span>
+              </span>
+            }
+            onSave={async (next) => {
+              if (!next) throw new Error('Pick a section');
+              const updated = await api.updateCase(caseRow.id, { section: next });
+              setCaseRow(updated);
+              // Re-fetch so server's withFreshSectionName() pass reflects
+              // the renamed/letter-changed sectionName on screen.
+              const fresh = await api.case(caseRow.id).catch(() => updated);
+              setCaseRow(fresh);
+            }}
+          />
+
+          {/* Received By (Moharrir) */}
+          <InlineEditCell
+            label="Received By (Moharrir)"
+            value={caseRow.receivedBy}
+            onSave={async (next) => {
+              const updated = await api.updateCase(caseRow.id, { receivedBy: next });
+              setCaseRow(updated);
+              const fresh = await api.case(caseRow.id).catch(() => updated);
+              setCaseRow(fresh);
+            }}
+          />
+
+          {/* Last Movement Date — SYSTEM-DERIVED from movements log; read-only */}
+          <div>
+            <span className="k">Last Movement Date</span>
+            <span className="v mono">{caseRow.lastMovement ? caseRow.lastMovement : '—'}</span>
+          </div>
+
+          {/* Status — inline `<select>` over STATUS_OPTIONS.  Per user spec this
+              is a direct PATCH (not a movement-log entry). */}
+          <InlineEditCell
+            label="Status"
+            value={caseRow.status}
+            type="select"
+            options={STATUS_OPTIONS.map(s => ({ value: s, label: s }))}
+            rawValue={
+              <span>
+                <span className={`stamp ${STATUS_TONE[caseRow.status] || ''}`}>{caseRow.status}</span>
+                <span className="cp-edit-pencil" aria-hidden>✎</span>
+              </span>
+            }
+            onSave={async (next) => {
+              if (!next || next === caseRow.status) return;
+              const updated = await api.updateCase(caseRow.id, { status: next });
+              setCaseRow(updated);
+            }}
+          />
+
+          {/* Photo — upload affordance.  Replaces the static thumbnail. */}
+          <PhotoCell
+            caseId={caseRow.id}
+            itemId={caseRow.itemId}
+            imageUrl={caseRow.imageUrl}
+            itemType={caseRow.itemType}
+            onUpdated={(url) => setCaseRow(prev => prev ? { ...prev, imageUrl: url || undefined } : prev)}
+          />
         </div>
       </div>
+
+      {caseProperty && (
+        <div className="case-property-card" style={{ marginTop: 16 }}>
+          <h3>MM / Malkhana Details</h3>
+          <div className="cp-card-grid">
+            {[
+              ['Quantity', caseProperty.quantity],
+              ['Place of Seizure', caseProperty.placeOfSeizure],
+              ['Physical Storage', caseProperty.physicalStorage || caseProperty.storageLocation || caseProperty.malkhanaLocation],
+              ['Received By', caseProperty.receivedBy],
+              ['Sealed / Unsealed', caseProperty.sealSealed],
+              ['Seal No. / Mark', caseProperty.sealNo],
+              ['Sealed By', caseProperty.sealBy],
+              ['Witness 1', caseProperty.witness1],
+              ['Witness 2', caseProperty.witness2],
+              ['Seized Time', caseProperty.seizedTime],
+              ['Remarks', caseProperty.remarks],
+            ].filter(([, value]) => value).map(([label, value]) => (
+              <div key={label}>
+                <span className="k">{label}</span>
+                <span className="v">{value}</span>
+              </div>
+            ))}
+            {caseProperty.fields?.map(field => (
+              <div key={field.key}>
+                <span className="k">{field.key.replace(/_/g, ' ')}</span>
+                <span className="v">{field.value || '—'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Movement chain (LEFT) + QR code (RIGHT) */}
       <div className="case-detail-grid">
@@ -650,15 +988,3 @@ export function CasePropertyDetail() {
 // Shared style snippets for the hidden download sheet.
 const KV_K: React.CSSProperties = { fontSize: 9.5, textTransform: 'uppercase', color: '#8C7A54', display: 'block', letterSpacing: '0.06em' };
 const KV_V: React.CSSProperties = { fontSize: 12, color: '#14243D', fontWeight: 500 };
-
-// Lightweight HTML escaper for the print window so a malicious item name
-// can't break out of the print template.  We use this instead of pulling
-// in a dependency for one print function.
-function escapeHtml(s: string): string {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}

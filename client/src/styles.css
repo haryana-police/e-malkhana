@@ -1085,10 +1085,11 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
     margin-bottom: 16px;
   }
   .page-head h1{ font-size: 22px; }
-  /* On mobile keep the action buttons top-right (natural width, wrap) —
-     not full-width across the page. */
-  .page-head > div:last-child{ width: auto; display: flex; justify-content: flex-end; flex-wrap: wrap; }
-  .page-head > div:last-child .btn{ flex: 0 1 auto; justify-content: center; }
+  /* Dashboard Scan QR sits directly below the heading/subtext on mobile. */
+  .page-head > .scan-btn{
+    width: 100%;
+    justify-content: center;
+  }
 
   .stat-row{ grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stat-tile{ padding: 14px 14px 12px; }
@@ -2909,10 +2910,9 @@ input, select, textarea{
   .stat-tile .value{ font-size: 20px; }
   .stat-tile .label{ font-size: 9.5px; }
 
-  /* Page head: title + actions stacked, actions full-width. */
+  /* Page head: title + Scan QR stacked, button full-width below the text. */
   .page-head h1{ font-size: 18px; }
-  .page-head > div:last-child{ width: 100%; justify-content: stretch; }
-  .page-head > div:last-child .btn{ flex: 1 1 100%; width: 100%; }
+  .page-head > .scan-btn{ width: 100%; }
 
   /* Tables: tighten min-width so 375px shows 3 cols before scroll. */
   .panel table{ min-width: 520px; }

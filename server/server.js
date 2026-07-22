@@ -123,10 +123,21 @@ if (!IS_VERCEL) {
 
 // =================== helpers ===================
 
-const STATUSES = [
-  'Seized', 'Expert Opinion Pending', 'In Malkhana',
-  'With FSL', 'In Court', 'Disposed', 'Transfer',
-];
+// STATUSES used to be a hardcoded constant; the active list now lives in
+// the movement_types table (see db_statusNameSet() below).  Keeping a
+// module-level snapshot for any synchronous readers that still expect a
+// Set/Array — values are loaded lazily from the mirror on first access.
+const STATUSES = (typeof Proxy !== 'undefined') ? new Proxy([], {
+  get(_t, prop) {
+    const arr = Array.from(db_statusNameSet());
+    const v = arr[prop];
+    if (typeof prop === 'string' && /^\d+$/.test(prop)) return v;
+    if (prop === 'length') return arr.length;
+    if (prop === Symbol.iterator) return arr[Symbol.iterator].bind(arr);
+    if (prop === 'includes') return (x) => arr.includes(x);
+    return v;
+  },
+}) : Array.from(db_statusNameSet());
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -499,7 +510,11 @@ app.get('/api/cases', (_req, res) => {
 });
 
 app.get('/api/cases/:id', (req, res, next) => {
-  try { res.json(findOrThrow(req.params.id)); }
+  try {
+    const db = getDb();
+    const row = findOrThrow(req.params.id);
+    res.json(decorateCaseRow(withFreshSectionName(row, db), db));
+  }
   catch (e) { next(e); }
 });
 
@@ -731,6 +746,57 @@ app.patch('/api/cases/:id/status', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// =================== helpers (case_property + fir_master writes) ===================
+//
+// The PATCH /api/cases/:id handler below can edit fields that live in
+// sibling tables (case_property.received_by, fir_master.fir_date).  These
+// helpers keep the in-memory mirror and Postgres in lock-step so the
+// subsequent decorateCaseRow() pass (called by withFreshSectionName before
+// res.json) sees the freshly-written value.
+
+function ensureCasePropertyFor(c) {
+  const db = getDb();
+  if (!db.caseProperty) db.caseProperty = [];
+  let cp = db.caseProperty.find(p => p.itemId && p.itemId.toLowerCase() === String(c.itemId || '').toLowerCase());
+  if (!cp) {
+    cp = { itemId: c.itemId, firNo: c.firNo || c.id, receivedBy: null };
+    db.caseProperty.push(cp);
+  }
+  return cp;
+}
+
+async function dbSaveCaseProperty(cp) {
+  // Mirror upsertCaseProperty in db.js — but keeps the in-memory copy the
+  // source of truth so subsequent reads see the new value immediately.
+  if (!cp || !cp.itemId) return;
+  const { upsertCaseProperty } = await import('./db.js').catch(() => ({}));
+  if (typeof upsertCaseProperty === 'function') {
+    await upsertCaseProperty(cp);
+  }
+}
+
+async function upsertFirMasterPartial({ firNo, firDate }) {
+  if (!firNo) return;
+  const db = getDb();
+  if (!db.firMaster) db.firMaster = [];
+  let fm = db.firMaster.find(f => f.firNo && f.firNo.toLowerCase() === firNo.toLowerCase());
+  if (!fm) {
+    fm = { firNo, policeStation: '', firDate: firDate || null, usSections: null, io: null,
+           recordType: 'FIR', ddDate: null, natureOfDd: null, nameOfDeceased: null,
+           reportingPerson: null, actualSeizureDdNo: null, actualSeizureDate: null };
+    db.firMaster.push(fm);
+  } else {
+    fm.firDate = firDate || null;
+  }
+  // Best-effort Postgres upsert (silently no-op if the helper changes shape).
+  try {
+    const { upsertFirMaster } = await import('./db.js');
+    if (typeof upsertFirMaster === 'function') {
+      await upsertFirMaster(fm);
+    }
+  } catch {}
+}
+
 // PATCH /api/cases/:id
 //
 // Edit the editable fields of a case from the Case Property Detail page.
@@ -746,7 +812,11 @@ app.patch('/api/cases/:id/status', async (req, res, next) => {
 //     seizingOfficer?:  string,
 //     seizedOn?:        string  (ISO date "2026-03-11" or display "11 Mar 2026"),
 //     itemId?:          string,
-//     legalSection?:    string  (BNS section no., bare "101" or "BNS 101"; null/"" to clear)
+//     legalSection?:    string  (BNS section no., bare "101" or "BNS 101"; null/"" to clear),
+//     receivedBy?:      string  (Malkhana Moharrir — written to case_property.received_by),
+//     firDate?:         string  (YYYY-MM-DD — upserted into fir_master.fir_date),
+//     imageUrl?:        string  (overwrite or clear the photo URL),
+//     status?:          string  (must be one of STATUSES — bypasses /status PATCH)
 //   }
 //
 // Returns the updated CaseRow (with fresh sectionName joined from the
@@ -761,15 +831,47 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     const body = req.body || {};
 
     // Allow-list of editable keys.  Anything outside this list is silently
-    // dropped (avoids callers sneaking in `status` or `id` changes through
-    // a different endpoint).
+    // dropped (avoids callers sneaking in `id` changes through this endpoint).
+    // `status` is included so the inline-edit grid on the Case Property page
+    // can mutate it directly; the dedicated PATCH /:id/status endpoint stays
+    // in place for callers that only want to bump the status without any of
+    // the other editable fields.
     const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'itemId', 'legalSection',
-                      'legalSections', 'itemTypeId', 'description'];
+                      'legalSections', 'itemTypeId', 'description',
+                      'receivedBy', 'firDate', 'imageUrl', 'status'];
     const patch = {};
     for (const k of ALLOWED) {
       if (Object.prototype.hasOwnProperty.call(body, k)) patch[k] = body[k];
     }
     if (Object.keys(patch).length === 0) { const e = new Error('no editable fields supplied'); e.status = 400; throw e; }
+
+    // Validate status if provided (same allow-list as PATCH /:id/status).
+    if (Object.prototype.hasOwnProperty.call(patch, 'status') && !STATUSES.includes(patch.status)) {
+      const e = new Error(`invalid status: ${patch.status}`); e.status = 400; throw e;
+    }
+    // Normalise empty firDate to null so we can clear it.
+    let newFirDate = undefined;          // undefined = no change requested
+    if (Object.prototype.hasOwnProperty.call(patch, 'firDate')) {
+      const raw = patch.firDate;
+      if (raw == null || String(raw).trim() === '') newFirDate = null;
+      else {
+        // Accept YYYY-MM-DD or display formats like "17 Jul 2026".
+        const iso = String(raw).trim().match(/^\d{4}-\d{2}-\d{2}$/) ? String(raw).trim()
+          : (() => { const d = new Date(raw); return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10); })();
+        if (!iso) { const e = new Error(`invalid firDate: ${raw}`); e.status = 400; throw e; }
+        newFirDate = iso;
+      }
+    }
+    let newImageUrl = undefined;        // undefined = no change requested
+    if (Object.prototype.hasOwnProperty.call(patch, 'imageUrl')) {
+      const raw = patch.imageUrl;
+      newImageUrl = (raw == null || String(raw).trim() === '') ? null : String(raw).trim();
+    }
+    let newReceivedBy = undefined;      // undefined = no change requested
+    if (Object.prototype.hasOwnProperty.call(patch, 'receivedBy')) {
+      const raw = patch.receivedBy;
+      newReceivedBy = (raw == null || String(raw).trim() === '') ? '' : String(raw).trim();
+    }
 
     // Normalise / validate section letter if provided.
     let newSectionLetter = null;
@@ -833,7 +935,7 @@ app.patch('/api/cases/:id', async (req, res, next) => {
 
     let updated = null;
     const changes = [];
-    await mutate(d => {
+    await mutate(async d => {
       const c = d.cases.find(x => x.id === id);
       if (!c) { const e = new Error('case not found'); e.status = 404; throw e; }
 
@@ -901,6 +1003,46 @@ app.patch('/api/cases/:id', async (req, res, next) => {
           const short = (s) => (s && s.length > 40 ? s.slice(0, 37) + '…' : (s || '—'));
           changes.push(`description: ${short(c.description)} → ${short(v)}`);
           c.description = v || undefined;
+        }
+      }
+      if ('status' in patch) {
+        const v = String(patch.status);
+        if (c.status !== v) { changes.push(`status: ${c.status || '—'} → ${v}`); c.status = v; }
+      }
+      if (newImageUrl !== undefined) {
+        const oldUrl = c.imageUrl || '';
+        if ((newImageUrl || '') !== oldUrl) {
+          changes.push(`photo: ${oldUrl ? 'replaced' : 'added'}`);
+          c.imageUrl = newImageUrl || undefined;
+          // Newly-uploaded photo is user-provided; protect it from the
+          // auto-generated SVG fallback that runs for cases without a photo.
+          c.skipAutoImage = !!c.imageUrl;
+        }
+      }
+      // receivedBy / firDate / imageUrl touch sibling tables — handle
+      // OUTSIDE the in-memory mutate so the data is consistent before the
+      // re-decorate below.  We capture the values, then write after the
+      // mutate returns.
+      if (newReceivedBy !== undefined) {
+        const cp = ensureCasePropertyFor(c);
+        if (cp.receivedBy !== newReceivedBy) {
+          changes.push(`received by: ${cp.receivedBy || '—'} → ${newReceivedBy || '—'}`);
+          cp.receivedBy = newReceivedBy || null;
+          await dbSaveCaseProperty(cp);
+        }
+      }
+      let firDateTouched = false;
+      if (newFirDate !== undefined) {
+        const fmKey = String(c.firNo || c.id || '').trim();
+        if (fmKey) {
+          const fm = (getDb().firMaster || []).find(f => f.firNo && f.firNo.toLowerCase() === fmKey.toLowerCase());
+          const old = fm && fm.firDate ? fm.firDate : '';
+          const next = newFirDate || null;
+          if ((next || '') !== old) {
+            changes.push(`fir date: ${old || '—'} → ${next || '—'}`);
+            await upsertFirMasterPartial({ firNo: fmKey, firDate: next });
+            firDateTouched = true;
+          }
         }
       }
 
@@ -1280,6 +1422,264 @@ function db_itemTypeById(id) {
   if (!Number.isInteger(n)) return null;
   return (db.itemTypes || []).find(t => t.id === n) || null;
 }
+
+// =================== helpers: Movement Types (admin-managed vocabulary) ===================
+// Movement Types is the configurable "Move to status" list shown on the
+// Change Status modal and the Register filter dropdown.  We read it from
+// the in-memory mirror (loaded once at boot from the movement_types
+// table) so every endpoint and dashboard tile can resolve it
+// synchronously.  Writes go through mutate() so persistDiff() syncs them
+// back to Postgres and auditMm() records who changed what.
+
+// Resolve the full list of movement types (sorted by sortOrder, then id).
+function db_movementTypes({ activeOnly = false } = {}) {
+  const db = getDb();
+  let rows = db.movementTypes || [];
+  if (activeOnly) rows = rows.filter(m => m.active !== false);
+  return [...rows].sort((a, b) =>
+    (a.sortOrder || 0) - (b.sortOrder || 0) ||
+    (a.id || 0) - (b.id || 0)
+  );
+}
+
+// Set of valid status names — used to validate PATCH /api/cases/:id/status.
+// Built from the mirror so admins can extend the list without a code
+// change.  The legacy "Transfer" status is always allowed (back-compat
+// for older client builds) but is also a row in movement_types — adding
+// it explicitly keeps the union non-empty even if the seed didn't fire.
+function db_statusNameSet() {
+  const names = db_movementTypes({ activeOnly: true }).map(m => m.name);
+  // Always include legacy statuses that older clients may still use,
+  // even if the admin deactivated the row.
+  for (const legacy of ['Seized', 'In Malkhana', 'With FSL', 'Expert Opinion Pending', 'In Court', 'Disposed', 'Transfer']) {
+    if (!names.includes(legacy)) names.push(legacy);
+  }
+  return new Set(names);
+}
+
+// Look up a movement type by name (used by ChangeStatusModal and
+// status-validation fallbacks).  Returns null when not found.
+function db_movementTypeByName(name) {
+  if (!name) return null;
+  return (getDb().movementTypes || []).find(m => m.name === name) || null;
+}
+
+// Build the per-status FORWARD transition map for ChangeStatusModal.
+// Reads the `next` JSONB column from each movement type.  If `next`
+// is empty we fall back to "every active status" (open graph).
+function db_forwardTransitions() {
+  const all = db_movementTypes({ activeOnly: true });
+  const names = all.map(m => m.name);
+  const out = {};
+  for (const m of all) {
+    if (Array.isArray(m.next) && m.next.length > 0) {
+      // Only include names that still exist as active statuses.
+      out[m.name] = m.next.filter(n => names.includes(n));
+    } else {
+      out[m.name] = names.filter(n => n !== m.name);
+    }
+  }
+  return out;
+}
+
+// TO_LOCATION + PURPOSE defaults used to pre-fill the Change Status
+// modal.  Falls back to legacy hardcoded values when the admin hasn't
+// customised a particular status yet.
+const LEGACY_DEFAULT_LOCATION = {
+  'Seized': 'Scene',
+  'In Malkhana': 'Malkhana',
+  'With FSL': 'FSL Madhuban',
+  'Expert Opinion Pending': 'Civil Hospital Panchkula',
+  'In Court': 'Court',
+  'Disposed': 'Disposed',
+  'Transfer': '',
+};
+const LEGACY_DEFAULT_PURPOSE = {
+  'Seized': 'Seizure check-in',
+  'In Malkhana': 'Returned to malkhana',
+  'With FSL': 'Sent for forensic analysis',
+  'Expert Opinion Pending': 'Sent for chemical opinion',
+  'In Court': 'Produced as exhibit',
+  'Disposed': 'Disposed per court order',
+  'Transfer': 'Inter-station transfer',
+};
+function db_defaultLocationFor(statusName) {
+  const m = db_movementTypeByName(statusName);
+  return (m && m.defaultLocation) || LEGACY_DEFAULT_LOCATION[statusName] || '';
+}
+function db_defaultPurposeFor(statusName) {
+  const m = db_movementTypeByName(statusName);
+  return (m && m.defaultPurpose) || LEGACY_DEFAULT_PURPOSE[statusName] || '';
+}
+
+// =================== API: Movement Types (admin-managed status vocabulary) ===================
+// These endpoints back System Settings -> Movement Types.  The list drives
+// the "Move to status" dropdown, the Register filter, the Dashboard
+// tiles, and the validation gate on every case PATCH.  Admins can add,
+// rename, reorder, soft-delete, and tweak default location / purpose /
+// allowed-next statuses without redeploying.
+
+// GET /api/movement-types?active=true|false|all
+//   default `active=true` — the manager's "show inactive" toggle flips
+//   this client-side.
+app.get('/api/movement-types', (req, res, next) => {
+  try {
+    const a = String(req.query.active || 'true');
+    const activeOnly = a === 'true';
+    const list = activeOnly
+      ? db_movementTypes({ activeOnly: true })
+      : (a === 'all' ? db_movementTypes() : db_movementTypes({ activeOnly: false }));
+    res.json(list);
+  } catch (e) { next(e); }
+});
+
+// POST /api/movement-types  { name, defaultLocation?, defaultPurpose?, next?, sortOrder?, active? }
+//   name is required and unique (case-insensitive on the DB side via UNIQUE).
+app.post('/api/movement-types', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    if (!name) { const e = new Error('name is required'); e.status = 400; throw e; }
+    if (name.length > 80) { const e = new Error('name must be 80 characters or fewer'); e.status = 400; throw e; }
+    const existing = db_movementTypes();
+    if (existing.some(m => m.name.toLowerCase() === name.toLowerCase())) {
+      const e = new Error(`"${name}" already exists`); e.status = 409; throw e;
+    }
+    const maxSort = existing.reduce((m, t) => Math.max(m, t.sortOrder || 0), 0);
+    const next = Array.isArray(body.next)
+      ? body.next.map(s => String(s).trim()).filter(Boolean).slice(0, 200)
+      : [];
+    let created;
+    await mutate(d => {
+      const nextId = (d.movementTypes || []).reduce((m, t) => Math.max(m, t.id || 0), 0) + 1;
+      created = {
+        id:              nextId,
+        name,
+        defaultLocation: String(body.defaultLocation || '').slice(0, 200),
+        defaultPurpose:  String(body.defaultPurpose  || '').slice(0, 200),
+        next,
+        sortOrder:       Number.isInteger(body.sortOrder) ? body.sortOrder : maxSort + 10,
+        active:          body.active === false ? false : true,
+        isSystem:        false,           // new rows are user-managed
+      };
+      d.movementTypes = [...(d.movementTypes || []), created];
+    });
+    await auditMm(req, 'movementtype.create', String(created.id),
+      `Added movement type "${created.name}"`);
+    res.status(201).json(created);
+  } catch (e) { next(e); }
+});
+
+// PATCH /api/movement-types/:id  { name?, defaultLocation?, defaultPurpose?, next?, sortOrder?, active? }
+app.patch('/api/movement-types/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { const e = new Error('invalid id'); e.status = 400; throw e; }
+    const body = req.body || {};
+    const existing = (getDb().movementTypes || []).find(m => m.id === id);
+    if (!existing) { const e = new Error(`movement type not found: ${id}`); e.status = 404; throw e; }
+
+    const patch = {};
+    const changes = [];
+    if (body.name !== undefined) {
+      const name = String(body.name || '').trim();
+      if (!name) { const e = new Error('name cannot be empty'); e.status = 400; throw e; }
+      if (name.length > 80) { const e = new Error('name must be 80 characters or fewer'); e.status = 400; throw e; }
+      const clash = (getDb().movementTypes || []).some(m =>
+        m.id !== id && m.name.toLowerCase() === name.toLowerCase());
+      if (clash) { const e = new Error(`"${name}" already exists`); e.status = 409; throw e; }
+      patch.name = name;
+    }
+    if (body.defaultLocation !== undefined) {
+      patch.defaultLocation = String(body.defaultLocation || '').slice(0, 200);
+    }
+    if (body.defaultPurpose !== undefined) {
+      patch.defaultPurpose = String(body.defaultPurpose || '').slice(0, 200);
+    }
+    if (body.next !== undefined) {
+      if (!Array.isArray(body.next)) { const e = new Error('next must be an array of status names'); e.status = 400; throw e; }
+      patch.next = body.next.map(s => String(s).trim()).filter(Boolean).slice(0, 200);
+    }
+    if (body.sortOrder !== undefined) {
+      const so = Number(body.sortOrder);
+      if (!Number.isInteger(so) || so < 0) { const e = new Error('sortOrder must be a non-negative integer'); e.status = 400; throw e; }
+      patch.sortOrder = so;
+    }
+    if (body.active !== undefined) {
+      const active = !!body.active;
+      if (!active) {
+        // Refuse to deactivate a status that still has live cases — they'd
+        // be stranded (the Register filter / Change Status modal would no
+        // longer show this option).  The manager surfaces this constraint
+        // by counting cases on each row.
+        const inUse = (getDb().cases || []).filter(c => c.status === existing.name).length;
+        if (inUse > 0) {
+          const e = new Error(
+            `Cannot deactivate "${existing.name}" — ${inUse} case(s) still use this status. ` +
+            `Move those cases to a different status first, or rename instead of deactivating.`
+          );
+          e.status = 409; e.payload = { caseCount: inUse }; throw e;
+        }
+      }
+      patch.active = active;
+    }
+    if (Object.keys(patch).length === 0) {
+      const e = new Error('no editable fields supplied'); e.status = 400; throw e;
+    }
+
+    await mutate(d => {
+      const m = (d.movementTypes || []).find(x => x.id === id);
+      if (!m) { const e = new Error(`movement type not found: ${id}`); e.status = 404; throw e; }
+      if (patch.name !== undefined && m.name !== patch.name) { changes.push(`name: "${m.name}" → "${patch.name}"`); m.name = patch.name; }
+      if (patch.defaultLocation !== undefined) m.defaultLocation = patch.defaultLocation;
+      if (patch.defaultPurpose  !== undefined) m.defaultPurpose  = patch.defaultPurpose;
+      if (patch.next !== undefined) m.next = patch.next;
+      if (patch.sortOrder !== undefined) m.sortOrder = patch.sortOrder;
+      if (patch.active !== undefined) {
+        if (m.active !== patch.active) changes.push(`active: ${m.active} → ${patch.active}`);
+        m.active = patch.active;
+      }
+    });
+    const updated = db_movementTypes().find(m => m.id === id);
+    const summary = changes.length ? changes.join('; ') : '(no-op)';
+    await auditMm(req, 'movementtype.update', String(id),
+      `Edited movement type "${updated.name}": ${summary}`);
+    res.json(updated);
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/movement-types/:id  — HARD delete, guarded:
+//   - refuse to delete a built-in (is_system) row
+//   - refuse if any case still uses this status (count = 0 also blocks it)
+app.delete('/api/movement-types/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { const e = new Error('invalid id'); e.status = 400; throw e; }
+    const existing = (getDb().movementTypes || []).find(m => m.id === id);
+    if (!existing) { const e = new Error(`movement type not found: ${id}`); e.status = 404; throw e; }
+    if (existing.isSystem) {
+      const e = new Error(
+        `"${existing.name}" is a built-in status and cannot be deleted. ` +
+        `You can deactivate it instead (only safe when no cases use it).`
+      );
+      e.status = 400; throw e;
+    }
+    const inUse = (getDb().cases || []).filter(c => c.status === existing.name).length;
+    if (inUse > 0) {
+      const e = new Error(
+        `Cannot delete "${existing.name}" — ${inUse} case(s) still use this status. ` +
+        `Move those cases to a different status first.`
+      );
+      e.status = 409; e.payload = { caseCount: inUse }; throw e;
+    }
+    await mutate(d => {
+      d.movementTypes = (d.movementTypes || []).filter(m => m.id !== id);
+    });
+    await auditMm(req, 'movementtype.delete', String(id),
+      `Removed movement type "${existing.name}"`);
+    res.json({ id, name: existing.name, deleted: true });
+  } catch (e) { next(e); }
+});
 
 // =================== API: Item Types (per-section controlled vocabulary) ===================
 // GET /api/item-types?section=A|all
