@@ -327,6 +327,10 @@ export function CasePropertyDetail() {
   const [logDoc, setLogDoc] = useState('');
   const [logErr, setLogErr] = useState<string | null>(null);
   const [logBusy, setLogBusy] = useState(false);
+  // Destination location suggestions are fetched from the movement_types
+  // table (the admin-managed vocabulary), NOT from the Malkhana section
+  // name.  The current status's defaultLocation pre-fills the field.
+  const [logLocSuggestions, setLogLocSuggestions] = useState<string[]>([]);
 
   // Hidden off-screen node used to compose the Download QR sheet
   // (case detail + movement chain + QR) into a single PNG via html2canvas.
@@ -598,16 +602,34 @@ export function CasePropertyDetail() {
     if (!caseRow) return;
     setShowLog(true);
     setLogErr(null);
-    setLogTo(caseRow.sectionName || '');
     setLogBy(caseRow.receivedBy || 'SI Rakesh Sharma');
     setLogPurpose('Movement');
     setLogDoc('');
+    // Fetch the admin-managed movement_types vocabulary.  The destination
+    // location list + default is driven by THAT table — not the Malkhana
+    // section name — so movements stay decoupled from the Malkhana layout.
+    let types: { name: string; defaultLocation: string }[] = [];
+    try {
+      types = await api.movementTypes('all');
+    } catch {
+      types = [];
+    }
+    const locs = Array.from(
+      new Set(types.map(t => (t.defaultLocation || '').trim()).filter(Boolean))
+    );
+    setLogLocSuggestions(locs);
+    // Default destination = the CURRENT status's configured default location
+    // (falls back to any location if the status has none set).
+    const cur = types.find(t => t.name === caseRow.status);
+    const def = (cur && cur.defaultLocation && cur.defaultLocation.trim()) || locs[0] || '';
+    setLogTo(def);
   }
+
   async function submitLog(e: React.FormEvent) {
     e.preventDefault();
     if (!caseRow) return;
     if (!logTo.trim()) { setLogErr('Destination location is required.'); return; }
-    setLogBusy(true); setLogErr(null);
+
     try {
       await api.createMovement({
         caseId: caseRow.id,
@@ -900,8 +922,17 @@ export function CasePropertyDetail() {
             <div className="sub">{caseRow.itemType} · Current: {caseRow.sectionName}</div>
             <div className="form-grid">
               <label className="full">To location
-                <input value={logTo} onChange={e => setLogTo(e.target.value)} placeholder="e.g. Malkhana — Part B / FSL Madhuban" required />
+                <input
+                  list="log-loc-suggestions"
+                  value={logTo}
+                  onChange={e => setLogTo(e.target.value)}
+                  placeholder="Destination location (from Movement Types)"
+                  required />
+                <datalist id="log-loc-suggestions">
+                  {logLocSuggestions.map((l, i) => <option key={i} value={l} />)}
+                </datalist>
               </label>
+
               <label>Moved by
                 <input value={logBy} onChange={e => setLogBy(e.target.value)} placeholder="Officer name" />
               </label>
