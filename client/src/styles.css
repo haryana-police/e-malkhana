@@ -648,6 +648,53 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .form-card h3{ font-family:'Rajdhani',sans-serif; font-size:18px; color:var(--ink-navy); margin-bottom:2px; }
 .form-card .sub{ font-size:11.5px; color:var(--slate-soft); margin-bottom:16px; }
 
+/* Wider card for the Edit Case Property modal — shows ~20 fields in 3
+   grouped sections + a delete zone.  760px keeps the two-column form-grid
+   readable on a typical label. */
+.form-card.form-card-wide{ width: 760px; }
+
+/* Group fieldsets inside the Edit Case Property modal so the long list
+   reads as 3 visual blocks (Header / MM / Type-specific). */
+.form-section{ border: 1px solid #E6DDC4; border-radius: 6px; padding: 10px 14px 14px; margin: 14px 0 0; }
+.form-section legend{ font-family:'Rajdhani',sans-serif; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color: var(--ink-navy); padding: 0 6px; font-weight: 600; }
+.form-section .form-grid{ margin-top: 6px; }
+
+/* Destructive delete zone at the bottom of the Edit Case Property modal.
+   Visually separated (dashed border, tinted background) so it can't be
+   confused with Save Changes. */
+.delete-zone{ margin-top: 22px; padding: 14px 16px; border: 1px dashed #B1373B; border-radius: 6px; background: rgba(177,55,59,0.04); }
+.delete-zone h4{ font-family:'Rajdhani',sans-serif; font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color: #B1373B; margin: 0 0 8px; font-weight: 700; }
+.danger-note{ font-size:11.5px; color: #5A1F23; margin: 0 0 8px; line-height: 1.45; }
+.danger-note code{ font-family:'IBM Plex Mono',monospace; background: rgba(177,55,59,0.08); padding: 1px 5px; border-radius: 3px; color: #B1373B; font-weight: 600; }
+
+/* Red destructive button — matches .btn sizing so it lines up next to
+   the regular buttons in the form-actions row. */
+.btn.danger{ background: #B1373B; border: 1px solid #B1373B; color: #fff; }
+.btn.danger:hover{ background: #931F23; border-color: #931F23; }
+.btn.danger:disabled{ opacity: 0.5; cursor: not-allowed; }
+
+/* Post-delete banner shown by App.tsx after a successful case delete
+   from the Edit Case Property modal.  Top-center, auto-dismisses in 6s. */
+.delete-toast{
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+  z-index: 800;
+  display: flex; align-items: center; gap: 10px;
+  background: #2A1014; color: #fff;
+  border: 1px solid #B1373B;
+  border-radius: 6px;
+  padding: 10px 14px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  font-size: 13px;
+  animation: delete-toast-in 0.18s ease-out;
+}
+.delete-toast code{ font-family:'IBM Plex Mono', monospace; background: rgba(255,255,255,0.12); padding: 1px 6px; border-radius: 3px; }
+.delete-toast .tag-close{ position: static; color: #fff; opacity: 0.7; }
+.delete-toast .tag-close:hover{ opacity: 1; }
+@keyframes delete-toast-in{
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* ---- full-page mode for Register New Case Property ---- */
 .rc-page-wrap{
   width:100%;

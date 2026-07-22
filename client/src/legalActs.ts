@@ -27,7 +27,17 @@ export interface LegalSection {
 }
 
 import raw from './data/legalSections.json';
-const DATA = raw as Omit<LegalSection, 'actCode' | 'actName' | 'actYear' | 'actLabel'>[];
+// Raw row shape as it lives in the JSON (snake_case keys from extractor).
+interface RawLegalSection {
+  act_code: string;
+  act_name: string;
+  act_year: number;
+  act_label: string;
+  section_no: string;
+  title: string;
+  category: string;
+}
+const DATA = raw as unknown as RawLegalSection[];
 
 export const LEGAL_SECTIONS: LegalSection[] = DATA.map(r => ({
   actCode: r.act_code,
