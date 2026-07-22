@@ -930,181 +930,26 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         </div>
       </div>
 
-      {caseProperty && (
+      {caseProperty && caseProperty.fields?.length > 0 && (
         <div className="case-property-card" style={{ marginTop: 16 }}>
-          <h3>MM / Malkhana Details</h3>
+          <h3>Registration Details</h3>
           <div className="cp-card-grid">
-            {/* Common MM block — inline editable.  Saving merges the whole
-                common object back so a single-field edit never wipes the
-                other registration-time values (receivedBy, seal, etc.). */}
-            <InlineEditCell
-              label="Quantity"
-              value={caseProperty.quantity}
-              mono
-              placeholder="e.g. 50"
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { quantity: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            <InlineEditCell
-              label="Place of Seizure"
-              value={caseProperty.placeOfSeizure}
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { placeOfSeizure: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            <InlineEditCell
-              label="Physical Storage"
-              value={caseProperty.physicalStorage || caseProperty.storageLocation || caseProperty.malkhanaLocation}
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { physicalStorage: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            <InlineEditCell
-              label="Received By"
-              value={caseProperty.receivedBy}
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { receivedBy: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-                // Reflect immediately on the register card above.
-                setCaseRow(prev => prev ? { ...prev, receivedBy: next || '' } : prev);
-              }}
-            />
-            <InlineEditCell
-              label="Sealed / Unsealed"
-              value={caseProperty.sealSealed}
-              type="select"
-              options={[
-                { value: 'Yes', label: 'Yes' },
-                { value: 'No', label: 'No' },
-              ]}
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { sealSealed: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            <InlineEditCell
-              label="Seal No. / Mark"
-              value={caseProperty.sealNo}
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { sealNo: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            <InlineEditCell
-              label="Sealed By"
-              value={caseProperty.sealBy}
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { sealBy: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            <InlineEditCell
-              label="Witness 1"
-              value={caseProperty.witness1}
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { witness1: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            <InlineEditCell
-              label="Witness 2"
-              value={caseProperty.witness2}
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { witness2: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            <InlineEditCell
-              label="Seized Time"
-              value={caseProperty.seizedTime}
-              mono
-              placeholder="HH:MM"
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { seizedTime: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            <InlineEditCell
-              label="Remarks"
-              value={caseProperty.remarks}
-              onSave={async (next) => {
-                const saved = await api.saveCaseProperty({
-                  itemId: caseProperty!.itemId,
-                  firNo: caseProperty!.firNo,
-                  common: commonFrom(caseProperty!, { remarks: next ?? undefined }),
-                  fields: caseProperty!.fields || [],
-                });
-                setCaseProperty(saved);
-              }}
-            />
-            {/* Type-specific fields recorded at registration — editable too. */}
-            {caseProperty.fields?.map(field => (
+            {/* Show only the category-specific fields that were actually saved
+                during registration. Generic fields (seal, witnesses, remarks,
+                etc.) are intentionally excluded from this detail page. */}
+            {caseProperty.fields.map(field => (
               <InlineEditCell
                 key={field.key}
                 label={field.key.replace(/_/g, ' ')}
                 value={field.value}
                 onSave={async (next) => {
-                  const updatedFields = (caseProperty!.fields || []).map(f =>
+                  const updatedFields = (caseProperty.fields || []).map(f =>
                     f.key === field.key ? { ...f, value: next ?? '' } : f
                   );
                   const saved = await api.saveCaseProperty({
-                    itemId: caseProperty!.itemId,
-                    firNo: caseProperty!.firNo,
-                    common: commonFrom(caseProperty!, {}),
+                    itemId: caseProperty.itemId,
+                    firNo: caseProperty.firNo,
+                    common: commonFrom(caseProperty, {}),
                     fields: updatedFields,
                   });
                   setCaseProperty(saved);
