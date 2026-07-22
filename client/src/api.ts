@@ -230,6 +230,15 @@ export const api = {
     imageUrl?: string | null; status?: string;
   }>) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}`, patch),
 
+  // Permanently delete a case (and its movements + case_property row).
+  // The server enforces a re-type-to-confirm guard: confirmItemId must
+  // equal the case's Malkhana number exactly (case-insensitive).  Returns
+  // { id, deleted, movementsRemoved, casePropertyCleared }.
+  deleteCase:    (id: string, confirmItemId: string) =>
+    send<{ id: string; deleted: boolean; movementsRemoved: number; casePropertyCleared: boolean }>(
+      'DELETE', `/cases/${encodeURIComponent(id)}`, { confirmItemId }
+    ),
+
   // downloads — the browser does the navigation; we just return the URL.
   // Filters match the API exactly so the rows on screen == the rows in
   // the file.

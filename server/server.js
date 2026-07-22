@@ -1191,6 +1191,57 @@ app.patch('/api/cases/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// DELETE /api/cases/:id — permanent case delete used by the Edit Case
+// Property modal.  Body: { confirmItemId }.  Hard-removes the case row
+// (cascades to movements), clears the sibling case_property row,
+// recomputes section counts, and writes a `case.delete` audit entry.
+app.delete('/api/cases/:id', async (req, res, next) => {
+  try {
+    const id = String(req.params.id || '');
+    const confirmItemId = String((req.body && req.body.confirmItemId) || '').trim();
+    if (!confirmItemId) { const e = new Error('confirmItemId is required'); e.status = 400; throw e; }
+
+    let deletedMeta = null;
+    let movementsRemoved = 0;
+    let cpTouched = false;
+
+    await mutate(async d => {
+      const idx = d.cases.findIndex(x => x.id === id);
+      if (idx < 0) { const e = new Error(`case not found: ${id}`); e.status = 404; throw e; }
+      const victim = d.cases[idx];
+
+      // Re-type-to-confirm guard — same shape every destructive endpoint
+      // in this server uses (movement-logs, sections, item-types,
+      // inspections).  Case-insensitive so the user can type either case.
+      const want = confirmItemId.toLowerCase();
+      const have = String(victim.itemId || '').trim().toLowerCase();
+      if (!have || want !== have) {
+        const e = new Error(`item id mismatch — expected "${victim.itemId}"`); e.status = 400; throw e;
+      }
+
+      movementsRemoved = (d.movements || []).filter(m => m.caseId === id).length;
+
+      // Sibling case_property row has no FK to cases, so we clear it here.
+      const beforeCp = (d.caseProperty || []).length;
+      d.caseProperty = (d.caseProperty || []).filter(p =>
+        !(p.itemId && String(p.itemId).toLowerCase() === String(victim.itemId || '').toLowerCase())
+      );
+      cpTouched = d.caseProperty.length !== beforeCp;
+
+      d.cases.splice(idx, 1);                            // cascades to movements.case_id
+      rebuildSectionCountsIn(d);
+
+      deletedMeta = { id: victim.id, itemId: victim.itemId, itemType: victim.itemType, section: victim.section };
+    });
+
+    await auditMm(req, 'case.delete', deletedMeta.id,
+      `Deleted case ${deletedMeta.id} (${deletedMeta.itemType}, Malkhana ${deletedMeta.itemId}) — ${movementsRemoved} movement(s) removed` +
+      (cpTouched ? ', case_property row cleared' : ''));
+
+    res.json({ id: deletedMeta.id, deleted: true, movementsRemoved, casePropertyCleared: cpTouched });
+  } catch (e) { next(e); }
+});
+
 function db_sectionByLetter(letter) {
   const db = getDb();
   const l = String(letter).toUpperCase();

@@ -202,6 +202,27 @@ export default function App() {
   const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => { if (user) reload(); }, [user, reloadKey]);
 
+  // ---- post-delete toast ----
+  // The Case Property Detail page calls navigate('/caseproperty', { state:
+  // { deletedItemId, movementsRemoved } }) after a successful DELETE.
+  // We detect that state, refresh the list, and show a banner so the MM
+  // gets visual confirmation the row is gone (otherwise they only see
+  // navigation, which feels ambiguous for a destructive action).
+  const [deleteToast, setDeleteToast] = useState<{ id: string; movementsRemoved: number } | null>(null);
+  useEffect(() => {
+    const st = (location.state as { deletedItemId?: string; movementsRemoved?: number } | null);
+    if (st && st.deletedItemId) {
+      setDeleteToast({ id: st.deletedItemId, movementsRemoved: st.movementsRemoved || 0 });
+      // Clear the state so a refresh doesn't re-trigger the banner.
+      window.history.replaceState({}, '');
+      // Force a reload so the deleted row vanishes from the register table.
+      setReloadKey(k => k + 1);
+      // Auto-dismiss after 6s.
+      const t = window.setTimeout(() => setDeleteToast(null), 6000);
+      return () => window.clearTimeout(t);
+    }
+  }, [location.state]);
+
   async function openTimeline(fir: string) {
     setTlFir(fir); setTlEvents([]);
     try {
@@ -326,6 +347,16 @@ export default function App() {
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
+      )}
+      {deleteToast && (
+        <div className="delete-toast" role="status" aria-live="polite">
+          <span>🗑</span>
+          <span>
+            Case <code>{deleteToast.id}</code> deleted
+            {deleteToast.movementsRemoved > 0 ? ` (${deleteToast.movementsRemoved} movement${deleteToast.movementsRemoved === 1 ? '' : 's'} also removed)` : ''}.
+          </span>
+          <button type="button" className="tag-close" onClick={() => setDeleteToast(null)} aria-label="Dismiss">✕</button>
+        </div>
       )}
       <div className="app">
         <Sidebar

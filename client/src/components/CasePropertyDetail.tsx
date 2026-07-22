@@ -374,6 +374,10 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [showEdit, setShowEdit] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
   // Field drafts — initialised from caseRow when the modal opens.
   const [edItemType, setEdItemType]           = useState('');
   const [edSection, setEdSection]             = useState('');
@@ -419,6 +423,19 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       setEditErr((err as Error).message);
     } finally {
       setEditBusy(false);
+    }
+  }
+
+  async function deleteCase() {
+    if (!caseRow) return;
+    setDeleteBusy(true); setDeleteErr(null);
+    try {
+      const result = await api.deleteCase(caseRow.id, deleteConfirm);
+      navigate('/caseproperty', { state: { deletedItemId: result.id, movementsRemoved: result.movementsRemoved } });
+    } catch (err) {
+      setDeleteErr((err as Error).message);
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -748,6 +765,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           <button className="btn ghost" type="button" onClick={openEdit}>✎ Edit Case Property</button>
           <button className="btn ghost" type="button" onClick={printTag}>🏷 Print Tag</button>
           <button className="btn ghost" type="button" onClick={printDetail}>🖨 Print full detail</button>
+          <button className="btn ghost danger" type="button" onClick={() => { setDeleteConfirm(''); setDeleteErr(null); setShowDelete(true); }}>🗑 Delete</button>
         </div>
       </div>
 
@@ -1209,6 +1227,25 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
               <button type="submit" className="btn" disabled={editBusy || !edItemType.trim() || !edSection}>{editBusy ? 'Saving…' : 'Save'}</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {showDelete && (
+        <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !deleteBusy) setShowDelete(false); }}>
+          <div className="form-card">
+            <button type="button" className="tag-close" onClick={() => setShowDelete(false)} aria-label="Close">✕</button>
+            <h3>Delete Case Property</h3>
+            <p className="sub">This permanently deletes the registration record and its movement history. Type the Malkhana No. <strong>{caseRow.itemId}</strong> to confirm.</p>
+            <label>Confirm Malkhana No.
+              <input autoFocus value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} placeholder={caseRow.itemId} />
+            </label>
+            {deleteErr && <div className="form-msg show error" style={{ marginTop: 8 }}>{deleteErr}</div>}
+            <div className="form-actions">
+              <button type="button" className="btn ghost" onClick={() => setShowDelete(false)} disabled={deleteBusy}>Cancel</button>
+              <button type="button" className="btn danger" onClick={deleteCase} disabled={deleteBusy || deleteConfirm.trim().toLowerCase() !== caseRow.itemId.trim().toLowerCase()}>{deleteBusy ? 'Deleting…' : 'Delete permanently'}</button>
+            </div>
+          </div>
         </div>
       )}
 
