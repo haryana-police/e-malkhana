@@ -64,6 +64,15 @@ export interface FormTemplate {
 // Map an existing case (FIR/DD) row onto the field keys shared by the
 // register-style templates.  Used by the "Fill from FIR no." selector so an
 // officer doesn't re-type what is already recorded against the case.
+function sectionLabel(s: string): string {
+  // New rows persist as "ACT:N" (e.g. "BNS:101", "NDPS:20"); legacy rows
+  // are bare numbers ("101") which we display as "BNS 101" since the
+  // picker used to be BNS-only.
+  if (typeof s !== 'string') return '';
+  const m = s.match(/^([A-Z]{2,10}):(\S+)$/);
+  if (m) return `${m[1]} ${m[2]}`;
+  return `BNS ${s}`;
+}
 export function firValues(c: CaseRow): Record<string, string> {
   const out: Record<string, string> = {
     fir: c.id || '',
@@ -71,10 +80,10 @@ export function firValues(c: CaseRow): Record<string, string> {
     qty: c.quantity || '',
     desc: c.description || '',
     bns: (c.legalSections && c.legalSections.length ? c.legalSections : (c.legalSection ? [c.legalSection] : []))
-      .map(s => `BNS ${s}`).join(', '),
+      .map(sectionLabel).join(', '),
     // letters label the BNS section as "धारा / Section"
     section: (c.legalSections && c.legalSections.length ? c.legalSections : (c.legalSection ? [c.legalSection] : []))
-      .map(s => `BNS ${s}`).join(', '),
+      .map(sectionLabel).join(', '),
     officer: c.seizingOfficer || '',
     ps: '',
   };

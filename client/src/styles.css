@@ -218,8 +218,11 @@ body{
 .act-log{ border-color:rgba(140,122,84,0.5); color:var(--ink-navy); }
 .act-status{ border-color:rgba(192,57,43,0.5); color:#c0392b; }
 .act-lbl{ display:none; letter-spacing:0.01em; }
-.register-table tbody tr:hover .row-actions-hover .act-lbl,
-.act-btn:focus .act-lbl{ display:inline; }
+/* Reveal only the label of the SPECIFIC button the cursor is on, not all 3
+   when any row cell (e.g. FIR detail) is hovered. */
+.act-btn:hover .act-lbl,
+.act-btn:focus .act-lbl,
+.act-btn:focus-visible .act-lbl{ display:inline; }
 
 /* register + movement pagers */
 .rt-pager{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:12px 4px 2px; justify-content:flex-end; }
@@ -2664,8 +2667,12 @@ html, body{ overflow-x: hidden; max-width: 100vw; }
     border-radius:4px; box-shadow:0 3px 10px rgba(20,36,61,0.16);
     white-space:nowrap;
   }
-  .register-table tbody tr:hover .row-actions-hover .act-lbl,
-  .register-table .row-actions-hover:focus-within .act-lbl{ display:inline; }
+  /* Only the hovered/focused button shows its label — keeps hover state
+     scoped to the actual button, not the entire row. */
+  .register-table tbody tr:hover .row-actions-hover .act-btn:hover .act-lbl,
+  .register-table tbody tr:hover .row-actions-hover .act-btn:focus .act-lbl,
+  .register-table .row-actions-hover:focus-within .act-btn:hover .act-lbl,
+  .register-table .row-actions-hover:focus-within .act-btn:focus .act-lbl{ display:inline; }
 
 }
 .sections-action-bar{ gap: 8px; }

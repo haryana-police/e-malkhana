@@ -47,7 +47,7 @@
 //     data survive across cold starts and across multiple function
 //     instances on Vercel.
 
-import { ensureReady, pool } from './db.js';
+import { ensureReady, pool, getCaseProperty, getFirMaster } from './db.js';
 
 // Parse a JSON-array TEXT column back into a string[] (used by the
 // multi-section columns legal_sections / legal_sections_titles).  Tolerant
@@ -607,6 +607,58 @@ export async function mutate(fn) {
     return result;
   } finally {
     release();
+  }
+}
+
+// ---------------------------------------------------------------
+// syncRegistrationMirrors
+// ---------------------------------------------------------------
+// After a case is registered we write case_property (receivedBy, …) and
+// fir_master (firDate, …) via direct SQL upserts.  Those tables are NOT
+// part of mutate()'s diff/persist pass, so the in-memory mirror's
+// `caseProperty` / `firMaster` slices go STALE for the freshly-registered
+// item.  decorateCaseRow() joins Received-By and FIR-Date from those mirror
+// slices, so a brand-new item would otherwise show blank Received-By /
+// blank FIR-Date in the upper case-detail box until the next process
+// restart — even though the values were entered at registration.
+//
+// This helper re-reads the just-written rows from Postgres and patches the
+// live mirror so the very next GET reflects registration exactly.  Safe to
+// call even if the mirror is null (it no-ops then).
+export async function syncRegistrationMirrors(itemId, firNo) {
+  if (!_mirror) return;
+  try {
+    if (itemId) {
+      const cp = await getCaseProperty(itemId);
+      if (cp) {
+        const i = _mirror.caseProperty.findIndex(
+          p => p.itemId && p.itemId.toLowerCase() === String(itemId).toLowerCase()
+        );
+        const row = { itemId: cp.itemId, receivedBy: cp.receivedBy || null };
+        if (i >= 0) _mirror.caseProperty[i] = row;
+        else _mirror.caseProperty.push(row);
+      }
+    }
+    if (firNo) {
+      const fm = await getFirMaster(firNo);
+      if (fm) {
+        const key = String(firNo).toLowerCase();
+        const i = _mirror.firMaster.findIndex(
+          f => f.firNo && f.firNo.toLowerCase() === key
+        );
+        const row = {
+          firNo: fm.firNo,
+          firDate: fm.firDate || fm.ddDate || null,
+          recordType: fm.recordType || 'FIR',
+          usSections: fm.usSections || null,
+        };
+        if (i >= 0) _mirror.firMaster[i] = row;
+        else _mirror.firMaster.push(row);
+      }
+    }
+  } catch {
+    // Mirror refresh is best-effort; a failure here must not fail the
+    // registration that already succeeded in Postgres.
   }
 }
 

@@ -83,23 +83,30 @@ const DEFAULT_ORDER: ColKey[] = [
   'lastMovement', 'status', 'actions',
 ];
 
-// U/S (legal section) — "BNS 101 — Murder · BNS 22 — …".
+// U/S (legal section) — "BNS 101 — Murder · NDPS 20 — Possession of
+// cannabis · …".  Picks up the new "ACT:N" multi-act format from the
+// Register picker (BNS:101, IPC:304A, NDPS:20, POCSO:6 …).  Legacy rows
+// stored as bare "101" continue to display as "BNS 101" since the old
+// picker was BNS-only.
+function sectionDisplay(s: string): string {
+  const str = String(s).trim();
+  const m = str.match(/^([A-Z]{2,10}):(\S+)$/);
+  if (m) return `${m[1]} ${m[2]}`;
+  if (/^[a-zA-Z]/.test(str)) return str;   // already-prefixed ("BNS 101" / "Cr.P.C.")
+  return `BNS ${str}`;
+}
 function usSectionText(c: CaseRow): string {
   if (c.legalSections && c.legalSections.length) {
     return c.legalSections
       .map((s, i) => {
         const title = c.legalSectionsTitles && c.legalSectionsTitles[i] ? ' — ' + c.legalSectionsTitles[i] : '';
-        const str = String(s).trim();
-        const hasPrefix = /^[a-zA-Z]/.test(str);
-        return hasPrefix ? `${str}${title}` : `BNS ${str}${title}`;
+        return `${sectionDisplay(s)}${title}`;
       })
       .join(' · ');
   }
   if (c.legalSection) {
     const title = c.legalSectionTitle ? ' — ' + c.legalSectionTitle : '';
-    const str = String(c.legalSection).trim();
-    const hasPrefix = /^[a-zA-Z]/.test(str);
-    return hasPrefix ? `${str}${title}` : `BNS ${str}${title}`;
+    return `${sectionDisplay(c.legalSection)}${title}`;
   }
   if ((c as any).usSections) {
     return String((c as any).usSections);

@@ -267,25 +267,35 @@ function detailUsText(c: CaseRow): string {
       .join(' · ');
   }
   if (c.legalSection) {
-    const title = c.legalSectionTitle ? ' — ' + c.legalSectionTitle : '';
-    const str = String(c.legalSection).trim();
-    const hasPrefix = /^[a-zA-Z]/.test(str);
-    return hasPrefix ? `${str}${title}` : `BNS ${str}${title}`;
-  }
-  if ((c as any).usSections) {
-    return String((c as any).usSections);
-  }
-  return '—';
-}
+    // U/S (legal section) formatted for the compact detail view + print sheets.
+    // Handles the new "ACT:N" multi-act format ("BNS:101", "NDPS:20" …) and
+    // falls back to "BNS <n>" for legacy bare-number rows.
+    function sectionDisplay(s: string): string {
+      const str = String(s).trim();
+      const m = str.match(/^([A-Z]{2,10}):(\S+)$/);
+      if (m) return `${m[1]} ${m[2]}`;
+      if (/^[a-zA-Z]/.test(str)) return str;
+      return `BNS ${str}`;
+    }
+    function detailUsText(c: CaseRow): string {
+      if (c.legalSections && c.legalSections.length) {
+        return c.legalSections
+          .map((s, i) => `${sectionDisplay(s)}${c.legalSectionsTitles && c.legalSectionsTitles[i] ? ' — ' + c.legalSectionsTitles[i] : ''}`)
+          .join(' · ');
+      }
+      if (c.legalSection) return `${sectionDisplay(c.legalSection)}${c.legalSectionTitle ? ' — ' + c.legalSectionTitle : ''}`;
+      return '—';
+    }
 
-// Render the case's legal-section list as the raw BNS numbers comma-
-// separated (no titles), so the inline-edit input shows what the user
-// is expected to type.
-function detailUsNumbers(c: CaseRow): string {
-  if (c.legalSections && c.legalSections.length) return c.legalSections.join(', ');
-  if (c.legalSection) return c.legalSection;
-  return '';
-}
+    // Render the case's legal-section list as the raw "ACT:N" comma-separated
+    // (no titles), so the inline-edit input shows what the user is expected
+    // to type.  Legacy bare numbers are emitted without the "BNS:" prefix to
+    // match the old input format.
+    function detailUsNumbers(c: CaseRow): string {
+      if (c.legalSections && c.legalSections.length) return c.legalSections.join(', ');
+      if (c.legalSection) return c.legalSection;
+      return '';
+    }
 
 // Build the `common` payload for POST /api/case-property from the current
 // CasePropertyData record, applying any single-field overrides.  We send the

@@ -19,6 +19,7 @@ import {
   getDb, mutate, getCase, getCaseByItemId, getMovements, nextMovementId, rebuildSectionCounts,
   nextMalkhanaSeq, formatMalkhanaSrNo, syncMalkhanaSeq,
   appendAudit, boot as bootStore, ensureBoot,
+  syncRegistrationMirrors,
 } from './store.js';
 import {
   getSectionMeta, getItemTypeFields, upsertItemTypeField, deleteItemTypeField,
@@ -644,52 +645,71 @@ async function createOneCase(req, body) {
     itemTypeId = it.id;
     itemTypeName = it.name;
   }
-
-  // Multi-section support: the user can book a case under several BNS
-  // sections at once (e.g. "BNS 101 — Murder" + "BNS 397 — Causing hurt").
-  // `body.legalSections` is the ordered array of section numbers; each is
-  // validated against bns_sections.  We keep `legalSection`/`legalSectionTitle`
-  // as the *primary* (first) section for the register tag / legacy reports.
+  // Multi-section support: the user can book a case under several legal
+  // sections across multiple acts at once (e.g. "BNS 101 — Murder" +
+  // "NDPS 20 — Possession of cannabis").  `body.legalSections` is an
+  // ordered array of section keys, each formatted as "ACT:N" (e.g.
+  // "BNS:101", "NDPS:20", "IPC:304A").  Each is validated against the
+  // multi-act reference table; the legacy `legalSection`/`legalSectionTitle`
+  // columns keep the PRIMARY (first) entry's bare number + title for the
+  // register tag / reports.
   let legalSection = null, legalSectionTitle = null;
   let legalSections = [], legalSectionsTitles = [];
+  let legalSectionsActs = [], legalSectionsNos = [];
   if (Array.isArray(body.legalSections) && body.legalSections.length) {
     for (const raw of body.legalSections) {
-      const secNo = String(raw).replace(/^BNS\s+/i, '').trim();
-      const hit = db_bnsSectionByNo(secNo);
+      const hit = db_legalSectionByKey(raw);
       if (hit) {
-        legalSections.push(hit.sectionNo);
+        legalSectionsActs.push(hit.actCode);
+        legalSectionsNos.push(hit.sectionNo);
+        legalSections.push(`${hit.actCode}:${hit.sectionNo}`);
         legalSectionsTitles.push(hit.title);
       } else {
-        legalSections.push(String(raw).trim());
-        legalSectionsTitles.push('');
+        // Fallback: accept the raw key without validation so legacy
+        // single-act BNS rows don't break.
+        const parsed = parseLegalKey(raw);
+        if (parsed) {
+          legalSectionsActs.push(parsed.actCode);
+          legalSectionsNos.push(parsed.sectionNo);
+          legalSections.push(`${parsed.actCode}:${parsed.sectionNo}`);
+          legalSectionsTitles.push('');
+        }
       }
     }
-    legalSection = legalSections[0] || null;
+    legalSection = legalSectionsNos[0] || null;
     legalSectionTitle = legalSectionsTitles[0] || null;
   } else if (body.legalSection) {
-    const secNo = String(body.legalSection).replace(/^BNS\s+/i, '').trim();
-    const hit = db_bnsSectionByNo(secNo);
+    // Backward-compat: single section still accepted.
+    const hit = db_legalSectionByKey(body.legalSection);
     if (hit) {
+      legalSectionsActs = [hit.actCode];
+      legalSectionsNos = [hit.sectionNo];
+      legalSections = [`${hit.actCode}:${hit.sectionNo}`];
+      legalSectionsTitles = [hit.title];
       legalSection = hit.sectionNo;
       legalSectionTitle = hit.title;
-      legalSections = [hit.sectionNo];
-      legalSectionsTitles = [hit.title];
     } else {
-      legalSection = String(body.legalSection).trim();
+      const secNo = String(body.legalSection).replace(/^BNS\s+/i, '').trim();
+      const parsed = parseLegalKey(body.legalSection);
+      legalSection = secNo || null;
       legalSectionTitle = '';
-      legalSections = [legalSection];
+      legalSectionsActs = parsed ? [parsed.actCode] : ['BNS'];
+      legalSectionsNos = parsed ? [parsed.sectionNo] : [secNo];
+      legalSections = parsed ? [`${parsed.actCode}:${parsed.sectionNo}`] : [secNo];
       legalSectionsTitles = [''];
     }
   } else if (body.usSections || body.us_sections) {
     const rawUs = String(body.usSections || body.us_sections).trim();
     if (rawUs) {
+      // Legacy "NDPS 21, 22" style free-text — accept as-is, mark as BNS.
       legalSection = rawUs;
       legalSectionTitle = '';
       legalSections = [rawUs];
       legalSectionsTitles = [''];
+      legalSectionsActs = [];
+      legalSectionsNos = [];
     }
   }
-
   const newCase = {
     id,
     firNo: body.firNo || id,                 // FIR number for register grouping (defaults to id)
@@ -706,12 +726,14 @@ async function createOneCase(req, body) {
     legalSectionTitle,
     legalSections,
     legalSectionsTitles,
+    legalSectionAct: legalSectionsActs[0] || null,        // primary act code
+    legalSectionsActs: legalSectionsActs || [],            // parallel array
     itemTypeId: itemTypeId != null ? itemTypeId : undefined,
     description: body.description || undefined,
     createdAt,
   };
   await mutate(d => { d.cases.push(newCase); rebuildSectionCountsIn(d); });
-  await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer}${legalSection ? ` — BNS ${legalSection} (${legalSectionTitle})` : ''} — Sr. No. ${itemId}`);
+  await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer}${legalSection ? ` — ${(legalSectionsActs[0] || 'BNS')} ${legalSection} (${legalSectionTitle})` : ''} — Sr. No. ${itemId}`);
   return { newCase, itemId, legalSection, legalSectionTitle };
 }
 
@@ -790,6 +812,13 @@ app.post('/api/cases/batch', async (req, res, next) => {
       await upsertCaseProperty(one.itemId, common, fields);
       created.push({ itemId: one.itemId, itemType: one.newCase.itemType, section: one.newCase.section });
     }
+    // Refresh the in-memory mirror's caseProperty / firMaster slices so the
+    // freshly-registered item's Received-By + FIR-Date join correctly on the
+    // very next detail GET (decorateCaseRow reads them from the mirror).
+    // Best-effort: never fails the registration that already succeeded.
+    try {
+      await syncRegistrationMirrors(created[0]?.itemId, firNo);
+    } catch { /* no-op */ }
     res.status(201).json({ firNo, items: created });
   } catch (e) { next(e); }
 });
@@ -1171,6 +1200,116 @@ function db_bnsSectionByNo(no) {
   const db = getDb();
   const n = String(no || '').replace(/^BNS\s+/i, '').trim();
   return (db.bnsSections || []).find(s => s.sectionNo === n);
+}
+
+// ----------------------------------------------------------------------
+// Multi-Act legal-section lookup.  Keys can be either:
+//   - "BNS:101" (preferred — disambiguates between acts with same number)
+//   - "BNS 101"  (BNS only, with optional space)
+//   - "101"      (legacy bare number — treated as BNS for backward compat)
+//
+// On startup we load the same JSON the client bundles
+// (client/src/data/legalSections.json — also mirrored under
+// server/data/legal_sections.json) into `db.legalSections`, keyed by
+// `${actCode}:${sectionNo}`.  Validation rejects unknown tuples with HTTP
+// 400 — same shape as the old BNS-only validator.
+// ----------------------------------------------------------------------
+function db_loadLegalSections() {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    // Try a few likely locations for the bundled JSON.
+    const candidates = [
+      path.join(__dirname, 'data', 'legal_sections.json'),
+      path.join(__dirname, '..', 'client', 'src', 'data', 'legalSections.json'),
+    ];
+    let rows = null;
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        rows = JSON.parse(fs.readFileSync(p, 'utf-8'));
+        console.log(`[legal] loaded ${rows.length} sections from ${p}`);
+        break;
+      }
+    }
+    if (!rows) {
+      console.warn('[legal] legal_sections.json not found — multi-act picker will reject everything');
+      return [];
+    }
+    return rows.map(r => ({
+      actCode: r.act_code,
+      actName: r.act_name,
+      actYear: r.act_year,
+      actLabel: r.act_label,
+      sectionNo: r.section_no,
+      title: r.title,
+      category: r.category || '',
+      key: `${r.act_code}:${r.section_no}`,
+    }));
+  } catch (err) {
+    console.error('[legal] failed to load:', err.message);
+    return [];
+  }
+}
+
+// Parse a section key like "BNS:101", "BNS 101", "IPC:304A", or "101".
+// Returns {actCode, sectionNo} or null if the input can't be parsed.
+function parseLegalKey(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const m = s.match(/^([A-Za-z]{2,10})\s*[:\-]\s*(\S+)$/);
+  if (m) return { actCode: m.group(1).toUpperCase(), sectionNo: m.group(2) };
+  const m2 = s.match(/^([A-Za-z]{2,10})\s+(\S+)$/);
+  if (m2) return { actCode: m2.group(1).toUpperCase(), sectionNo: m2.group(2) };
+  return { actCode: 'BNS', sectionNo: s };   // legacy: bare number = BNS
+}
+
+// Look up a section by any of the accepted key formats.
+// Returns the matched row or null.
+function db_legalSectionByKey(raw) {
+  const db = getDb();
+  const parsed = parseLegalKey(raw);
+  if (!parsed) return null;
+  const key = `${parsed.actCode}:${parsed.sectionNo}`;
+  return (db.legalSections || []).find(s => s.key === key) || null;
+}
+
+// Resolve an array of section keys into the canonical {sectionNo, title}
+// rows used by createOneCase / upsertFirMaster.  Throws 400 on unknown key.
+function resolveLegalSectionList(rawList) {
+  if (!Array.isArray(rawList)) return { legalSections: [], legalSectionsTitles: [] };
+  const out = [];
+  const titles = [];
+  for (const raw of rawList) {
+    const hit = db_legalSectionByKey(raw);
+    if (!hit) {
+      const e = new Error(`unknown legal section: ${raw}`);
+      e.status = 400;
+      throw e;
+    }
+    out.push(`${hit.actCode}:${hit.sectionNo}`);
+    titles.push(hit.title);
+  }
+  return { legalSections: out, legalSectionsTitles: titles };
+}
+
+// Express the primary section as a single canonical "ACT:N" key for the
+// legacy `legal_section` column, plus a parallel title.  Falls back to the
+// first entry when the array has more than one.
+function primaryLegalSection(legalSections, legalSectionsTitles) {
+  if (!legalSections || !legalSections.length) return { legalSection: null, legalSectionTitle: null };
+  const head = legalSections[0];
+  const title = legalSectionsTitles && legalSectionsTitles[0];
+  // Strip the "ACT:" prefix when persisting into the legacy `legal_section`
+  // column — that column has always been a bare number.  Server-side
+  // readers that need the act code can recover it from the parallel
+  // legal_sections_acts column (added below) or by joining against the
+  // resolved key string in legal_sections[].
+  const m = head.match(/^([A-Z]{2,10}):(\S+)$/);
+  return {
+    legalSection: m ? m[2] : head,
+    legalSectionTitle: title || null,
+  };
 }
 function rebuildSectionCountsIn(d) {
   for (const s of d.sections) s.count = 0;
@@ -3306,6 +3445,18 @@ if (!IS_VERCEL) {
       // NOTE: we deliberately do NOT swallow this.  The error is recorded
       // in store.js's _bootError so getDb() throws the real message.
       throw e;
+    }
+    // Load multi-Act legal-section reference into the in-memory db so the
+    // new "ACT:N" picker (Register form) and server-side validation can
+    // resolve every section across BNS / IPC / NDPS / POCSO / Arms / MV /
+    // CrPC / etc.  Comes from the same JSON the client bundles; mirror
+    // copy lives at server/data/legal_sections.json for Vercel deploys.
+    try {
+      const sections = db_loadLegalSections();
+      await mutate(d => { d.legalSections = sections; });
+      console.log('[boot] legalSections loaded:', (getDb().legalSections || []).length);
+    } catch (e) {
+      console.error('[boot] legalSections load failed (non-fatal):', e && e.message);
     }
     // Fast-forward malkhana_seq past existing item_id values.
     try { await syncMalkhanaSeq(); } catch (e) { console.error('[boot] syncMalkhanaSeq failed (non-fatal):', e && e.message); }

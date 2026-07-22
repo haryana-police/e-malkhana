@@ -3,6 +3,17 @@ import { api } from '../api';
 import type { RackItem, BnsSection, User, FirMaster, CategoryOfItem, CategoryFieldDef } from '../types';
 import { classifyNdps, getCategory, ITEM_CATEGORIES, type CategoryField } from '../categories';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import {
+  ACTS, searchLegalSections, lsKey, lsDisplay,
+  type LegalSection,
+} from '../legalActs';
+
+// One picked section in the multi-select chip list.
+interface PickedLegalSection {
+  actCode: string;
+  sectionNo: string;
+  title: string;
+}
 
 // Local lookup over the DB-loaded category list (replaces static getCategory).
 function getCat(list: CategoryOfItem[] | null, id: string | null | undefined): CategoryOfItem | undefined {
@@ -96,14 +107,17 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   const [actualSeizureDdNo, setActualSeizureDdNo] = useState('');
   const [actualSeizureDate, setActualSeizureDate] = useState('');
 
-  // ---------- BNS legal sections (multi) ----------
-  const [bnsQuery, setBnsQuery] = useState('');
-  const [bnsHits, setBnsHits] = useState<BnsSection[]>([]);
-  const [bnsOpen, setBnsOpen] = useState(false);
-  const [bnsLoading, setBnsLoading] = useState(false);
-  const [bnsActive, setBnsActive] = useState<number>(-1);
-  const [legalSections, setLegalSections] = useState<BnsSection[]>([]);
-  const bnsBoxRef = useRef<HTMLLabelElement>(null);
+  // ---------- Legal sections (multi, any Act) ----------
+  // Replaces the old BNS-only picker.  Each picked entry is {actCode,
+  // sectionNo, title}; we render the chip as "BNS 101 — Murder" and pass
+  // "BNS:101" to the server so the multi-act namespace is preserved.
+  const [legalAct, setLegalAct] = useState<string>('');    // '' = all acts
+  const [legalQuery, setLegalQuery] = useState('');
+  const [legalHits, setLegalHits] = useState<LegalSection[]>([]);
+  const [legalOpen, setLegalOpen] = useState(false);
+  const [legalActive, setLegalActive] = useState<number>(-1);
+  const [legalSections, setLegalSections] = useState<PickedLegalSection[]>([]);
+  const legalBoxRef = useRef<HTMLLabelElement>(null);
 
   // ---------- common block (once) ----------
   const [seizedTime, setSeizedTime] = useState('10:00');
@@ -132,35 +146,29 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     api.itemCategories().then(setCategories).catch(() => setCategories([]));
   }, [open, asPage]);
 
-  // BNS typeahead
+  // Legal-section typeahead (in-memory; bundled JSON).
   useEffect(() => {
-    if (!bnsOpen) return;
-    let cancelled = false;
-    setBnsLoading(true);
-    const timer = setTimeout(() => {
-      api.bnsSections(bnsQuery, 15)
-        .then(rows => { if (!cancelled) { setBnsHits(rows); setBnsActive(rows.length ? 0 : -1); } })
-        .catch(() => { if (!cancelled) setBnsHits([]); })
-        .finally(() => { if (!cancelled) setBnsLoading(false); });
-    }, 200);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [bnsQuery, bnsOpen]);
+    if (!legalOpen) return;
+    const hits = searchLegalSections({ query: legalQuery, act: legalAct || null, limit: 15 });
+    setLegalHits(hits);
+    setLegalActive(hits.length ? 0 : -1);
+  }, [legalQuery, legalOpen, legalAct]);
 
   useEffect(() => {
-    if (!bnsOpen) return;
+    if (!legalOpen) return;
     function onDocClick(e: MouseEvent) {
-      if (bnsBoxRef.current && !bnsBoxRef.current.contains(e.target as Node)) setBnsOpen(false);
+      if (legalBoxRef.current && !legalBoxRef.current.contains(e.target as Node)) setLegalOpen(false);
     }
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
-  }, [bnsOpen]);
+  }, [legalOpen]);
 
   function reset() {
     setStep(1); setRecordType('FIR'); setFirNo(''); setDdNo(''); setFirExists(null); setFirLoaded(false);
     setFirDate(today); setDdDate(today); setNatureOfDd(''); setNameOfDeceased(''); setReportingPerson('');
     setActualSeizureDdNo(''); setActualSeizureDate('');
     setFirHits([]); setFirOpen(false); setFirActive(-1);
-    setBnsQuery(''); setLegalSections([]);
+    setLegalAct(''); setLegalQuery(''); setLegalSections([]);
     setSeizedTime('10:00'); setReceivedBy('');
     setItems([]); setMsg(null); setErrors([]); setItemsCollapsed(false);
   }
@@ -258,18 +266,20 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     }
   }
 
-  function addBns(s: BnsSection) {
-    setLegalSections(prev => prev.find(x => x.sectionNo === s.sectionNo) ? prev : [...prev, s]);
-    setBnsQuery(''); setBnsOpen(true); setBnsActive(-1);
+  function addLegal(s: LegalSection) {
+    setLegalSections(prev => prev.find(x => x.actCode === s.actCode && x.sectionNo === s.sectionNo) ? prev : [...prev, { actCode: s.actCode, sectionNo: s.sectionNo, title: s.title }]);
+    setLegalQuery(''); setLegalOpen(true); setLegalActive(-1);
   }
-  function removeBns(no: string) { setLegalSections(prev => prev.filter(x => x.sectionNo !== no)); }
-  function onBnsKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setBnsOpen(true); setBnsActive(i => Math.min(i + 1, bnsHits.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setBnsActive(i => Math.max(i - 1, 0)); }
+  function removeLegal(act: string, sec: string) {
+    setLegalSections(prev => prev.filter(x => !(x.actCode === act && x.sectionNo === sec)));
+  }
+  function onLegalKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setLegalOpen(true); setLegalActive(i => Math.min(i + 1, legalHits.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setLegalActive(i => Math.max(i - 1, 0)); }
     else if (e.key === 'Enter') {
-      if (bnsOpen && bnsActive >= 0 && bnsHits[bnsActive]) { e.preventDefault(); addBns(bnsHits[bnsActive]); }
-      else if (bnsHits.length === 1) { e.preventDefault(); addBns(bnsHits[0]); }
-    } else if (e.key === 'Escape') setBnsOpen(false);
+      if (legalOpen && legalActive >= 0 && legalHits[legalActive]) { e.preventDefault(); addLegal(legalHits[legalActive]); }
+      else if (legalHits.length === 1) { e.preventDefault(); addLegal(legalHits[0]); }
+    } else if (e.key === 'Escape') setLegalOpen(false);
   }
 
   // ---------- item list helpers ----------
@@ -400,7 +410,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
           seizedTime,
           witness1: null, witness2: null,  // removed from form
           receivedBy, malkhanaLocation: '',
-          legalSections: legalSections.map(s => s.sectionNo),
+          legalSections: legalSections.map(s => lsKey(s.actCode, s.sectionNo)),
           seizingOfficer: items[0]?.seizingOfficer || defaultIo(user),
         },
         items: items.map((it, idx) => {
@@ -424,7 +434,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
             category: it.categoryId,
             subType: it.subType,
             malkhanaSection: it.sectionLetter,
-            legalSections: legalSections.map(s => s.sectionNo),
+            legalSections: legalSections.map(s => lsKey(s.actCode, s.sectionNo)),
             seizingOfficer: it.seizingOfficer,
             quantity: it.quantity,
             placeOfSeizure: it.placeOfSeizure,
@@ -620,33 +630,50 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
               {/* --- Legal sections group --- */}
               <section className="rc-group">
                 <div className="rc-grid">
-                  <label className="full" ref={bnsBoxRef}>
+                  <label className="full" ref={legalBoxRef}>
                     Section (U/S legal section) — multiple allowed
-                    <div className="bns-typeahead">
-                      <input
-                        value={bnsQuery}
-                        placeholder={legalSections.length ? 'Add another section…' : 'Type 101, "murder", "kidnapping"... (BNS, 2023)'}
-                        onChange={e => { setBnsQuery(e.target.value); setBnsOpen(true); }}
-                        onFocus={() => setBnsOpen(true)}
-                        onKeyDown={onBnsKeyDown}
-                        autoComplete="off" spellCheck={false}
-                        role="combobox" aria-expanded={bnsOpen} aria-autocomplete="list" aria-controls="bns-hits"
-                      />
-                      {bnsOpen && (
-                        <div className="bns-hits" id="bns-hits" role="listbox">
-                          {bnsLoading && bnsHits.length === 0 && <div className="bns-empty">searching…</div>}
-                          {!bnsLoading && bnsHits.length === 0 && <div className="bns-empty">No BNS section matches “{bnsQuery || '…'}”.</div>}
-                          {bnsHits.map((s, i) => {
-                            const picked = legalSections.some(x => x.sectionNo === s.sectionNo);
+                    <div className="legal-typeahead">
+                      <div className="legal-typeahead-row">
+                        <select
+                          className="legal-act-pick"
+                          value={legalAct}
+                          onChange={e => { setLegalAct(e.target.value); setLegalOpen(true); setLegalQuery(''); }}
+                          aria-label="Act"
+                        >
+                          <option value="">All acts</option>
+                          {ACTS.map(a => (
+                            <option key={a.code} value={a.code}>{a.label} ({a.count})</option>
+                          ))}
+                        </select>
+                        <input
+                          className="legal-q"
+                          value={legalQuery}
+                          placeholder={legalSections.length ? 'Add another section…' : `Type section no. or title, e.g. 101, "murder", "rape" — ${ACTS[0]?.label || ''}, ${ACTS[1]?.label || ''}, ${ACTS[2]?.label || ''}…`}
+                          onChange={e => { setLegalQuery(e.target.value); setLegalOpen(true); }}
+                          onFocus={() => setLegalOpen(true)}
+                          onKeyDown={onLegalKeyDown}
+                          autoComplete="off" spellCheck={false}
+                          role="combobox" aria-expanded={legalOpen} aria-autocomplete="list" aria-controls="legal-hits"
+                        />
+                      </div>
+                      {legalOpen && (
+                        <div className="legal-hits" id="legal-hits" role="listbox">
+                          {legalHits.length === 0 && (
+                            <div className="legal-empty">
+                              No match for “{legalQuery || '…'}”{legalAct ? ` in ${legalAct}` : ''}.
+                            </div>
+                          )}
+                          {legalHits.map((s, i) => {
+                            const picked = legalSections.some(x => x.actCode === s.actCode && x.sectionNo === s.sectionNo);
                             return (
-                              <div key={s.sectionNo} role="option" aria-selected={i === bnsActive}
-                                className={`bns-hit${i === bnsActive ? ' active' : ''}${picked ? ' picked' : ''}`}
-                                onMouseDown={(e) => { e.preventDefault(); if (!picked) addBns(s); }}
-                                onMouseEnter={() => setBnsActive(i)} title={s.description || s.title}>
-                                <span className="bns-no">BNS&nbsp;{s.sectionNo}</span>
-                                <span className="bns-title">{s.title}</span>
-                                {s.category && <span className="bns-cat">{s.category}</span>}
-                                {picked && <span className="bns-tick">✓</span>}
+                              <div key={`${s.actCode}:${s.sectionNo}`} role="option" aria-selected={i === legalActive}
+                                className={`legal-hit${i === legalActive ? ' active' : ''}${picked ? ' picked' : ''}`}
+                                onMouseDown={(e) => { e.preventDefault(); if (!picked) addLegal(s); }}
+                                onMouseEnter={() => setLegalActive(i)} title={s.title}>
+                                <span className="legal-no">{s.actCode}&nbsp;{s.sectionNo}</span>
+                                <span className="legal-title">{s.title}</span>
+                                {s.category && <span className="legal-cat">{s.category}</span>}
+                                {picked && <span className="legal-tick">✓</span>}
                               </div>
                             );
                           })}
@@ -654,11 +681,11 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                       )}
                     </div>
                     {legalSections.length > 0 && (
-                      <div className="bns-chips">
+                      <div className="legal-chips">
                         {legalSections.map(s => (
-                          <span key={s.sectionNo} className="bns-chip">
-                            <b>BNS {s.sectionNo}</b> — {s.title}
-                            <button type="button" className="bns-chip-x" onClick={() => removeBns(s.sectionNo)} aria-label={`Remove BNS ${s.sectionNo}`}>×</button>
+                          <span key={lsKey(s.actCode, s.sectionNo)} className="legal-chip">
+                            <b>{s.actCode} {s.sectionNo}</b> — {s.title}
+                            <button type="button" className="legal-chip-x" onClick={() => removeLegal(s.actCode, s.sectionNo)} aria-label={`Remove ${s.actCode} ${s.sectionNo}`}>×</button>
                           </span>
                         ))}
                       </div>
