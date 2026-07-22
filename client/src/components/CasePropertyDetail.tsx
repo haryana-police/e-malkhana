@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import html2canvas from 'html2canvas';
 import type { CaseRow, CasePropertyData, FirMaster, MovementLogRow, CaseStatus } from '../types';
+import { MovementForm, type MovementFormData } from './MovementForm';
 
 // Status list mirrors server STATUSES in server.js.  Kept in sync via
 // the same allow-list check on the server, so a stray value here just
@@ -321,16 +322,61 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
 
   // ---- log / edit movement modal ----
   const [showLog, setShowLog] = useState(false);
-  const [logTo, setLogTo] = useState('');
-  const [logBy, setLogBy] = useState('');
-  const [logPurpose, setLogPurpose] = useState('');
-  const [logDoc, setLogDoc] = useState('');
+  const [fromLocation, setFromLocation] = useState('—');
   const [logErr, setLogErr] = useState<string | null>(null);
   const [logBusy, setLogBusy] = useState(false);
-  // Destination location suggestions are fetched from the movement_types
-  // table (the admin-managed vocabulary), NOT from the Malkhana section
-  // name.  The current status's defaultLocation pre-fills the field.
-  const [logLocSuggestions, setLogLocSuggestions] = useState<string[]>([]);
+
+  // ---- edit case property modal (single form, styled like Log/Edit Movement) ----
+  const [showEdit, setShowEdit] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editErr, setEditErr] = useState<string | null>(null);
+  // Field drafts — initialised from caseRow when the modal opens.
+  const [edItemType, setEdItemType]           = useState('');
+  const [edSection, setEdSection]             = useState('');
+  const [edStatus, setEdStatus]               = useState<CaseStatus>('Seized');
+  const [edReceivedBy, setEdReceivedBy]       = useState('');
+  const [edFirDate, setEdFirDate]             = useState('');
+  const [edUs, setEdUs]                       = useState('');
+
+  function openEdit() {
+    if (!caseRow) return;
+    setShowEdit(true);
+    setEditErr(null);
+    setEdItemType(caseRow.itemType || '');
+    setEdSection(caseRow.section?.replace('PART ', '') || '');
+    setEdStatus(caseRow.status || 'Seized');
+    setEdReceivedBy(caseRow.receivedBy || '');
+    setEdFirDate(caseRow.firDate || '');
+    setEdUs(detailUsNumbers(caseRow));
+  }
+
+  async function submitEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!caseRow) return;
+    setEditBusy(true); setEditErr(null);
+    try {
+      const usArr = (edUs || '').split(',').map(s => s.replace(/^BNS\s+/i, '').trim()).filter(Boolean);
+      if (!edItemType.trim()) throw new Error('Category of Item cannot be empty');
+      if (!edSection) throw new Error('Pick a location');
+      const updated = await api.updateCase(caseRow.id, {
+        itemType: edItemType.trim(),
+        section: edSection,
+        status: edStatus,
+        receivedBy: edReceivedBy.trim() || null,
+        firDate: edFirDate.trim() || null,
+        legalSections: usArr,
+      });
+      setCaseRow(updated);
+      // Re-fetch so server decorate/withFreshSectionName passes reflect.
+      const fresh = await api.case(caseRow.id).catch(() => updated);
+      setCaseRow(fresh);
+      setShowEdit(false);
+    } catch (err) {
+      setEditErr((err as Error).message);
+    } finally {
+      setEditBusy(false);
+    }
+  }
 
   // Hidden off-screen node used to compose the Download QR sheet
   // (case detail + movement chain + QR) into a single PNG via html2canvas.
@@ -602,41 +648,27 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     if (!caseRow) return;
     setShowLog(true);
     setLogErr(null);
-    setLogBy(caseRow.receivedBy || 'SI Rakesh Sharma');
-    setLogPurpose('Movement');
-    setLogDoc('');
-    // Fetch the admin-managed movement_types vocabulary.  The destination
-    // location list + default is driven by THAT table — not the Malkhana
-    // section name — so movements stay decoupled from the Malkhana layout.
-    let types: { name: string; defaultLocation: string }[] = [];
+    // From = previous (last movement) location, auto.
+    let from = '—';
     try {
-      types = await api.movementTypes('all');
-    } catch {
-      types = [];
-    }
-    const locs = Array.from(
-      new Set(types.map(t => (t.defaultLocation || '').trim()).filter(Boolean))
-    );
-    setLogLocSuggestions(locs);
-    // Default destination = the CURRENT status's configured default location
-    // (falls back to any location if the status has none set).
-    const cur = types.find(t => t.name === caseRow.status);
-    const def = (cur && cur.defaultLocation && cur.defaultLocation.trim()) || locs[0] || '';
-    setLogTo(def);
+      const mv = await api.movements(caseRow.id);
+      if (Array.isArray(mv) && mv.length) from = mv[mv.length - 1].toLocation || '—';
+    } catch { /* leave '—' */ }
+    setFromLocation(from);
   }
 
-  async function submitLog(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitLog(data: MovementFormData) {
     if (!caseRow) return;
-    if (!logTo.trim()) { setLogErr('Destination location is required.'); return; }
-
+    if (!data.toLocation.trim()) { setLogErr('Destination location is required.'); return; }
+    setLogBusy(true); setLogErr(null);
     try {
       await api.createMovement({
         caseId: caseRow.id,
-        toLocation: logTo.trim(),
-        movedBy: logBy.trim() || 'Moharrir',
-        purpose: logPurpose.trim() || 'Movement',
-        docRef: logDoc.trim() || undefined,
+        toLocation: data.toLocation.trim(),
+        movedBy: data.movedBy.trim() || 'Moharrir',
+        purpose: data.purpose.trim() || 'Movement',
+        docRef: data.docRef || undefined,
+        setStatus: (data.toStatus && STATUS_OPTIONS.includes(data.toStatus as CaseStatus)) ? (data.toStatus as CaseStatus) : undefined,
       });
       setShowLog(false);
       // refresh movement log + case (last-movement date / location)
@@ -669,6 +701,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         <Link to="/caseproperty" className="link-back">← All Case Property</Link>
         <div className="case-detail-actions">
           <button className="btn" type="button" onClick={openLog}>＋ Log New Movement</button>
+          <button className="btn ghost" type="button" onClick={openEdit}>✎ Edit Case Property</button>
           <button className="btn ghost" type="button" onClick={printTag}>🏷 Print Tag</button>
           <button className="btn ghost" type="button" onClick={printDetail}>🖨 Print full detail</button>
         </div>
@@ -916,37 +949,74 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       {/* Log / Edit Movement modal */}
       {showLog && (
         <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !logBusy) setShowLog(false); }}>
-          <form className="form-card" onSubmit={submitLog}>
+          <div className="form-card">
             <button type="button" className="tag-close" onClick={() => setShowLog(false)} aria-label="Close">✕</button>
             <h3>Log / Edit Movement — {caseRow.id}</h3>
             <div className="sub">{caseRow.itemType} · Current: {caseRow.sectionName}</div>
+            <MovementForm
+              caseRow={caseRow}
+              fromLocation={fromLocation}
+              busy={logBusy}
+              submitLabel="Record movement"
+              onSubmit={submitLog}
+              onCancel={() => setShowLog(false)}
+            />
+            {logErr && <div className="form-msg show error" style={{ marginTop: 8 }}>{logErr}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Case Property modal — same layout/format as Log/Edit Movement */}
+      {showEdit && (
+        <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !editBusy) setShowEdit(false); }}>
+          <form className="form-card" onSubmit={submitEdit}>
+            <button type="button" className="tag-close" onClick={() => setShowEdit(false)} aria-label="Close">✕</button>
+            <h3>Edit Case Property — {caseRow.id}</h3>
+            <div className="sub">{caseRow.itemType} · Current: {caseRow.sectionName}</div>
             <div className="form-grid">
-              <label className="full">To location
+              <label className="full">Category of Item
                 <input
-                  list="log-loc-suggestions"
-                  value={logTo}
-                  onChange={e => setLogTo(e.target.value)}
-                  placeholder="Destination location (from Movement Types)"
+                  value={edItemType}
+                  onChange={e => setEdItemType(e.target.value)}
+                  placeholder="e.g. Narcotics / NDPS Article"
                   required />
-                <datalist id="log-loc-suggestions">
-                  {logLocSuggestions.map((l, i) => <option key={i} value={l} />)}
-                </datalist>
               </label>
 
-              <label>Moved by
-                <input value={logBy} onChange={e => setLogBy(e.target.value)} placeholder="Officer name" />
+              <label>Location
+                <select value={edSection} onChange={e => setEdSection(e.target.value)} required>
+                  <option value="">— pick a section —</option>
+                  {sections.map(s => (
+                    <option key={s.letter} value={s.letter}>{s.letter} — {s.name}</option>
+                  ))}
+                </select>
               </label>
-              <label>Purpose
-                <input value={logPurpose} onChange={e => setLogPurpose(e.target.value)} placeholder="e.g. For forensic analysis" />
+
+              <label>Status
+                <select value={edStatus} onChange={e => setEdStatus(e.target.value as CaseStatus)}>
+                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
               </label>
-              <label className="full">Document ref (optional)
-                <input value={logDoc} onChange={e => setLogDoc(e.target.value)} placeholder="e.g. FSL-FWD-2026-114" />
+
+              <label>Received By (Moharrir)
+                <input value={edReceivedBy} onChange={e => setEdReceivedBy(e.target.value)} placeholder="Officer name" />
+              </label>
+
+              <label>FIR Date
+                <input type="date" value={edFirDate} onChange={e => setEdFirDate(e.target.value)} />
+              </label>
+
+              <label className="full">Section (U/S)
+                <input
+                  value={edUs}
+                  onChange={e => setEdUs(e.target.value)}
+                  placeholder="e.g. 244, 245"
+                />
               </label>
             </div>
-            {logErr && <div className="form-msg show error" style={{ marginTop: 8 }}>{logErr}</div>}
+            {editErr && <div className="form-msg show error" style={{ marginTop: 8 }}>{editErr}</div>}
             <div className="form-actions">
-              <button type="button" className="btn ghost" onClick={() => setShowLog(false)} disabled={logBusy}>Cancel</button>
-              <button type="submit" className="btn" disabled={logBusy || !logTo.trim()}>{logBusy ? 'Recording…' : 'Record movement'}</button>
+              <button type="button" className="btn ghost" onClick={() => setShowEdit(false)} disabled={editBusy}>Cancel</button>
+              <button type="submit" className="btn" disabled={editBusy || !edItemType.trim() || !edSection}>{editBusy ? 'Saving…' : 'Save'}</button>
             </div>
           </form>
         </div>

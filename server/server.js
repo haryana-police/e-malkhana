@@ -174,31 +174,115 @@ function findOrThrow(id) {
 //   2. case-insensitive exact match
 //   3. "215" → matches "FIR 215/2026" (numeric substring match)
 //   4. any other partial substring (case-insensitive) when unique
+// Normalise a free-text FIR/DD query into its canonical stored id form.
+// Handles the messy ways MMs actually type the number at the scanner /
+// manual-entry box:
+//   "FIR 125"          → "FIR 125/2026"   (year auto-filled to current FY)
+//   "fir no 125"       → "FIR 125/2026"
+//   "125"              → "125"            (yearless: matched loosely below)
+//   "DD 125"           → "DD 125/2026"
+//   "dd fir 125"       → "DD FIR 125/2026"  (a FIR logged as a DD)
+//   "DD FIR 125"       → "DD FIR 125/2026"
+// Anything that doesn't look like a FIR/DD query is returned unchanged so
+// the existing exact / substring fallbacks still work (MK- no., etc.).
+function normaliseFirQuery(q) {
+  const s = String(q || '').trim();
+  if (!s) return s;
+  const low = s.toLowerCase();
+
+  // Pull the leading integer(s) — the case number.  Allow "125" or
+  // "2026/125" style; we only care about the trailing number when a year
+  // prefix is present.  Capture trailing digits group.
+  const numMatch = s.match(/(\d{1,6})\s*(?:\/\s*(\d{2,4}))?\s*$/);
+  if (!numMatch) return s;
+  const num = numMatch[1];
+  const yr = numMatch[2]
+    ? normaliseFyYear(numMatch[2])
+    : currentFyYear();
+
+  // Determine record type + whether it's a FIR-under-DD.
+  const isDd = /(^|\s)dd(\s|$)/.test(low);
+  const isFir = /(^|\s)fir(\s|$)/.test(low);
+  const isDdFir = isDd && isFir; // "dd fir 125" / "dd fir no 125"
+
+  if (isDdFir) return `DD FIR ${num}/${yr}`;
+  if (isDd)     return `DD ${num}/${yr}`;
+  if (isFir)    return `FIR ${num}/${yr}`;
+
+  // No keyword at all (e.g. just "125").  Leave it as the bare number so
+  // the loose matching below can match both "FIR 125/2026" and
+  // "DD FIR 125/2026" and surface them as candidates.
+  return num;
+}
+
+// Normalise a 2- or 4-digit year to the 4-digit FY year used in ids.
+function normaliseFyYear(y) {
+  const n = parseInt(y, 10);
+  if (y.length <= 2) {
+    // "25" → 2025, "26" → 2026.  Assume 2000s.
+    return 2000 + n;
+  }
+  return n;
+}
+
+// Current financial-year year suffix (Apr–Mar).  Used when the MM omits
+// the year, e.g. "FIR 125" → "FIR 125/2026".
+function currentFyYear() {
+  const now = new Date();
+  // FY starts 1 Apr: Apr–Dec → same year; Jan–Mar → previous year.
+  const fy = (now.getMonth() >= 3) ? now.getFullYear() : now.getFullYear() - 1;
+  return fy + 1; // FY label year (e.g. "2026" for Apr 2025–Mar 2026)
+}
+
 function resolveCaseId(raw) {
   const db = getDb();
   const all = [...db.cases, ...(db.extraCasesForAlerts || [])];
   const q = String(raw || '').trim();
   if (!q) return { case: null, suggestions: all.slice(0, 5).map(c => c.id) };
 
-  // 1) exact
-  let hit = all.find(c => c.id === q);
+  // ---- FIR/DD-aware matching ----
+  // Normalise keywords ("fir 125" → "FIR 125/2026", "dd 125" → "DD 125/2026",
+  // "dd fir 125" → "DD FIR 125/2026", "125" → "125").
+  const norm = normaliseFirQuery(q);
+
+  // 1) exact (canonical or normalised)
+  let hit = all.find(c => c.id === norm || c.id === q);
   if (hit) return { case: hit, suggestions: [] };
 
-  // 2) case-insensitive
-  const ql = q.toLowerCase();
-  hit = all.find(c => c.id.toLowerCase() === ql);
+  // 1b) case-insensitive
+  const normL = norm.toLowerCase();
+  const qL = q.toLowerCase();
+  hit = all.find(c => c.id.toLowerCase() === normL || c.id.toLowerCase() === qL);
   if (hit) return { case: hit, suggestions: [] };
 
-  // 3) numeric substring — e.g. "215" matches "FIR 215/2026"
-  const digits = q.match(/\d+/);
-  if (digits) {
-    const matches = all.filter(c => c.id.includes(digits[0]));
+  // 2) loose keyword match:
+  //    - If a FIR/DD keyword was present, match the canonical-type prefix
+  //      exactly (e.g. "FIR 125" only matches ids starting "FIR 125").
+  //    - If no keyword (bare number "125"), match ANY id containing that
+  //      number so "FIR 125/2026" AND "DD FIR 125/2026" both surface.
+  //    This is what disambiguates between "FIR 125" and "DD FIR 125".
+  const looksFirDd = /(^|\s)(fir|dd)(\s|$)/i.test(q);
+  const numMatch = norm.match(/\d{1,6}/);
+  const num = numMatch ? numMatch[0] : null;
+  if (num) {
+    const matches = all.filter(c => {
+      const idL = c.id.toLowerCase();
+      if (looksFirDd) {
+        // keyword present → demand the exact prefix token before the number
+        const prefix = /dd fir/i.test(q) ? 'dd fir '
+          : /(^|\s)dd(\s|$)/i.test(q) ? 'dd '
+          : 'fir ';
+        return idL.startsWith(prefix + num + '/') || idL === prefix.trim() + ' ' + num;
+      }
+      // bare number → any id containing that number
+      return idL.includes(num);
+    });
     if (matches.length === 1) return { case: matches[0], suggestions: [] };
     if (matches.length > 1)  return { case: null, suggestions: matches.slice(0, 8).map(c => c.id) };
   }
 
-  // 4) any substring (unique)
-  const subs = all.filter(c => c.id.toLowerCase().includes(ql));
+  // 3) any substring (unique) — last resort for MK- numbers, partial text
+  const subs = all.filter(c => c.id.toLowerCase().includes(qL));
   if (subs.length === 1) return { case: subs[0], suggestions: [] };
   return { case: null, suggestions: subs.slice(0, 8).map(c => c.id) };
 }

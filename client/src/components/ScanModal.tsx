@@ -1,23 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { api, ApiError } from '../api';
-import type { CaseRow, CaseStatus, MovementLogRow } from '../types';
+import type { CaseRow, MovementLogRow } from '../types';
+import { MovementForm, type MovementFormData } from './MovementForm';
+
+// Allowed status names (mirrors server STATUSES) — used to decide whether a
+// selected Movement Type is also a valid case status to record.
+const STATUSES_SET = new Set<string>([
+  'Seized', 'Expert Opinion Pending', 'In Malkhana',
+  'With FSL', 'In Court', 'Disposed', 'Transfer',
+]);
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSuccess: (c: CaseRow, recorded: boolean) => void;
 }
-
-const STATUSES: CaseStatus[] = [
-  'Seized', 'Expert Opinion Pending', 'In Malkhana',
-  'With FSL', 'In Court', 'Disposed',
-];
-
-const QUICK_LOCATIONS = [
-  'Malkhana', 'FSL Madhuban', 'Court',
-  'Civil Hospital Panchkula', 'Returned to Owner', 'Disposed',
-];
 
 // Parse a QR payload (the same one /api/cases/:id/qr encodes).
 //   - JSON { v:2, enc:'aes-256-gcm', iv, tag, ct }  →  ENCRYPTED tag.
@@ -56,12 +54,8 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
   // Matched case (set after a successful scan) + optional movement form
   const [matched, setMatched] = useState<CaseRow | null>(null);
   const [movement, setMovement] = useState<MovementLogRow | null>(null);
-
-  // Movement form state (shown when in the 'confirm' phase)
-  const [toLocation, setToLocation] = useState('Malkhana');
-  const [movedBy, setMovedBy]       = useState('SI Rakesh Sharma');
-  const [purpose, setPurpose]       = useState('Check-in scan');
-  const [setStatus, setSetStatus]   = useState<CaseStatus>('In Malkhana');
+  // Previous (FROM) location for the movement form — auto from last movement.
+  const [fromLocation, setFromLocation] = useState('—');
 
   // Manual fallback input
   const [manualPayload, setManualPayload] = useState('');
@@ -171,10 +165,15 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
       // encodes).  Without a destination it just reports the matched case.
       const r = await api.scan({ payload: payload || fallbackId });
       setMatched(r.case);
+      // Fetch the previous (FROM) location from the last movement so the
+      // shared MovementForm can show it read-only.
+      let from = '—';
+      try {
+        const mv = await api.movements(r.case.id);
+        if (Array.isArray(mv) && mv.length) from = mv[mv.length - 1].toLocation || '—';
+      } catch { /* leave '—' */ }
+      setFromLocation(from);
       setPhase('confirm');
-      // Pre-fill the toLocation from the case's current location if we can
-      setToLocation('Malkhana');
-      setSetStatus(r.case.status === 'Disposed' ? 'In Malkhana' : 'In Malkhana');
     } catch (e) {
       const err = e as ApiError;
       const detail = (err.body && err.body.error) || err.message;
@@ -189,14 +188,17 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
     }
   }
 
-  async function submitMovement(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitMovement(data: MovementFormData) {
     if (!matched) return;
     setBusy(true); setMsg(null);
     try {
       const r = await api.scan({
         payload: JSON.stringify({ v: 1, id: matched.id, item: matched.itemId }),
-        toLocation, movedBy, purpose, setStatus,
+        toLocation: data.toLocation,
+        movedBy: data.movedBy,
+        purpose: data.purpose,
+        docRef: data.docRef,
+        setStatus: (data.toStatus && STATUSES_SET.has(data.toStatus as any)) ? (data.toStatus as any) : undefined,
       });
       setMovement(r.movement ?? null);
       setMatched(r.case);
@@ -320,40 +322,21 @@ export function ScanModal({ open, onClose, onSuccess }: Props) {
         )}
 
         {phase === 'confirm' && matched && (
-          <form onSubmit={submitMovement}>
+          <div>
             <div className="form-msg show ok" style={{ marginBottom: 12 }}>
               Recognised: <b>{matched.id}</b> — {matched.itemType}{' '}
               <span className="case-pill">{matched.itemId}</span>
             </div>
-            <div className="form-grid">
-              <label>
-                To location
-                <input list="locs" value={toLocation} onChange={e => setToLocation(e.target.value)} required />
-                <datalist id="locs">{QUICK_LOCATIONS.map(l => <option key={l} value={l} />)}</datalist>
-              </label>
-              <label>
-                New status
-                <select value={setStatus} onChange={e => setSetStatus(e.target.value as CaseStatus)}>
-                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
-              <label>
-                Moved by
-                <input value={movedBy} onChange={e => setMovedBy(e.target.value)} required />
-              </label>
-              <label>
-                Purpose
-                <input value={purpose} onChange={e => setPurpose(e.target.value)} />
-              </label>
-            </div>
-            {msg && <div className={`form-msg show ${msg.kind}`}>{msg.text}</div>}
-            <div className="form-actions">
-              <button type="button" className="btn ghost" onClick={() => { reset(); onClose(); }} disabled={busy}>Close</button>
-              <button type="submit" className="btn" disabled={busy}>
-                {busy ? 'Recording…' : 'Record Movement'}
-              </button>
-            </div>
-          </form>
+            <MovementForm
+              caseRow={matched}
+              fromLocation={fromLocation}
+              busy={busy}
+              submitLabel="Record Movement"
+              onSubmit={submitMovement}
+              onCancel={() => { reset(); onClose(); }}
+            />
+            {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 8 }}>{msg.text}</div>}
+          </div>
         )}
 
         {msg && phase !== 'confirm' && (
