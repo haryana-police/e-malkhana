@@ -539,7 +539,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         <div class="noprint"><button onclick="window.print()">🖨 Print this page</button></div>
         <div class="head">
           <div>
-            <div class="id">${escapeHtml(c.id)}</div>
             <h1 class="title">${escapeHtml(c.itemType)}</h1>
             ${c.itemSub ? `<div class="sub">${escapeHtml(c.itemSub)}</div>` : ''}
           </div>
@@ -549,7 +548,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           <h3>Step 1 of 2 — ${escapeHtml(isDD ? 'DD' : 'FIR')} &amp; Receipt</h3>
           <div class="step1-head">
             <div class="left">
-              ${contextBar}
               <div class="grid">${step1Rows}</div>
             </div>
             ${qrUrl ? `
