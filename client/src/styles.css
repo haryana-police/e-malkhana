@@ -3787,6 +3787,9 @@ input, select, textarea{
   font-size: 9.5px;
   color: #4F6079;
 }
+.case-a4-footer-right { display: inline-flex; align-items: center; gap: 10px; }
+.case-a4-footer-ts { font-size: 9px; color: #8C7A54; }
+.case-a4-footer .btn.ghost.small { font-size: 9px; padding: 2px 8px; }
 
 /* On narrower screens, stack Movement above Photo */
 @media (max-width: 880px) {

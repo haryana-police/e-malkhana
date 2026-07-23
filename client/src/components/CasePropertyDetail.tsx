@@ -207,19 +207,24 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     api.sections('all').then(s => setSections(s.map(x => ({ letter: x.letter, name: x.name })))).catch(() => setSections([]));
   }, []);
 
-  // Fit the whole detail view to exactly one screen (no page scroll).
-  // Uses CSS `zoom` (Chromium/Chrome) which resizes the layout box itself,
-  // unlike transform:scale which only shrinks visually and leaves scroll space.
+  // Fit the whole detail view (sheet + footer) to exactly one screen, no page scroll.
+  // transform:scale shrinks visually; we also set the wrapper height to the scaled
+  // size so the document flow collapses and the page no longer scrolls.
   useEffect(() => {
     const fit = () => {
       const wrap = document.querySelector('.case-detail') as HTMLElement | null;
       if (!wrap) return;
-      wrap.style.zoom = '1'; // reset to measure natural layout size
+      const sheet = wrap.querySelector('.case-a4-sheet') as HTMLElement | null;
+      if (sheet) sheet.style.transform = 'none';
+      wrap.style.transform = 'none';
+      wrap.style.height = 'auto';
       const natural = wrap.getBoundingClientRect().height;
       const topChrome = wrap.getBoundingClientRect().top; // header + nav above
       const avail = window.innerHeight - topChrome - 8; // 8px breathing room
       const scale = Math.min(1, avail / natural);
-      wrap.style.zoom = String(scale);
+      wrap.style.transformOrigin = 'top center';
+      wrap.style.transform = `scale(${scale})`;
+      wrap.style.height = `${natural * scale}px`;
     };
     fit();
     window.addEventListener('resize', fit);
@@ -768,20 +773,15 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
               </div>
             </div>
 
-            {/* Footer (printed-style) */}
-            <div className="case-a4-footer">
-              <span>e-Malkhana · Case Detail · {recordType} {c.id}</span>
-              <span>{escapeHtml(new Date().toLocaleString('en-IN'))}</span>
-            </div>
-          </div>
-
-      {/* Footer */}
-      <footer className="case-property-foot">
-        <span className="case-property-foot-note">
-          Read-only view · registration-time fields · {recordType} {c.id}
+      {/* Footer (printed-style) + back link, all inside the scaling sheet */}
+      <div className="case-a4-footer">
+        <span>e-Malkhana · Case Detail · {recordType} {c.id}</span>
+        <span className="case-a4-footer-right">
+          <Link to="/caseproperty" className="btn ghost small">← Back to register</Link>
+          <span className="case-a4-footer-ts">{escapeHtml(new Date().toLocaleString('en-IN'))}</span>
         </span>
-        <Link to="/caseproperty" className="btn ghost">← Back to register</Link>
-      </footer>
+      </div>
+    </div>
 
       {/* ============================================================
           Action modals (Log / Edit / Delete)
