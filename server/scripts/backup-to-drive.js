@@ -89,7 +89,7 @@ const RCLONE_BIN = locateRclone();
 const DATABASE_URL = process.env.DATABASE_URL;
 const IS_VERCEL = !!process.env.VERCEL;
 
-console.error('[backup] start: IS_VERCEL=' + IS_VERCEL + ' RCLONE_BIN=' + RCLONE_BIN + ' hasConfigB64=' + !!process.env.RCLONE_CONFIG_BASE64 + ' VERCEL_ENV=' + (process.env.VERCEL_ENV || 'unset'));
+console.error('[backup] start: IS_VERCEL=' + IS_VERCEL + ' RCLONE_BIN=' + RCLONE_BIN + ' hasConfigB64=' + !!process.env.RCLONE_CONFIG_BASE64);
 
 if (!RCLONE_BIN) fail('rclone not found — expected at server/bin/rclone (Vercel) or ~/bin/rclone-*-windows-amd64/ (laptop)');
 if (!DATABASE_URL) fail('DATABASE_URL is not set');
