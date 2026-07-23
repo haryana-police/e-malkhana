@@ -35,6 +35,10 @@ body{
 }
 
 .app{ display:flex; min-height:100vh; }
+/* On the Case Detail route, don't let the main column stretch to the
+   sidebar's full height — so the scaled-to-fit A4 sheet is the only height. */
+.app:has(.case-detail){ align-items: flex-start; }
+.app:has(.case-detail) .main{ min-height: 0; height: auto; }
 
 /* ============ HEADER / LETTERHEAD ============ */
 .letterhead{
