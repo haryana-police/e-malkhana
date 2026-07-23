@@ -88,7 +88,14 @@ async function send<T>(method: 'POST' | 'PATCH' | 'DELETE', path: string, body: 
   const res = await fetch(`${base}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', 'X-MM-Id': currentMmId, 'X-MM-Name': currentMmId },
-    body: method === 'DELETE' ? undefined : JSON.stringify(body),
+    // Only attach a body when there is one to send.  The previous
+    // `method === 'DELETE' ? undefined : ...` short-circuit silently
+    // stripped payloads from DELETE calls, which broke
+    // DELETE /api/cases/:id (the server reads req.body.confirmItemId
+    // for the re-type-to-confirm guard) and would break any future
+    // DELETE that carries a body.  DELETE with no payload still goes
+    // out bodyless.
+    body: body === undefined || body === null ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
     let parsed: any = null;
@@ -217,17 +224,30 @@ export const api = {
   updateStatus:  (id: string, status: string) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}/status`, { status }),
 
   // Edit editable fields of an existing case from the Case Property Detail
-  // page (itemType, itemSub, section, seizingOfficer, itemId,
-  // legalSection, receivedBy, firDate, imageUrl, status).
+  // page. Mirrors the original Registration form fields one-for-one, plus
+  // the per-item case_property payload and per-FIR master DD extras.
   // Only present keys are sent to the server, so a partial update is fine.
   // Returns the updated CaseRow (with fresh sectionName joined server-side).
   updateCase:    (id: string, patch: Partial<{
     itemType: string; itemSub: string; section: string;
     seizingOfficer: string; itemId: string;
     legalSection: string | null; legalSections?: string[];
-    description?: string; itemTypeId?: number | null;
+    description?: string | null; itemTypeId?: number | null;
     receivedBy?: string | null; firDate?: string | null;
     imageUrl?: string | null; status?: string;
+    // Step 2 / case_property payload (common + per-item popup fields).
+    caseProperty?: Partial<{
+      seizedTime: string; receivedBy: string; quantity: string;
+      placeOfSeizure: string; remarks: string;
+      sealSealed: string; sealNo: string; sealBy: string;
+      fields: Record<string, string>;
+    }>;
+    // Step 1 DD-specific fir_master fields (only meaningful when
+    // recordType==='DD', but server is lenient).
+    recordType?: 'FIR' | 'DD';
+    ddDate?: string | null; natureOfDd?: string | null;
+    nameOfDeceased?: string | null; reportingPerson?: string | null;
+    actualSeizureDdNo?: string | null; actualSeizureDate?: string | null;
   }>) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}`, patch),
 
   // Permanently delete a case (and its movements + case_property row).
