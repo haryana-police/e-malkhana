@@ -487,11 +487,14 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
 
     const movementHtml = movements.length === 0
       ? '<div class="empty">No movements recorded yet.</div>'
-      : `<ul class="timeline">${movements.map(m => `
-          <li>
+      : `<ol class="timeline">${movements.map((m, idx) => {
+          const stepNo = movements.length - idx; // newest first = step 1
+          return `<li>
+            <div class="t-step">Step ${stepNo}</div>
             <div class="t-route">${escapeHtml(m.fromLocation || 'New')}<span class="t-arrow">→</span>${escapeHtml(m.toLocation || '—')}</div>
             <div class="t-meta">${escapeHtml(m.movedBy || '—')} · ${fmtTime(m.timestamp)}${m.purpose ? ' · ' + escapeHtml(m.purpose) : ''}</div>
-          </li>`).join('')}</ul>`;
+          </li>`;
+        }).join('')}</ol>`;
 
     const html = `<!doctype html><html><head><title>Case Detail · ${escapeHtml(c.id)}</title>
       <style>
@@ -522,14 +525,22 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         .qr   { width: 180px; height: 180px; display: block; margin: 0 auto; border: 4px solid #14243D; border-radius: 3px; }
         .qr-cap { font-size: 10px; color: #4F6079; text-align: center; margin-top: 4px; }
         .row  { display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
-        .photo{ max-width: 100%; max-height: 220px; display: block; margin: 0 auto; border: 1px solid #D9D2C2; border-radius: 3px; }
-        .timeline { list-style: none; padding: 0; margin: 0; }
-        .timeline li { position: relative; padding: 6px 0 6px 20px; border-left: 2px solid #D9D2C2; margin-left: 4px; }
-        .timeline li:last-child { border-left-color: transparent; }
-        .timeline li::before { content: ''; position: absolute; left: -5px; top: 12px; width: 8px; height: 8px; border-radius: 50%; background: #14243D; border: 2px solid #fff; }
-        .t-route { font-size: 12px; }
-        .t-arrow { color: #8C7A54; margin: 0 4px; }
-        .t-meta  { font-size: 10.5px; color: #4F6079; margin-top: 2px; }
+        .photo{ max-width: 100%; max-height: 360px; display: block; margin: 0 auto; border: 1px solid #D9D2C2; border-radius: 3px; }
+        .evidence-card { border: 2px solid #14243D; padding: 14px 16px; }
+        .evidence-card h3 { font-size: 13px; color: #14243D; border-bottom: 2px solid #14243D; padding-bottom: 8px; }
+        .evidence-body { padding: 10px 0 4px; text-align: center; background: #FAF7EE; border-radius: 4px; }
+        .photo-lg { max-width: 100%; max-height: 360px; display: inline-block; margin: 0 auto; border: 2px solid #14243D; border-radius: 4px; box-shadow: 0 2px 8px rgba(20,36,61,0.12); }
+        .movement-card { border: 2px solid #14243D; padding: 14px 16px; }
+        .movement-card h3 { font-size: 13px; color: #14243D; border-bottom: 2px solid #14243D; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
+        .movement-card h3 .muted { font-size: 10.5px; font-weight: 400; color: #4F6079; text-transform: none; letter-spacing: 0; }
+        .timeline { list-style: none; padding: 0; margin: 8px 0 0; counter-reset: tstep; }
+        .timeline li { position: relative; padding: 10px 12px 10px 56px; border-left: 3px solid #14243D; margin-left: 14px; margin-bottom: 6px; background: #F2EDDB; border-radius: 0 4px 4px 0; }
+        .timeline li:last-child { margin-bottom: 0; border-left-color: transparent; }
+        .timeline li::before { content: counter(tstep); counter-increment: tstep; position: absolute; left: -16px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border-radius: 50%; background: #14243D; color: #FAF7EE; font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px #FAF7EE; }
+        .t-step { display: inline-block; font-family: 'Rajdhani', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8C7A54; background: #fff; border: 1px solid #8C7A54; padding: 1px 6px; border-radius: 2px; margin-bottom: 4px; }
+        .t-route { font-size: 13px; font-weight: 600; color: #14243D; }
+        .t-arrow { color: #8C7A54; font-weight: 700; margin: 0 6px; }
+        .t-meta  { font-size: 11px; color: #4F6079; margin-top: 3px; }
         .empty   { color: #4F6079; font-size: 11px; font-style: italic; }
         .footer  { margin-top: 14px; padding-top: 8px; border-top: 1px solid #D9D2C2; font-size: 10px; color: #4F6079; display: flex; justify-content: space-between; }
         .noprint { display: block; text-align: right; margin: 12px 0; }
@@ -561,9 +572,15 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           <h3>Step 2 of 2 — Seized Item Details</h3>
           <div class="grid">${step2Rows}</div>
         </div>
-        ${photoUrl ? `<div class="card"><h3>Photo of Seized Object</h3><img class="photo" src="${escapeHtml(photoUrl)}" alt="${escapeHtml(c.itemType)}" /></div>` : ''}
-        <div class="card">
-          <h3>Movement Chain</h3>
+        ${photoUrl ? `
+        <div class="card evidence-card">
+          <h3>Photo of Seized Object</h3>
+          <div class="evidence-body">
+            <img class="photo-lg" src="${escapeHtml(photoUrl)}" alt="${escapeHtml(c.itemType)}" />
+          </div>
+        </div>` : ''}
+        <div class="card movement-card">
+          <h3>Movement Chain <span class="muted">(${movements.length} ${movements.length === 1 ? 'entry' : 'entries'})</span></h3>
           ${movementHtml}
         </div>
         <div class="footer">
