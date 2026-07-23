@@ -61,3 +61,5 @@ malkhana_sections_backup.json
 # Local verification screenshots (kept on disk, not in repo)
 case-property-detail-*.png
 register-modal-*.png
+
+.env*

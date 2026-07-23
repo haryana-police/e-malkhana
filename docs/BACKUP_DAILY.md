@@ -1,89 +1,83 @@
-# e-Malkhana — Daily Google Drive backup
+# Daily Backup — e-Malkhana → Google Drive
 
-Daily `server/data/db.json` → Google Drive, keep last 10 days, auto-prune older.
+Automated daily backup of the e-Malkhana Neon Postgres database to your Google Drive, as `backup-YYYY-MM-DD-HHMM.sql.gz` files. Retention: 10 days.
 
-## One-time browser setup (10–15 min)
+## What runs
 
-See **`docs/GDRIVE_BACKUP_SETUP.md`** for the full walk-through. TL;DR:
+| | |
+|---|---|
+| **Source** | Neon Postgres (`DATABASE_URL` from `.env.local`) |
+| **Target** | Google Drive folder `e-Malkhana Backups` (ID `1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b`) |
+| **Method** | `pg_dump` → `gzip -9` → `rclone rcat` (streamed, no temp file) |
+| **Schedule** | Daily at 02:00 via Windows Task Scheduler |
+| **Retention** | 10 days (configurable via `BACKUP_RETENTION_DAYS` env var) |
+| **Account** | `asppanipat01@gmail.com` |
 
-1. GCP project `e-malkhana` → enable **Google Drive API**
-2. Service account `emalkhana-backup` → download JSON key → save to
-   `server/secrets/gcp-service-account.json`
-3. Drive folder `e-Malkhana Backups` → share with the service account email (Editor)
+## Files
 
-Then put the folder ID in **either**:
+```
+server/scripts/backup-to-drive.sh    # main script (bash)
+server/scripts/backup-to-drive.cmd   # Task Scheduler launcher (.cmd wrapper)
+~/bin/rclone-v1.74.4-windows-amd64/  # rclone binary
+~/.config/rclone/rclone.conf         # OAuth token (DO NOT COMMIT)
+```
 
-- `.gdrive-folder-id` (project root, gitignored) — preferred
-- or `GDRIVE_FOLDER_ID` env var
+## Verify a backup
 
-## Run a backup
+Open the [e-Malkhana Backups](https://drive.google.com/drive/folders/1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b) folder — you should see new files each morning by ~02:05.
+
+Or from the laptop:
 
 ```bash
-# from e-malkhana/ root
-node server/scripts/backup-to-drive.js
-# or
-bash backup-daily.sh
+~/bin/rclone-v1.74.4-windows-amd64/rclone.exe lsjson gdrive:e-Malkhana\ Backups
 ```
 
-Output looks like:
+## Run a backup manually
 
-```
-▶ e-Malkhana → Google Drive backup
-  source:  server/data/db.json
-  target:  drive folder 1A2b3C4d…
-  file:    malkhana-backup-2026-07-06-1430.json
-  retain:  10 days
-
-✓ uploaded: malkhana-backup-2026-07-06-1430.json
-✓ pruned 3 old backup(s)
+```bash
+cd /c/Users/gsash/e-malkhana
+bash server/scripts/backup-to-drive.sh
 ```
 
-## Schedule it
+or
 
-### Local (laptop dev)
-
-**Windows Task Scheduler** (easiest, no admin needed):
-
-1. `Win+R` → `taskschd.msc` → **Create Basic Task**
-2. Name: `e-Malkhana Daily Backup`
-3. Trigger: **Daily**, 02:00
-4. Action: **Start a program**
-   - Program: `C:\Program Files\nodejs\node.exe`
-   - Arguments: `server\scripts\backup-to-drive.js`
-   - Start in: `C:\Users\gsash\e-malkhana`
-5. ✅ "Open properties after finish" → Conditions → uncheck "Start only if on AC power"
-6. OK
-
-### Vercel (production)
-
-**⚠ Vercel caveat:** on Vercel, `server/data/db.json` lives in `/tmp` (per-instance,
-lost on cold start). For a meaningful production backup you need **persistent storage
-first** — Vercel KV, Postgres, or Upstash Redis. Once that's in place, add a
-Vercel Cron Job in `vercel.json`:
-
-```json
-{
-  "crons": [
-    { "path": "/api/backup-drive", "schedule": "0 2 * * *" }
-  ]
-}
+```cmd
+C:\Users\gsash\e-malkhana\server\scripts\backup-to-drive.cmd
 ```
 
-…and a thin `/api/backup-drive` API route that imports the script's logic.
+## Restore a backup
 
-## Configuration
+```bash
+# 1. Download from Drive
+~/bin/rclone-v1.74.4-windows-amd64/rclone.exe copy \
+  "gdrive:e-Malkhana Backups/backup-YYYY-MM-DD-HHMM.sql.gz" .
 
-| Env var | Default | Purpose |
-|---|---|---|
-| `GCP_SERVICE_ACCOUNT_JSON` | `server/secrets/gcp-service-account.json` | path to service-account JSON key |
-| `GDRIVE_FOLDER_ID` | `.gdrive-folder-id` (project root) | Drive folder ID to write to |
-| `BACKUP_RETENTION_DAYS` | `10` | older files auto-pruned |
-| `DB_PATH` | `server/data/db.json` (or `/tmp/data/db.json` on Vercel) | source data file |
+# 2. Decompress
+gunzip backup-YYYY-MM-DD-HHMM.sql.gz
+
+# 3. Restore to Neon (use unpooled URL for safety)
+psql "postgresql://neondb_owner:...@ep-...c-9.us-east-1.aws.neon.tech/neondb?sslmode=require" \
+  -f backup-YYYY-MM-DD-HHMM.sql
+```
+
+## Change retention
+
+Set `BACKUP_RETENTION_DAYS` env var (default 10) before running the script, or edit the line in `backup-to-drive.sh`.
 
 ## Security
 
-- `server/secrets/` is already in `.gitignore` — keep it that way
-- Service account JSON has **Editor** rights to the **single folder** only — no
-  access to your whole Drive
-- If the key ever leaks: GCP console → IAM & Admin → Service Accounts →
-  `emalkhana-backup` → Keys → **Delete**
+- **OAuth token** stored at `~/.config/rclone/rclone.conf` (local user only). Do NOT copy to other machines or commit.
+- **Scope**: `drive.file` (per-file access), not full Drive.
+- If the token leaks: go to https://myaccount.google.com/permissions → revoke "rclone" → re-run `rclone config reconnect gdrive:` to re-authorize.
+- `.env.local` contains the DB connection string — never commit (already in `.gitignore` via `vercel env pull`).
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `rclone.exe not found` | Re-install to `~/bin/rclone-v1.74.4-windows-amd64/` |
+| `pg_dump.exe not found` | Install PostgreSQL client or update path in script |
+| `DATABASE_URL not set` | Run `vercel env pull .env.local --environment=production` |
+| `ERROR : directory not found` (e-Malkhana Backups) | Make sure folder name has a SPACE, not hyphen — bash needs quoting |
+| Task didn't run | Check `schtasks /query /tn "e-Malkhana Daily Backup"` |
+| Want email on failure | Add a Send-Mail step in Task Scheduler → Actions → Send an email (deprecated in Win11 — use a small PowerShell trigger instead) |
