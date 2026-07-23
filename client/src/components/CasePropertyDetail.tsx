@@ -108,17 +108,6 @@ function recordTypeOf(c: CaseRow, fm: FirMaster | null): 'FIR' | 'DD' {
   return head === 'DD' ? 'DD' : 'FIR';
 }
 
-// DD-specific extras — only present when the FIR is a DD row.
-function ddExtras(fm: FirMaster | null) {
-  return {
-    ddNo:            fm?.actualSeizureDdNo || '',
-    ddDate:          fm?.actualSeizureDate || '',
-    natureOfDd:      fm?.natureOfDd || '',
-    nameOfDeceased:  fm?.nameOfDeceased || '',
-    reportingPerson: fm?.reportingPerson || '',
-  };
-}
-
 // Format a yyyy-mm-dd (or ISO) as a readable DD MMM YYYY for display.
 function fmtDate(iso?: string | null): string {
   if (!iso) return '—';
@@ -132,20 +121,6 @@ function fmtTime(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
-}
-
-// Look up a per-category field value by snake_case key from
-// `caseProperty.fields`.
-function valOf(cp: CasePropertyData | null, key: string): string {
-  if (!cp || !cp.fields) return '';
-  const m = cp.fields.find(f => f.key === key);
-  return (m?.value || '').trim();
-}
-
-// Look up the matching `CategoryOfItem` by caseRow.itemType.
-function findCategory(categories: CategoryOfItem[] | null, label: string | undefined): CategoryOfItem | undefined {
-  if (!categories || !label) return undefined;
-  return categories.find(c => c.label === label || c.id === label);
 }
 
 // ============================================================
@@ -481,7 +456,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     const cp = caseProperty;
     const fm = firMaster;
     const isDD = recordTypeOf(c, fm) === 'DD';
-    const dd  = ddExtras(fm);
     // Build the same Step 1 / Step 2 rows as the on-screen cards.
     const usText = detailUsText(c);
     const photoUrl = c.imageUrl || cp?.photoUrl || '';
@@ -496,15 +470,8 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
 
     const step1Rows = `
       <div><span class="k">Record Type</span><span class="v">${escapeHtml(isDD ? 'DD (Daily Diary)' : 'FIR')}</span></div>
-      <div><span class="k">${escapeHtml(isDD ? 'DD No.' : 'FIR / DD No.')}</span><span class="v mono">${escapeHtml(c.id)}</span></div>
+      <div><span class="k">FIR / DD No.</span><span class="v mono">${escapeHtml(c.id)}</span></div>
       <div><span class="k">${escapeHtml(isDD ? 'DD Date' : 'FIR Date')}</span><span class="v mono">${escapeHtml(fmtDate(c.firDate))}</span></div>
-      ${isDD ? `
-        <div><span class="k">DD No.</span><span class="v mono">${escapeHtml(dd.ddNo || '—')}</span></div>
-        <div><span class="k">Date</span><span class="v mono">${escapeHtml(fmtDate(dd.ddDate))}</span></div>
-        <div><span class="k">Nature of DD</span><span class="v">${escapeHtml(dd.natureOfDd || '—')}</span></div>
-        <div><span class="k">Name of Deceased</span><span class="v">${escapeHtml(dd.nameOfDeceased || '—')}</span></div>
-        <div class="full"><span class="k">Reporting Person</span><span class="v">${escapeHtml(dd.reportingPerson || '—')}</span></div>
-      ` : ''}
       <div class="full"><span class="k">Section (U/S Legal Section)</span><span class="v mono">${escapeHtml(usText)}</span></div>
       <div><span class="k">Received By (Malkhana Moharrir)</span><span class="v">${escapeHtml(cp?.receivedBy || c.receivedBy || '—')}</span></div>
       <div><span class="k">Seized Time</span><span class="v mono">${escapeHtml(cp?.seizedTime || '—')}</span></div>
@@ -515,10 +482,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       <div><span class="k">Category of Item</span><span class="v">${escapeHtml(c.itemType)}</span></div>
       <div><span class="k">Location</span><span class="v">${escapeHtml(c.sectionName || '—')} (Part ${escapeHtml(sectionLetter(c) || '—')})</span></div>
       <div><span class="k">Quantity</span><span class="v">${escapeHtml(cp?.quantity || c.quantity || c.itemSub || '—')}</span></div>
-      <div><span class="k">Place of Seizure</span><span class="v">${escapeHtml(cp?.placeOfSeizure || cp?.physicalStorage || '—')}</span></div>
-      <div><span class="k">Sealed / Unsealed</span><span class="v">${escapeHtml(cp?.sealSealed || '—')}</span></div>
-      <div><span class="k">Seal No. / Mark</span><span class="v mono">${escapeHtml(cp?.sealNo || '—')}</span></div>
-      <div><span class="k">Sealed By (Officer)</span><span class="v">${escapeHtml(cp?.sealBy || '—')}</span></div>
       <div class="full"><span class="k">Item Description</span><span class="v">${escapeHtml(cp?.remarks || c.description || '—')}</span></div>
     `;
 
@@ -544,8 +507,13 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         .stamp.tone-good { background: #D6F0DC; color: #1A5A33; }
         .card { border: 1px solid #D9D2C2; border-radius: 4px; padding: 12px 14px; margin-bottom: 14px; background: #fff; }
         .card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #14243D; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #D9D2C2; }
-        .ctx { display: flex; gap: 18px; padding: 8px 10px; background: #F2EDDB; border: 1px solid #A99968; border-radius: 4px; margin-bottom: 12px; font-size: 11.5px; }
+        .ctx { display: flex; gap: 18px; padding: 8px 10px; background: #F2EDDB; border: 1px solid #A99968; border-radius: 4px; margin-bottom: 12px; font-size: 11.5px; align-items: center; }
         .ctx b { color: #8C7A54; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.06em; margin-right: 4px; }
+        .step1-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .step1-head .left { flex: 1; min-width: 0; }
+        .step1-qr { flex: 0 0 auto; text-align: center; padding: 4px 6px; border: 1px solid #D9D2C2; border-radius: 3px; background: #fff; }
+        .step1-qr img { width: 110px; height: 110px; display: block; border: 2px solid #14243D; }
+        .step1-qr-cap { font-size: 8.5px; color: #4F6079; margin-top: 3px; max-width: 110px; }
         .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 16px; }
         .k { font-size: 9.5px; text-transform: uppercase; color: #8C7A54; display: block; letter-spacing: 0.06em; }
         .v { font-size: 12px; color: #14243D; font-weight: 500; word-break: break-word; }
@@ -579,8 +547,17 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         </div>
         <div class="card">
           <h3>Step 1 of 2 — ${escapeHtml(isDD ? 'DD' : 'FIR')} &amp; Receipt</h3>
-          ${contextBar}
-          <div class="grid">${step1Rows}</div>
+          <div class="step1-head">
+            <div class="left">
+              ${contextBar}
+              <div class="grid">${step1Rows}</div>
+            </div>
+            ${qrUrl ? `
+            <div class="step1-qr">
+              <img src="${escapeHtml(qrUrl)}" alt="Encrypted QR" />
+              <div class="step1-qr-cap">Encrypted — scan with e-Malkhana</div>
+            </div>` : ''}
+          </div>
         </div>
         <div class="card">
           <h3>Step 2 of 2 — Seized Item Details</h3>
@@ -630,23 +607,9 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const fm = firMaster;
   const recordType = recordTypeOf(c, fm);
   const isDD = recordType === 'DD';
-  const dd = ddExtras(fm);
 
   // Photo URL: case_row.imageUrl preferred; falls back to case_property.photoUrl.
   const photoUrl = c.imageUrl || cp?.photoUrl || undefined;
-
-  // Per-category lookup drives which item columns are rendered.
-  const cat = findCategory(categories, c.itemType);
-  const catId = cat?.id || '';
-  const noType        = catId === 'cash' || catId === 'liquor';
-  const isMinimal     = catId === 'lost_items' || catId === 'viscera' || catId === 'other';
-  const skipCommonSeizure =
-    ['narcotics','arms','cash','gold','vehicle','liquor'].includes(catId) || isMinimal;
-  const skipQuantity =
-    ['narcotics','arms','cash','gold','vehicle','liquor'].includes(catId) || isMinimal;
-
-  // Per-item Type value — popup field "sub_type" first; else itemSub.
-  const typeValue = valOf(cp, 'sub_type') || valOf(cp, 'subtype') || valOf(cp, 'type') || c.itemSub || '';
 
   return (
     <div className="case-detail">
@@ -716,16 +679,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           <ReadOnlyField label="FIR / DD No." value={c.id} mono />
           <ReadOnlyField label={isDD ? 'DD Date' : 'FIR Date'} value={fmtDate(c.firDate)} mono />
 
-          {isDD && (
-            <>
-              <ReadOnlyField label="DD No." value={dd.ddNo || '—'} mono />
-              <ReadOnlyField label="Date" value={fmtDate(dd.ddDate)} mono />
-              <ReadOnlyField label="Nature of DD" value={dd.natureOfDd || '—'} />
-              <ReadOnlyField label="Name of Deceased" value={dd.nameOfDeceased || '—'} />
-              <ReadOnlyField className="full" label="Reporting Person Name & Address" value={dd.reportingPerson || '—'} />
-            </>
-          )}
-
           <ReadOnlyField
             className="full"
             label="Section (U/S Legal Section) — multiple allowed"
@@ -757,37 +710,10 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             }
           />
 
-          {!skipQuantity && (
-            <ReadOnlyField
-              label="Quantity"
-              value={cp?.quantity || c.quantity || c.itemSub || '—'}
-            />
-          )}
-
-          {!noType && !isMinimal && (
-            <ReadOnlyField
-              label={cat?.subTypeLabel || 'Type'}
-              value={typeValue}
-            />
-          )}
-
-          {!skipCommonSeizure && (
-            <>
-              <ReadOnlyField label="Place of Seizure" value={cp?.placeOfSeizure || cp?.physicalStorage || '—'} />
-              <ReadOnlyField label="Sealed / Unsealed" value={cp?.sealSealed || '—'} />
-              <ReadOnlyField label="Seal No. / Mark" value={cp?.sealNo || '—'} mono />
-              <ReadOnlyField label="Sealed By (Officer)" value={cp?.sealBy || '—'} />
-            </>
-          )}
-
-          {(cat?.fields || []).map(f => (
-            <ReadOnlyField
-              key={f.key}
-              label={f.unit ? `${f.label} (${f.unit})` : f.label}
-              value={valOf(cp, f.key) || '—'}
-              mono={f.type === 'number'}
-            />
-          ))}
+          <ReadOnlyField
+            label="Quantity"
+            value={cp?.quantity || c.quantity || c.itemSub || '—'}
+          />
 
           <ReadOnlyField
             className="full"
@@ -884,7 +810,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                 <label>FIR / DD No.
                   <input value={edFirNo} readOnly className="ro-val mono" title="Case id cannot be changed" />
                 </label>
-                <label>FIR Date
+                <label>{edRecordType === 'DD' ? 'DD Date' : 'FIR Date'}
                   <input type="date" value={edFirDate} onChange={e => setEdFirDate(e.target.value)} max={today} />
                 </label>
 
