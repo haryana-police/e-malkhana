@@ -8,6 +8,7 @@ dist/
 
 # Logs
 *.log
+
 npm-debug.log*
 
 # OS
@@ -56,3 +57,7 @@ server/secrets/
 phq-complaint-dashboard-migrated/
 malkhana_sections_backup.json
 .tmp/
+
+# Local verification screenshots (kept on disk, not in repo)
+case-property-detail-*.png
+register-modal-*.png

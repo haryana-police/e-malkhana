@@ -183,6 +183,9 @@ body{
   letter-spacing:0.01em;
 }
 .page-head .sub{ font-size:12.5px; color: var(--slate-soft); margin-top:3px; }
+/* Dashboard Scan QR + caption ("Encrypted — scan with e-Malkhana") */
+.scan-cta{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+.scan-cap{ font-size:10.5px; letter-spacing:0.04em; color: var(--slate-soft); text-transform:uppercase; font-family:'IBM Plex Mono', monospace; }
 .btn{
   font-family:'IBM Plex Sans', sans-serif;
   font-size:12.5px; font-weight:600;
@@ -1176,10 +1179,12 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
   }
   .page-head h1{ font-size: 22px; }
   /* Dashboard Scan QR sits directly below the heading/subtext on mobile. */
-  .page-head > .scan-btn{
+  .page-head > .scan-btn,
+  .page-head > .scan-cta > .scan-btn{
     width: 100%;
     justify-content: center;
   }
+  .page-head > .scan-cta{ width: 100%; align-items: stretch; }
 
   .stat-row{ grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stat-tile{ padding: 14px 14px 12px; }
@@ -2672,6 +2677,249 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 .cp-photo-cell{ grid-column: 1 / -1; flex-direction: row !important; align-items: center; gap: 12px !important; border-bottom: none !important; }
 .cp-thumb{ width: 96px; height: 96px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; }
 
+/* Case-property card section heading — matches the cream card style. */
+.case-property-card h3 {
+  font-family: 'Rajdhani', sans-serif;
+  color: var(--ink-navy);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Detail-page header: title LEFT, encrypted QR TOP-RIGHT.
+   Sits on a cream paper card with the same border as the section
+   cards below — visual rhythm matches the rest of the register. */
+.case-property-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px;
+  background: var(--white-paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0 0 14px;
+}
+.case-property-head-text { flex: 1 1 auto; min-width: 0; }
+.case-property-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--khaki);
+}
+.case-property-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 26px;
+  color: var(--ink-navy);
+  margin: 4px 0 6px;
+  line-height: 1.15;
+}
+.case-property-sub {
+  font-size: 12.5px;
+  color: var(--slate-soft);
+}
+.case-property-sub .mono {
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--slate);
+}
+.case-property-qr {
+  flex: 0 0 auto;
+  width: 160px;
+  text-align: center;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.case-property-qr-img {
+  width: 140px;
+  height: 140px;
+  display: block;
+  margin: 0 auto 6px;
+  border: 3px solid var(--ink-navy);
+  border-radius: 4px;
+}
+.case-property-qr-placeholder {
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 6px;
+  border: 3px dashed var(--line);
+  color: var(--slate-soft);
+  font-size: 12px;
+  border-radius: 4px;
+}
+.case-property-qr-mask {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--khaki);
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+.case-property-qr-cap {
+  font-size: 9.5px;
+  color: var(--slate-soft);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Photo card body — large read-only preview. */
+.case-property-photo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.case-property-photo img {
+  max-width: 100%;
+  max-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  object-fit: contain;
+  background: #fff;
+}
+.case-property-photo-meta {
+  font-size: 11.5px;
+  color: var(--slate-soft);
+}
+.case-property-photo-empty {
+  font-size: 12.5px;
+  color: var(--slate-soft);
+  font-style: italic;
+  padding: 14px 0;
+}
+
+/* Footer under the four cards. */
+.case-property-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+}
+.case-property-foot-note {
+  font-size: 11px;
+  color: var(--slate-soft);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* On phones (≤768px) the QR moves to a centered strip below the
+   title — same column as the form for predictable stacking. */
+@media (max-width: 768px) {
+  .case-property-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .case-property-qr {
+    width: auto;
+    margin: 0 auto;
+  }
+  .case-property-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Read-only value inside a registration-style field row.
+   Mirrors the look of a disabled input — bordered, padded, same
+   bg/colour as the editable form below. */
+.ro-val {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--slate);
+  background: #FFFEF9;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-weight: 500;
+  min-height: 34px;
+  word-break: break-word;
+}
+.ro-val.mono { font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+/* Larger block when the value is a long description */
+label.full .ro-val {
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+/* Read-only radio pair: same `.rc-radio-opt` look as the live form,
+   with `cursor: default` so users don't think it's clickable. */
+.ro-radio-row .rc-radio-opt {
+  cursor: default;
+}
+.ro-radio-row .rc-radio-opt input[readonly],
+.ro-radio-row .rc-radio-opt input[checked] {
+  cursor: default;
+}
+
+/* Registration-form context bar (Station / Moharrir / Item) — kept
+   exactly as the live form renders it so the read-only view looks
+   like the same form, just static. */
+.case-property-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 10px 14px;
+  margin: 0 0 14px;
+  background: var(--cream-soft, #F2EDDB);
+  border: 1px solid var(--khaki-light);
+  border-radius: 4px;
+  font-size: 12.5px;
+  color: var(--slate);
+}
+.case-property-context span b {
+  color: var(--khaki);
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  margin-right: 4px;
+}
+
+/* Photo read-only thumbnail — exactly the same `.rc-grid` form
+   layout, just with `<img>` instead of an `<input type=file>`. */
+.rc-photo-label .rc-photo-readonly {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: #FFFEF9;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+}
+.rc-photo-label .rc-photo-readonly img {
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+}
+.rc-photo-label .rc-photo-meta {
+  font-size: 11px;
+  color: var(--slate-soft);
+}
+.rc-photo-label .rc-photo-empty {
+  font-size: 12.5px;
+  color: var(--slate-soft);
+  font-style: italic;
+  background: #FFFEF9;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  padding: 14px;
+  text-align: center;
+}
+
 /* ============================================================
    MOBILE RESPONSIVENESS AUDIT PASS — 9-point spec
    Layers ON TOP of the existing 1024/768/480 media queries above.
@@ -3011,7 +3259,9 @@ input, select, textarea{
 
   /* Page head: title + Scan QR stacked, button full-width below the text. */
   .page-head h1{ font-size: 18px; }
-  .page-head > .scan-btn{ width: 100%; }
+  .page-head > .scan-btn,
+  .page-head > .scan-cta > .scan-btn{ width: 100%; }
+  .page-head > .scan-cta{ width: 100%; align-items: stretch; }
 
   /* Tables: tighten min-width so 375px shows 3 cols before scroll. */
   .panel table{ min-width: 520px; }
