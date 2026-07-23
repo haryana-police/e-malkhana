@@ -385,6 +385,23 @@ export function RegisterTable({
           onChange={e => setTextFilter(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && textFilter.trim() && onOpenScan) onOpenScan(); }}
         />
+        <button
+          type="button"
+          className="search-btn"
+          onClick={() => {
+            const el = filterInputRef.current;
+            if (el) {
+              el.focus();
+              el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+            // Reset pager to page 1 so the search result is always shown
+            // from the top, even when the user was deep in pagination.
+            setPage(1);
+          }}
+          title="Apply filter and show results"
+        >
+          SEARCH
+        </button>
         {totalPages > 1 && (
           <div className="rt-pager rt-pager-inline">
             <button className="pg-btn" disabled={safePage === 1} onClick={() => setPage(p => Math.max(1, p - 1))} title="Previous">‹ Prev</button>
@@ -392,14 +409,6 @@ export function RegisterTable({
             <span className="pg-info">Page {safePage} of {totalPages} · {shown.length} entries</span>
           </div>
         )}
-        <button
-          type="button"
-          className="search-btn"
-          onClick={() => { const el = filterInputRef.current; if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }}
-          title="Focus the filter input"
-        >
-          SEARCH
-        </button>
       </div>
 
       {visible.length === 0 && (
