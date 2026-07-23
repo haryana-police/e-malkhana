@@ -570,7 +570,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             ${qrUrl ? `
             <div class="step1-qr">
               <img src="${escapeHtml(qrUrl)}" alt="Encrypted QR" />
-              <div class="step1-qr-cap">Encrypted — scan with e-Malkhana</div>
             </div>` : ''}
           </div>
         </div>
@@ -677,7 +676,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                     ? <img src={qrUrl} alt={`Encrypted QR for ${c.id}`} className="case-a4-qr-img" />
                     : <div className="case-a4-qr-placeholder">No QR</div>}
                   {qrMask && <div className="case-a4-qr-mask">{qrMask}</div>}
-                  <div className="case-a4-qr-cap">Encrypted — scan with e-Malkhana</div>
                 </div>
               </div>
               <div className="case-a4-grid">
