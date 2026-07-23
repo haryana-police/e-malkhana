@@ -525,6 +525,12 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         .qr   { width: 180px; height: 180px; display: block; margin: 0 auto; border: 4px solid #14243D; border-radius: 3px; }
         .qr-cap { font-size: 10px; color: #4F6079; text-align: center; margin-top: 4px; }
         .row  { display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
+        .bottom-row { display: flex; gap: 14px; margin-bottom: 14px; align-items: stretch; }
+        .bottom-row .movement-card { flex: 1.15 1 0; }
+        .bottom-row .evidence-card { flex: 1 1 0; }
+        .bottom-row .evidence-card .evidence-body { display: flex; align-items: center; justify-content: center; min-height: 180px; }
+        .bottom-row .evidence-card .evidence-body.empty { background: #FAF7EE; color: #4F6079; font-style: italic; font-size: 12px; border: 1px dashed #D9D2C2; }
+        .empty-photo { opacity: 0.85; }
         .photo{ max-width: 100%; max-height: 360px; display: block; margin: 0 auto; border: 1px solid #D9D2C2; border-radius: 3px; }
         .evidence-card { border: 2px solid #14243D; padding: 14px 16px; }
         .evidence-card h3 { font-size: 13px; color: #14243D; border-bottom: 2px solid #14243D; padding-bottom: 8px; }
@@ -572,17 +578,20 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           <h3>Step 2 of 2 — Seized Item Details</h3>
           <div class="grid">${step2Rows}</div>
         </div>
-        ${photoUrl ? `
-        <div class="card evidence-card">
-          <h3>Photo of Seized Object</h3>
-          <div class="evidence-body">
-            <img class="photo-lg" src="${escapeHtml(photoUrl)}" alt="${escapeHtml(c.itemType)}" />
+        ${(movements.length > 0 || photoUrl) ? `
+        <div class="bottom-row">
+          <div class="card movement-card">
+            <h3>Movement Chain <span class="muted">(${movements.length} ${movements.length === 1 ? 'entry' : 'entries'})</span></h3>
+            ${movementHtml}
           </div>
+          ${photoUrl ? `
+          <div class="card evidence-card">
+            <h3>Photo of Seized Object</h3>
+            <div class="evidence-body">
+              <img class="photo-lg" src="${escapeHtml(photoUrl)}" alt="${escapeHtml(c.itemType)}" />
+            </div>
+          </div>` : `<div class="card evidence-card empty-photo"><h3>Photo of Seized Object</h3><div class="evidence-body empty">No photo was uploaded at registration.</div></div>`}
         </div>` : ''}
-        <div class="card movement-card">
-          <h3>Movement Chain <span class="muted">(${movements.length} ${movements.length === 1 ? 'entry' : 'entries'})</span></h3>
-          ${movementHtml}
-        </div>
         <div class="footer">
           <span>e-Malkhana · Case Detail</span>
           <span>Printed: ${escapeHtml(new Date().toLocaleString('en-IN'))}</span>
