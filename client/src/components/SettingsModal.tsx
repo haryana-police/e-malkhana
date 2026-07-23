@@ -502,75 +502,78 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
   const folderUrl: string = backup?.folderUrl || 'https://drive.google.com/drive/folders/1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b';
     const folderId = folderUrl.split('/folders/')[1] || '';
     const retentionDays = backup?.retentionDays ?? 10;
-    const schedule = backup?.schedule || 'Windows Task Scheduler (daily 02:00)';
-  return (
-    <div>
-      <div className="sub" style={{ marginBottom: 12 }}>
-        Daily backup of the full case register (PostgreSQL). A gzipped
-        <code> pg_dump</code> of every table is uploaded to Google Drive as
-        <code> backup-YYYY-MM-DD-HHMM.sql.gz</code>. Files older than
-        <b> {retentionDays} days</b> are auto-pruned. Configure retention via
-        <code> BACKUP_RETENTION_DAYS</code>. See <code>docs/BACKUP_DAILY.md</code> for setup.
-      </div>
+    const schedule = backup?.schedule || '14:10 daily';
+    return (
+      <div>
+        <div className="sub" style={{ marginBottom: 12 }}>
+          Daily backup of the full case register (PostgreSQL). A gzipped
+          <code> pg_dump</code> of every table is uploaded to Google Drive as
+          <code> backup-YYYY-MM-DD-HHMM.sql.gz</code>. Files older than
+          <b> {retentionDays} days</b> are auto-pruned. Configure retention via
+          <code> BACKUP_RETENTION_DAYS</code>. See <code>docs/BACKUP_DAILY.md</code> for setup.
+        </div>
 
-      <div className="backup-card">
-        <div className="row">
-          <div>
-            <div className="k">Last backup</div>
-            <div className={`v ${lastClass}`} style={{ fontSize: 14 }}>
-              {last ? `${fmtTime(last.timestamp || last.finishedAt)} — ${
-                last.status === 'success' ? 'Success' :
-                last.status === 'failed'  ? 'Failed'  :
-                last.status === 'running' ? 'Running…' : 'Unknown'
-              }` : 'No backups yet'}
+        <div className="backup-card">
+          <div className="row">
+            <div>
+              <div className="k">Last backup</div>
+              <div className={`v ${lastClass}`} style={{ fontSize: 14 }}>
+                {last ? `${fmtTime(last.timestamp || last.finishedAt)} — ${
+                  last.status === 'success' ? 'Success' :
+                  last.status === 'failed'  ? 'Failed'  :
+                  last.status === 'running' ? 'Running…' : 'Unknown'
+                }` : 'No backups yet'}
+              </div>
+              {last?.fileName && (
+                <div className="v" style={{ fontSize: 11, color: 'var(--slate-soft)' }}>
+                  📄{' '}
+                  <a
+                    href={last.fileUrl || `${folderUrl}/${last.fileName}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: 'var(--ink-navy)' }}
+                  >
+                    {last.fileName}
+                  </a>
+                </div>
+              )}
+              {last?.error && <div className="v" style={{ fontSize: 11, color: 'var(--seal-red)' }}>{last.error}</div>}
             </div>
-            {last?.fileName && (
-              <div className="v" style={{ fontSize: 11, color: 'var(--slate-soft)' }}>
-                📄{' '}
-                <a
-                  href={last.fileUrl || `${folderUrl}/${last.fileName}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ color: 'var(--ink-navy)' }}
-                >
-                  {last.fileName}
+            <div style={{ flex: '0 0 auto', minWidth: 220, textAlign: 'right' }}>
+              <button className="btn" onClick={onRun} disabled={busy}>
+                {busy ? 'Running…' : '▶ Run backup now'}
+              </button>
+              <div style={{ fontSize: 10.5, color: 'var(--slate-soft)', marginTop: 6, maxWidth: 240, textAlign: 'left' }}>
+                Backup runs automatically from the operator laptop daily at 14:10. Manual trigger here is a no-op on this server (rclone not installed in the serverless container).
+              </div>
+            </div>
+          </div>
+          <div className="row">
+            <div>
+              <div className="k">Schedule</div>
+              <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 12 }}>{schedule}</div>
+            </div>
+            <div>
+              <div className="k">Transport</div>
+              <div className="v">Google Drive</div>
+            </div>
+            <div>
+              <div className="k">Total runs</div>
+              <div className="v">{backup?.totalRuns ?? 0}</div>
+            </div>
+          </div>
+          <div className="row" style={{ marginTop: 8 }}>
+            <div>
+              <div className="k">Drive folder</div>
+              <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }}>
+                <a href={folderUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ink-navy)' }}>
+                  📁 {folderId || 'e-Malkhana Backups'} ↗
                 </a>
               </div>
-            )}
-            {last?.error && <div className="v" style={{ fontSize: 11, color: 'var(--seal-red)' }}>{last.error}</div>}
-          </div>
-          <div style={{ flex: '0 0 auto' }}>
-            <button className="btn" onClick={onRun} disabled={busy}>
-              {busy ? 'Running…' : '▶ Run backup now'}
-            </button>
-          </div>
-        </div>
-        <div className="row">
-          <div>
-            <div className="k">Schedule</div>
-            <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 12 }}>{schedule}</div>
-          </div>
-          <div>
-                      <div className="k">Transport</div>
-                      <div className="v">Google Drive</div>
-                    </div>
-                    <div>
-                      <div className="k">Total runs</div>
-                      <div className="v">{backup?.totalRuns ?? 0}</div>
-                    </div>
-        </div>
-        <div className="row" style={{ marginTop: 8 }}>
-          <div>
-            <div className="k">Drive folder</div>
-            <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }}>
-              <a href={folderUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ink-navy)' }}>
-                📁 {folderId || 'e-Malkhana Backups'} ↗
-              </a>
             </div>
           </div>
+          {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 8 }}>{msg.text}</div>}
         </div>
-        {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 8 }}>{msg.text}</div>}
-      </div>
 
       <h3 style={{ fontFamily: 'Rajdhani, sans-serif', color: 'var(--ink-navy)', fontSize: 14, margin: '12px 0 8px' }}>
         Recent runs <span className="audit-tab-count">{backupLog.length}</span>

@@ -3305,6 +3305,9 @@ const BACKUP_FOLDER_URL     = process.env.GDRIVE_FOLDER_URL
   || 'https://drive.google.com/drive/folders/1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b';
 const BACKUP_ACCOUNT        = process.env.GDRIVE_ACCOUNT || 'asppanipat01@gmail.com';
 const BACKUP_REMOTE         = process.env.GDRIVE_REMOTE  || 'gdrive:e-Malkhana Backups';
+// Schedule label kept in one place — shown on the admin page and in
+// friendly error messages.
+const BACKUP_SCHEDULE_LABEL  = '14:10 daily';
 
 function readBackupStatus() {
   try {
@@ -3342,7 +3345,7 @@ app.get('/api/backups/status', async (req, res, next) => {
       folderUrl: BACKUP_FOLDER_URL,
       folderId: '1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b',
       retentionDays: BACKUP_RETENTION_DAYS,
-      schedule: 'Windows Task Scheduler (daily 02:00)',
+      schedule: BACKUP_SCHEDULE_LABEL,
       scriptPath: BACKUP_SCRIPT,
       statusFile: BACKUP_STATUS_FILE,
       last: fmtRun(last),
@@ -3371,13 +3374,20 @@ app.get('/api/backups/log', async (req, res, next) => {
 });
 
 // POST /api/backups/run — trigger a drive backup right now. Spawns the
-// Node script with the same env the server is running under (which on
-// Vercel has DATABASE_URL but NOT rclone — so this will fail gracefully
-// on serverless and the user is told to run the script from the laptop).
+// Node script with the same env the server is running under.
+//
+// On Vercel (serverless), the script needs rclone + pg_dump, which aren't
+// installed in the serverless container.  The /api/backups/run endpoint
+// returns a friendly 200-with-ok:false instead of a raw 500 error so the
+// admin screen shows a useful message ("backup runs daily at 14:10 from
+// the operator laptop — no manual trigger available on the server").
 app.post('/api/backups/run', async (req, res, next) => {
   try {
     if (!existsSync(BACKUP_SCRIPT)) {
-      return res.status(503).json({ error: 'backup script not found', path: BACKUP_SCRIPT });
+      return res.status(503).json({
+        ok: false,
+        error: 'Backup script not available on this server. The daily backup runs automatically from the operator laptop at ' + BACKUP_SCHEDULE_LABEL + '.',
+      });
     }
     const startedAt = new Date();
     const child = spawn(process.execPath, [BACKUP_SCRIPT], {
@@ -3396,7 +3406,12 @@ app.post('/api/backups/run', async (req, res, next) => {
     child.stderr.on('data', d => stderr += d.toString());
     child.on('error', e => {
       console.error('[backup] spawn error:', e.message);
-      res.status(500).json({ ok: false, error: e.message });
+      // Friendly message — the operator doesn't see stack traces.
+      res.json({
+        ok: false,
+        code: 1,
+        error: 'Backup could not run on this server (rclone/pg_dump not available here). The daily backup runs automatically from the operator laptop at ' + BACKUP_SCHEDULE_LABEL + '.',
+      });
     });
     child.on('close', code => {
       const m = stdout.match(/✓ uploaded:\s+(\S+)/);
@@ -3404,11 +3419,14 @@ app.post('/api/backups/run', async (req, res, next) => {
       if (code === 0) {
         res.json({ ok: true, code, fileName, transport: 'drive' });
       } else {
-        res.status(500).json({
-          ok: false, code,
-          error: stderr.trim().split('\n').slice(-3).join(' | ')
-              || `backup script exited with code ${code}`,
-        });
+        // Translate the common "rclone not found" / "pg_dump not found" errors
+        // into a friendly message.  Anything else is passed through.
+        const tail = stderr.trim().split('\n').slice(-3).join(' | ')
+                  || `backup script exited with code ${code}`;
+        const friendly = /rclone not found|pg_dump not found/.test(tail)
+          ? 'Backup tools (rclone + pg_dump) are not installed on this server. The daily backup runs automatically from the operator laptop at ' + BACKUP_SCHEDULE_LABEL + '.'
+          : tail;
+        res.json({ ok: false, code, error: friendly });
       }
     });
   } catch (e) { next(e); }
