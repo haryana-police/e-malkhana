@@ -224,8 +224,9 @@ export const api = {
   updateStatus:  (id: string, status: string) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}/status`, { status }),
 
   // Edit editable fields of an existing case from the Case Property Detail
-  // page. Mirrors the original Registration form fields one-for-one, plus
-  // the per-item case_property payload and per-FIR master DD extras.
+  // page. Mirrors the on-screen detail card 1-for-1 so only the actual
+  // rendered fields are sent (no DD-extras / seal / per-cat popup fields
+  // — those are gated behind categories the Edit modal doesn't show).
   // Only present keys are sent to the server, so a partial update is fine.
   // Returns the updated CaseRow (with fresh sectionName joined server-side).
   updateCase:    (id: string, patch: Partial<{
@@ -235,19 +236,10 @@ export const api = {
     description?: string | null; itemTypeId?: number | null;
     receivedBy?: string | null; firDate?: string | null;
     imageUrl?: string | null; status?: string;
-    // Step 2 / case_property payload (common + per-item popup fields).
+    // case_property payload — only the slim set the modal exposes.
     caseProperty?: Partial<{
-      seizedTime: string; receivedBy: string; quantity: string;
-      placeOfSeizure: string; remarks: string;
-      sealSealed: string; sealNo: string; sealBy: string;
-      fields: Record<string, string>;
+      seizedTime: string; receivedBy: string; quantity: string; remarks: string;
     }>;
-    // Step 1 DD-specific fir_master fields (only meaningful when
-    // recordType==='DD', but server is lenient).
-    recordType?: 'FIR' | 'DD';
-    ddDate?: string | null; natureOfDd?: string | null;
-    nameOfDeceased?: string | null; reportingPerson?: string | null;
-    actualSeizureDdNo?: string | null; actualSeizureDate?: string | null;
   }>) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}`, patch),
 
   // Permanently delete a case (and its movements + case_property row).
@@ -284,12 +276,21 @@ export const api = {
     `${base}/reports/malkhana-register?section=${encodeURIComponent(section)}&format=pdf`,
 
   // backups (admin)
-  backupStatus: () => get<{
-    cron: string; retentionDays: number; scriptPath: string;
-    last: any; lastSuccess: any; lastFailed: any; totalRuns: number; summary: string;
-  }>('/backups/status'),
-  backupLog:    (limit = 20) => get<any[]>(`/backups/log?limit=${limit}`),
-  backupRun:    () => send<{ ok: boolean; code?: number; fileName?: string; error?: string }>('POST', '/backups/run', {}),
+    backupStatus: () => get<{
+      transport: 'drive';
+      remote: string;
+      folderUrl: string;
+      folderId: string;
+      account: string;
+      retentionDays: number;
+      schedule: string;
+      scriptPath: string;
+      statusFile: string;
+      last: any; lastSuccess: any; lastFailed: any;
+      totalRuns: number; summary: string;
+    }>('/backups/status'),
+    backupLog:    (limit = 20) => get<any[]>(`/backups/log?limit=${limit}`),
+    backupRun:    () => send<{ ok: boolean; code?: number; fileName?: string; error?: string; transport?: string }>('POST', '/backups/run', {}),
 
   // other
   renameSection: (letter: string, name: string) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}`, { name }),

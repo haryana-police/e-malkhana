@@ -14,7 +14,7 @@ import cron from 'node-cron';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import {
   getDb, mutate, getCase, getCaseByItemId, getMovements, nextMovementId, rebuildSectionCounts,
   nextMalkhanaSeq, formatMalkhanaSrNo, syncMalkhanaSeq,
@@ -935,41 +935,21 @@ async function upsertFirMasterPartial({ firNo, firDate }) {
 // Edit the editable fields of a case from the Case Property Detail page.
 // The case id itself is immutable (it's the FIR/DD number — renaming that
 // would break every movement / alert / QR link that points at it).  All
-// other fields the user can see in the detail view are editable.
+// other fields the user can see in the detail view are editable, but only
+// the actually-rendered slim set (13 fields) — the Edit Case Property
+// modal mirrors the on-screen detail card 1-for-1, not the full
+// registration form.  Seal / per-category popup / DD-extras stay editable
+// through the dedicated `/cases/batch` (registration) endpoint, NOT here.
 //
 // Body (all fields OPTIONAL — only present keys are touched):
 //   {
-//     itemType?:        string,
-//     itemSub?:         string,
-//     section?:         string  (section letter "A".."E"),
-//     seizingOfficer?:  string,
-//     seizedOn?:        string  (ISO date "2026-03-11" or display "11 Mar 2026"),
-//     itemId?:          string,
-//     legalSection?:    string  (BNS section no., bare "101" or "BNS 101"; null/"" to clear),
-//     description?:     string,
-//     receivedBy?:      string  (Malkhana Moharrir — written to case_property.received_by),
-//     firDate?:         string  (YYYY-MM-DD — upserted into fir_master.fir_date),
-//     imageUrl?:        string  (data-URL OR existing URL OR null/"" to clear),
-//     status?:          string  (must be one of STATUSES),
-//
-//     // Step-2 / case_property payload — applies ALL common + per-item popup
-//     // fields in one shot.  mirror updated to match Postgres via
-//     // upsertCaseProperty.
-//     caseProperty?: {
-//        seizedTime?, receivedBy?, quantity?, placeOfSeizure?, remarks?,
-//        sealSealed?, sealNo?, sealBy?, fields?: { [key]: value },
-//     },
-//
-//     // Step-1 / fir_master DD extras + recordType.  When `recordType` is
-//     // provided, the row is upserted with the matching fields.  When 'DD'
-//     // is chosen, the DD-specific fields take effect.
-//     recordType?:    'FIR' | 'DD',
-//     ddDate?:        string|null,
-//     natureOfDd?:    string|null,
-//     nameOfDeceased?:string|null,
-//     reportingPerson?:string|null,
-//     actualSeizureDdNo?:string|null,
-//     actualSeizureDate?:string|null,
+//     itemType?, itemSub?, section?, seizingOfficer?, itemId?,
+//     legalSection?, legalSections?, itemTypeId?, description?,
+//     receivedBy?,   (Malkhana Moharrir → case_property.received_by)
+//     firDate?,      (YYYY-MM-DD → fir_master.fir_date)
+//     imageUrl?,     (data-URL OR URL OR null/"" to clear)
+//     status?,       (must be one of STATUSES)
+//     caseProperty?: { seizedTime?, receivedBy?, quantity?, remarks? }
 //   }
 //
 // Returns the updated CaseRow (with fresh sectionName joined from the
@@ -984,22 +964,17 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     const body = req.body || {};
 
     // Allow-list of editable keys.  Anything outside this list is silently
-    // dropped (avoids callers sneaking in `id` changes through this endpoint).
-    // `status` is included so the inline-edit grid on the Case Property page
-    // can mutate it directly; the dedicated PATCH /:id/status endpoint stays
-    // in place for callers that only want to bump the status without any of
-    // the other editable fields.  `caseProperty` and the DD-extras keys
-    // extend the allow-list so the Edit Case Property modal can update
-    // every registration field in one round-trip.
+    // dropped.  Aligned with the slim Edit Case Property modal — no DD
+    // extras, no seal block, no per-category popup fields.  See
+    // client/src/components/CasePropertyDetail.tsx for the matching form.
+    //
     // shortVal: trim noisy strings for the audit log diff so a 200-char
     // remarks change doesn't balloon the entry to multiple lines.
     const shortVal = (s) => (s == null ? '—' : String(s).length > 30 ? String(s).slice(0, 27) + '…' : String(s));
     const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'itemId', 'legalSection',
                       'legalSections', 'itemTypeId', 'description',
                       'receivedBy', 'firDate', 'imageUrl', 'status',
-                      'caseProperty',
-                      'recordType', 'ddDate', 'natureOfDd', 'nameOfDeceased', 'reportingPerson',
-                      'actualSeizureDdNo', 'actualSeizureDate'];
+                      'caseProperty'];
     const patch = {};
     for (const k of ALLOWED) {
       if (Object.prototype.hasOwnProperty.call(body, k)) patch[k] = body[k];
@@ -3378,123 +3353,68 @@ app.get('/api/reports/malkhana-register', async (req, res, next) => {
 });
 
 // =================== API: Daily backup to Google Drive ===================
-// Schedules a daily `node server/scripts/backup-to-drive.js` run, logs each
-// attempt to db.backupLog (visible via /api/backups/last), and exposes a
-// "Run backup now" endpoint for admins.
+// Reads server/data/backup-status.json (written by server/scripts/backup-to-drive.js
+// or server/scripts/backup-to-drive.sh, both run from the daily Windows Task
+// Scheduler job).  Also supports a manual "Run backup now" endpoint which
+// spawns the Node script on demand.
 //
-// Backed by an in-process node-cron task.  On Vercel (serverless) the cron
-// is never triggered (the function instance is short-lived); the
-// /api/backups/run endpoint and the existing scripts/backup-to-drive.js
-// still work for manual / external-cron-driven backups.
+// Transport: Google Drive (rclone + Google account OAuth).
+//   - No service-account JSON key required.
+//   - pg_dump | gzip | rclone rcat streamed straight to Drive folder
+//     "e-Malkhana Backups" owned by asppanipat01@gmail.com.
 
-const BACKUP_CRON = process.env.BACKUP_CRON || '0 23 * * *';   // 23:00 daily
-const BACKUP_RETENTION_DAYS = parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10);
-const BACKUP_SCRIPT = join(__dirname, 'scripts', 'backup-email.js');
+const BACKUP_RETENTION_DAYS = parseInt(process.env.BACKUP_RETENTION_DAYS || '10', 10);
+const BACKUP_STATUS_FILE    = join(__dirname, 'data', 'backup-status.json');
+const BACKUP_SCRIPT         = join(__dirname, 'scripts', 'backup-to-drive.js');
+const BACKUP_FOLDER_URL     = process.env.GDRIVE_FOLDER_URL
+  || 'https://drive.google.com/drive/folders/1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b';
+const BACKUP_ACCOUNT        = process.env.GDRIVE_ACCOUNT || 'asppanipat01@gmail.com';
+const BACKUP_REMOTE         = process.env.GDRIVE_REMOTE  || 'gdrive:e-Malkhana Backups';
 
-function appendBackupLog(entry) {
-  mutate(d => {
-    if (!d.backupLog) d.backupLog = [];
-    const id = (d.backupLog.at(-1)?.id ?? 0) + 1;
-    d.backupLog.push({
-      id,
-      timestamp: new Date().toISOString(),
-      ...entry,
-    });
-    // Cap at 100 entries — older rows are pruned; the actual file on Drive
-    // is the long-term archive.
-    if (d.backupLog.length > 100) d.backupLog.splice(0, d.backupLog.length - 100);
-  }).catch(e => console.error('[backup] failed to append log:', e && e.message));
-}
-
-async function runBackup(reason) {
-  const startedAt = new Date();
-  appendBackupLog({ status: 'running', reason, startedAt: startedAt.toISOString(), fileName: '' });
-  return new Promise(resolve => {
-    const child = spawn(process.execPath, [BACKUP_SCRIPT], {
-      env: { ...process.env, BACKUP_RETENTION_DAYS: String(BACKUP_RETENTION_DAYS) },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', d => stdout += d.toString());
-    child.stderr.on('data', d => stderr += d.toString());
-    child.on('error', e => {
-      appendBackupLog({
-        status: 'failed', reason,
-        startedAt: startedAt.toISOString(),
-        finishedAt: new Date().toISOString(),
-        fileName: '',
-        error: e.message,
-      });
-      resolve({ ok: false, error: e.message });
-    });
-    child.on('close', code => {
-      const finishedAt = new Date();
-      // Extract the uploaded filename from the stdout — the script logs
-      // "✓ uploaded: <name>".  Best-effort; falls back to the timestamped
-      // default if the script's output format changes.
-      const m = stdout.match(/✓ uploaded:\s+(\S+)/);
-      const fileName = m ? m[1] : `emalkhana-backup-${startedAt.toISOString().slice(0, 10)}.json`;
-      if (code === 0) {
-        appendBackupLog({
-          status: 'success', reason,
-          startedAt: startedAt.toISOString(),
-          finishedAt: finishedAt.toISOString(),
-          fileName,
-          durationMs: finishedAt - startedAt,
-        });
-      } else {
-        appendBackupLog({
-          status: 'failed', reason,
-          startedAt: startedAt.toISOString(),
-          finishedAt: finishedAt.toISOString(),
-          fileName: '',
-          exitCode: code,
-          error: stderr.trim() || `backup script exited with code ${code}`,
-        });
-      }
-      resolve({ ok: code === 0, code, fileName });
-    });
-  });
-}
-
-let _backupTask = null;
-function scheduleDailyBackup() {
-  if (_backupTask) return;
-  if (!existsSync(BACKUP_SCRIPT)) {
-    console.warn(`[backup] script not found at ${BACKUP_SCRIPT} — daily backup disabled.`);
-    return;
+function readBackupStatus() {
+  try {
+    if (!existsSync(BACKUP_STATUS_FILE)) return { runs: [], last: null, lastSuccess: null, lastFailed: null };
+    return JSON.parse(readFileSync(BACKUP_STATUS_FILE, 'utf8'));
+  } catch (e) {
+    console.warn('[backup] failed to read backup-status.json:', e.message);
+    return { runs: [], last: null, lastSuccess: null, lastFailed: null };
   }
-  _backupTask = cron.schedule(BACKUP_CRON, () => {
-    console.log('[backup] cron fired — starting daily backup');
-    runBackup('cron').catch(e => console.error('[backup] cron run failed:', e && e.message));
-  }, { scheduled: true });
-  console.log(`[backup] daily backup scheduled: "${BACKUP_CRON}" (retention: ${BACKUP_RETENTION_DAYS} days)`);
 }
 
-// GET /api/backups/status  —  returns the latest backup entry, plus the
-// configured schedule / retention.  Cheap to call; the admin screen polls it
-// on open + after "Run now" so the user sees fresh status.
+function fmtRun(r) {
+  if (!r) return null;
+  return {
+    ...r,
+    prettyTime: new Date(r.timestamp || r.finishedAt || r.startedAt).toLocaleString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    }),
+  };
+}
+
+// GET /api/backups/status — drive-only, no email transport.
 app.get('/api/backups/status', async (req, res, next) => {
   try {
-    const db = getDb();
-    const log = db.backupLog || [];
-    const last  = log.at(-1) || null;
-    const lastSuccess = [...log].reverse().find(e => e.status === 'success') || null;
-    const lastFailed  = [...log].reverse().find(e => e.status === 'failed')  || null;
+    const st = readBackupStatus();
+    const last       = st.last || null;
+    const lastSuccess = st.lastSuccess || null;
+    const lastFailed  = st.lastFailed || null;
     res.json({
-      cron: BACKUP_CRON,
+      transport: 'drive',
+      remote: BACKUP_REMOTE,
+      folderUrl: BACKUP_FOLDER_URL,
+      folderId: '1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b',
+      account: BACKUP_ACCOUNT,
       retentionDays: BACKUP_RETENTION_DAYS,
-      transport: 'email',
-      to: process.env.BACKUP_TO || null,
+      schedule: 'Windows Task Scheduler (daily 02:00)',
       scriptPath: BACKUP_SCRIPT,
-      last,
-      lastSuccess,
-      lastFailed,
-      totalRuns: log.length,
-      // Convenience: a single "summary" string the settings screen renders.
+      statusFile: BACKUP_STATUS_FILE,
+      last: fmtRun(last),
+      lastSuccess: fmtRun(lastSuccess),
+      lastFailed: fmtRun(lastFailed),
+      totalRuns: (st.runs || []).length,
       summary: last
-        ? `Last backup: ${new Date(last.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })} — ${
+        ? `Last backup: ${fmtRun(last).prettyTime} — ${
             last.status === 'success' ? 'Success' :
             last.status === 'failed'  ? 'Failed'  :
             last.status === 'running' ? 'Running…' : 'Unknown'
@@ -3504,26 +3424,57 @@ app.get('/api/backups/status', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// GET /api/backups/log?limit=N  —  recent backup attempts, newest first.
+// GET /api/backups/log?limit=N — recent drive backup attempts, newest first.
 app.get('/api/backups/log', async (req, res, next) => {
   try {
-    const db = getDb();
+    const st = readBackupStatus();
     const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10) || 20, 100);
-    const log = (db.backupLog || []).slice().reverse().slice(0, limit);
+    const log = (st.runs || []).slice().reverse().slice(0, limit).map(fmtRun);
     res.json(log);
   } catch (e) { next(e); }
 });
 
-// POST /api/backups/run  —  trigger a backup right now.  Used by the admin
-// "Run backup now" button.  Returns when the child process finishes.
+// POST /api/backups/run — trigger a drive backup right now. Spawns the
+// Node script with the same env the server is running under (which on
+// Vercel has DATABASE_URL but NOT rclone — so this will fail gracefully
+// on serverless and the user is told to run the script from the laptop).
 app.post('/api/backups/run', async (req, res, next) => {
   try {
     if (!existsSync(BACKUP_SCRIPT)) {
       return res.status(503).json({ error: 'backup script not found', path: BACKUP_SCRIPT });
     }
-    const result = await runBackup('manual');
-    await auditMm(req, 'backup.run', 'email', `Manual backup: ${result.ok ? 'success' : 'failed'}${result.fileName ? ' → ' + result.fileName : ''}`);
-    res.json(result);
+    const startedAt = new Date();
+    const child = spawn(process.execPath, [BACKUP_SCRIPT], {
+      env: {
+        ...process.env,
+        BACKUP_RETENTION_DAYS: String(BACKUP_RETENTION_DAYS),
+        GDRIVE_FOLDER_URL:     BACKUP_FOLDER_URL,
+        GDRIVE_ACCOUNT:        BACKUP_ACCOUNT,
+        GDRIVE_REMOTE:         BACKUP_REMOTE,
+        BACKUP_STATUS_FILE:    BACKUP_STATUS_FILE,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', d => stdout += d.toString());
+    child.stderr.on('data', d => stderr += d.toString());
+    child.on('error', e => {
+      console.error('[backup] spawn error:', e.message);
+      res.status(500).json({ ok: false, error: e.message });
+    });
+    child.on('close', code => {
+      const m = stdout.match(/✓ uploaded:\s+(\S+)/);
+      const fileName = m ? m[1] : null;
+      if (code === 0) {
+        res.json({ ok: true, code, fileName, transport: 'drive' });
+      } else {
+        res.status(500).json({
+          ok: false, code,
+          error: stderr.trim().split('\n').slice(-3).join(' | ')
+              || `backup script exited with code ${code}`,
+        });
+      }
+    });
   } catch (e) { next(e); }
 });
 
@@ -3602,7 +3553,6 @@ if (!IS_VERCEL) {
     catch (e) { console.error('[boot] rebuildSectionCountsIn failed (non-fatal):', e && e.message); }
     scanAlerts();
     setInterval(scanAlerts, 60 * 60 * 1000);
-    scheduleDailyBackup();
 
     app.listen(PORT, () => {
       console.log(`[e-malkhana] http://localhost:${PORT}`);
@@ -3660,7 +3610,6 @@ if (!IS_VERCEL) {
     if (p1 && typeof p1.catch === 'function') p1.catch(e => console.error('[boot] mutate error (non-fatal):', e && e.message));
     const p2 = scanAlerts();
     if (p2 && typeof p2.catch === 'function') p2.catch(e => console.error('[boot] scanAlerts error (non-fatal):', e && e.message));
-    scheduleDailyBackup();
   })();
 }
 

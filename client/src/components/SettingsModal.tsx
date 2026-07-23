@@ -473,9 +473,13 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
 
 // =============================================================
 // Backup tab — shows the latest backup status, the configured
-// schedule, and a "Run backup now" button.  On the server the
-// backup is performed by `server/scripts/backup-to-drive.js`,
-// which expects a Google service account key + Drive folder id.
+// schedule, and a "Run backup now" button.  The actual backup is
+// performed by `server/scripts/backup-to-drive.js` (Node) or
+// `server/scripts/backup-to-drive.sh` (bash), driven by the daily
+// Windows Task Scheduler entry "e-Malkhana Daily Backup".
+//
+// The Node script is also spawned by POST /api/backups/run when the
+// admin clicks "Run backup now".
 // =============================================================
 function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
   backup: any;
@@ -495,15 +499,19 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
         hour: '2-digit', minute: '2-digit', hour12: true,
       })
     : '—';
+  const folderUrl: string = backup?.folderUrl || 'https://drive.google.com/drive/folders/1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b';
+  const folderId = folderUrl.split('/folders/')[1] || '';
+  const account = backup?.account || 'asppanipat01@gmail.com';
+  const retentionDays = backup?.retentionDays ?? 10;
+  const schedule = backup?.schedule || 'Windows Task Scheduler (daily 02:00)';
   return (
     <div>
       <div className="sub" style={{ marginBottom: 12 }}>
-        Daily email backup of the full case register (PostgreSQL). A timestamped
-        JSON dump of every table is emailed to <b>{backup?.to || 'the configured address'}</b>.
-        Local dumps older than <b>{backup?.retentionDays ?? 30} days</b> are auto-pruned.
-        Configure the cron, retention, and SMTP recipients via the
-        <code> BACKUP_CRON</code>, <code>BACKUP_RETENTION_DAYS</code>, and
-        <code> BACKUP_TO</code> env vars. See <code>docs/BACKUP_EMAIL.md</code> for setup.
+        Daily backup of the full case register (PostgreSQL). A gzipped
+        <code> pg_dump</code> of every table is uploaded to Google Drive as
+        <code> backup-YYYY-MM-DD-HHMM.sql.gz</code>. Files older than
+        <b> {retentionDays} days</b> are auto-pruned. Configure retention via
+        <code> BACKUP_RETENTION_DAYS</code>. See <code>docs/BACKUP_DAILY.md</code> for setup.
       </div>
 
       <div className="backup-card">
@@ -511,13 +519,25 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           <div>
             <div className="k">Last backup</div>
             <div className={`v ${lastClass}`} style={{ fontSize: 14 }}>
-              {last ? `${fmtTime(last.timestamp)} — ${
+              {last ? `${fmtTime(last.timestamp || last.finishedAt)} — ${
                 last.status === 'success' ? 'Success' :
                 last.status === 'failed'  ? 'Failed'  :
                 last.status === 'running' ? 'Running…' : 'Unknown'
               }` : 'No backups yet'}
             </div>
-            {last?.fileName && <div className="v" style={{ fontSize: 11, color: 'var(--slate-soft)' }}>📄 {last.fileName}</div>}
+            {last?.fileName && (
+              <div className="v" style={{ fontSize: 11, color: 'var(--slate-soft)' }}>
+                📄{' '}
+                <a
+                  href={last.fileUrl || `${folderUrl}/${last.fileName}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: 'var(--ink-navy)' }}
+                >
+                  {last.fileName}
+                </a>
+              </div>
+            )}
             {last?.error && <div className="v" style={{ fontSize: 11, color: 'var(--seal-red)' }}>{last.error}</div>}
           </div>
           <div style={{ flex: '0 0 auto' }}>
@@ -529,15 +549,29 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
         <div className="row">
           <div>
             <div className="k">Schedule</div>
-            <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace' }}>{backup?.cron || '—'}</div>
+            <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 12 }}>{schedule}</div>
           </div>
           <div>
             <div className="k">Transport</div>
-            <div className="v">{backup?.transport || 'email'}</div>
+            <div className="v">Google Drive</div>
+          </div>
+          <div>
+            <div className="k">Account</div>
+            <div className="v" style={{ fontSize: 12 }}>{account}</div>
           </div>
           <div>
             <div className="k">Total runs</div>
             <div className="v">{backup?.totalRuns ?? 0}</div>
+          </div>
+        </div>
+        <div className="row" style={{ marginTop: 8 }}>
+          <div>
+            <div className="k">Drive folder</div>
+            <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }}>
+              <a href={folderUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ink-navy)' }}>
+                📁 {folderId || 'e-Malkhana Backups'} ↗
+              </a>
+            </div>
           </div>
         </div>
         {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 8 }}>{msg.text}</div>}
@@ -547,22 +581,23 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
         Recent runs <span className="audit-tab-count">{backupLog.length}</span>
       </h3>
       {backupLog.length === 0 ? (
-        <div className="sub">No backup attempts recorded yet.</div>
+        <div className="sub">No backup attempts recorded yet. The first daily run will populate this table.</div>
       ) : (
         <table className="audit-log-table">
           <thead>
             <tr>
               <th>Time</th>
               <th>Status</th>
-              <th>Reason</th>
               <th>File</th>
+              <th>Size</th>
+              <th>Duration</th>
               <th>Notes</th>
             </tr>
           </thead>
           <tbody>
             {backupLog.map((e: any) => (
               <tr key={e.id}>
-                <td className="fir">{fmtTime(e.timestamp)}</td>
+                <td className="fir">{fmtTime(e.timestamp || e.finishedAt)}</td>
                 <td>
                   <span className={`stamp ${
                     e.status === 'success' ? 'malkhana' :
@@ -570,11 +605,19 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
                     'expert'
                   }`}>{e.status}</span>
                 </td>
-                <td>{e.reason || '—'}</td>
-                <td style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }}>{e.fileName || '—'}</td>
+                <td style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }}>
+                  {e.fileName
+                    ? <a href={e.fileUrl || `${folderUrl}/${e.fileName}`} target="_blank" rel="noreferrer" style={{ color: 'var(--ink-navy)' }}>{e.fileName}</a>
+                    : '—'}
+                </td>
                 <td style={{ fontSize: 11.5, color: 'var(--slate-soft)' }}>
-                  {e.error ? <span style={{ color: 'var(--seal-red)' }}>{e.error}</span> :
-                   e.durationMs ? `${(e.durationMs / 1000).toFixed(1)}s` : '—'}
+                  {e.sizeBytes ? `${(e.sizeBytes / 1024).toFixed(1)} KB` : '—'}
+                </td>
+                <td style={{ fontSize: 11.5, color: 'var(--slate-soft)' }}>
+                  {e.durationMs ? `${(e.durationMs / 1000).toFixed(1)}s` : '—'}
+                </td>
+                <td style={{ fontSize: 11.5, color: 'var(--slate-soft)' }}>
+                  {e.error ? <span style={{ color: 'var(--seal-red)' }}>{e.error}</span> : '—'}
                 </td>
               </tr>
             ))}

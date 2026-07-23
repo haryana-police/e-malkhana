@@ -63,3 +63,4 @@ case-property-detail-*.png
 register-modal-*.png
 
 .env*
+backup-status.json
