@@ -564,17 +564,9 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           <div class="grid">${step2Rows}</div>
         </div>
         ${photoUrl ? `<div class="card"><h3>Photo of Seized Object</h3><img class="photo" src="${escapeHtml(photoUrl)}" alt="${escapeHtml(c.itemType)}" /></div>` : ''}
-        <div class="row">
-          <div class="card" style="flex:1">
-            <h3>Movement Chain</h3>
-            ${movementHtml}
-          </div>
-          ${qrUrl ? `
-          <div class="card" style="flex:0 0 220px;text-align:center">
-            <h3>QR Code</h3>
-            <img class="qr" src="${qrUrl}" alt="QR" />
-            <div class="qr-cap">Encrypted — scan with e-Malkhana</div>
-          </div>` : ''}
+        <div class="card">
+          <h3>Movement Chain</h3>
+          ${movementHtml}
         </div>
         <div class="footer">
           <span>e-Malkhana · Case Detail</span>
