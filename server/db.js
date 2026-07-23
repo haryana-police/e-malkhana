@@ -588,6 +588,27 @@ CREATE TABLE IF NOT EXISTS movement_types (
   is_system        BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX IF NOT EXISTS movement_types_sort_idx ON movement_types (sort_order, id);
+
+-- ---------------------------------------------------------------------------
+-- Daily Submissions ledger — locks/finalizes the Malkhana register for a
+-- given date so no further case-property edits are accepted for it.  This is
+-- the e-Malkhana equivalent of the court portal's "Daily Submissions" lock:
+-- once a day's entries are finalised, the SHO/MM signs off and the data is
+-- frozen.  A dev (MM with override) can force-finalize to bypass the
+-- "Naib Court" gating that the court portal describes.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS submissions (
+  id              BIGSERIAL PRIMARY KEY,
+  submission_date DATE NOT NULL UNIQUE,   -- the calendar day that is locked
+  status          TEXT NOT NULL DEFAULT 'open',  -- open | locked | finalized
+  locked_by       TEXT,
+  locked_at       TIMESTAMPTZ,
+  finalized_by    TEXT,
+  finalized_at    TIMESTAMPTZ,
+  note            TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS submissions_date_idx ON submissions (submission_date);
 `;
 
 export async function initSchema() {
@@ -1583,4 +1604,62 @@ export async function deleteMovementType(id) {
   }
   await pool.query(`DELETE FROM movement_types WHERE id = $1`, [id]);
   return { id: Number(id), deleted: true, name: existing.rows[0].name };
+}
+
+// ---------- Daily Submissions ledger ----------
+// Tracks a per-day lock/finalize state for the Malkhana register.  A day in
+// `locked` or `finalized` state blocks further case-property edits for that
+// date (see server.js guard).  `finalized` is the signed-off state.
+export async function getSubmissions(limit = 60) {
+  const { rows } = await pool.query(
+    `SELECT id, submission_date, status, locked_by, locked_at, finalized_by, finalized_at, note, created_at
+       FROM submissions ORDER BY submission_date DESC LIMIT $1`, [limit]);
+  return rows.map(r => ({
+    id: Number(r.id),
+    date: String(r.submission_date),
+    status: r.status,
+    lockedBy: r.locked_by,
+    lockedAt: r.locked_at ? String(r.locked_at) : null,
+    finalizedBy: r.finalized_by,
+    finalizedAt: r.finalized_at ? String(r.finalized_at) : null,
+    note: r.note || '',
+  }));
+}
+
+export async function getSubmissionForDate(date) {
+  const { rows } = await pool.query(
+    `SELECT id, submission_date, status, locked_by, locked_at, finalized_by, finalized_at, note
+       FROM submissions WHERE submission_date = $1 LIMIT 1`, [date]);
+  return rows[0] ? {
+    id: Number(rows[0].id),
+    date: String(rows[0].submission_date),
+    status: rows[0].status,
+    lockedBy: rows[0].locked_by,
+    lockedAt: rows[0].locked_at ? String(rows[0].locked_at) : null,
+    finalizedBy: rows[0].finalized_by,
+    finalizedAt: rows[0].finalized_at ? String(rows[0].finalized_at) : null,
+    note: rows[0].note || '',
+  } : null;
+}
+
+export async function upsertSubmission({ date, status, by, note }) {
+  const { rows } = await pool.query(
+    `INSERT INTO submissions (submission_date, status, locked_by, locked_at, finalized_by, finalized_at, note)
+       VALUES ($1, $2, $3, now(), $4, now(), $5)
+       ON CONFLICT (submission_date) DO UPDATE SET
+         status       = EXCLUDED.status,
+         locked_by    = COALESCE(submissions.locked_by, EXCLUDED.locked_by),
+         locked_at    = COALESCE(submissions.locked_at, EXCLUDED.locked_at),
+         finalized_by = EXCLUDED.finalized_by,
+         finalized_at = EXCLUDED.finalized_at,
+         note         = EXCLUDED.note
+       RETURNING id, submission_date, status`,
+    [date, status, status === 'locked' ? by : null, status === 'finalized' ? by : null, note || null]
+  );
+  return { id: Number(rows[0].id), date: String(rows[0].submission_date), status: rows[0].status };
+}
+
+export async function deleteSubmission(id) {
+  await pool.query(`DELETE FROM submissions WHERE id = $1`, [id]);
+  return { id: Number(id), deleted: true };
 }

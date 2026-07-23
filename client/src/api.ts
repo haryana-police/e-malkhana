@@ -295,6 +295,12 @@ export const api = {
     backupDelete: (name: string) => send<{ ok: boolean; error?: string }>('DELETE', `/backups/${encodeURIComponent(name)}`, {}),
     backupRestore: (name: string) => send<{ ok: boolean; stagingSchema?: string; note?: string; counts?: string; error?: string }>('POST', `/backups/${encodeURIComponent(name)}/restore`, {}),
 
+    // daily submissions (lock / finalize)
+    submissionsList: (limit = 60) => get<{ ok: boolean; submissions: { id: number; date: string; status: string; lockedBy?: string; finalizedBy?: string; finalizedAt?: string; note: string }[] }>(`/submissions?limit=${limit}`),
+    submissionSet:  (date: string, action: 'lock' | 'finalize' | 'reopen', opts?: { note?: string; force?: boolean }) =>
+      send<{ ok: boolean; id: number; date: string; status: string; error?: string }>('POST', '/submissions', { date, action, ...(opts || {}) }),
+    submissionDelete: (id: number) => send<{ ok: boolean; deleted: boolean; error?: string }>('DELETE', `/submissions/${id}`, {}),
+
   // other
   renameSection: (letter: string, name: string) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}`, { name }),
   setSectionActive: (letter: string, active: boolean) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}/active`, { active }),

@@ -8,7 +8,7 @@ interface Props {
   onUpdated: (cfg: AlertConfig) => void;
   onOpenSectionsManager?: () => void;
   onOpenItemTypeManager?: () => void;
-  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes';
+  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes' | 'submissions';
   // When true, show ONLY the requested part (no tab bar). Used when the
   // user clicks a specific System Setting part from the sidebar, so they
   // land on that one part instead of the whole settings surface.
@@ -27,6 +27,7 @@ const FOCUS_TITLE: Record<string, string> = {
   log: 'Activity log',
   movements: 'Movement Logs',
   movementTypes: 'Movement Types',
+  submissions: 'Daily Submission',
 };
 
 const ACTION_LABELS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' | 'critical' }> = {
@@ -51,7 +52,7 @@ function fmtTime(iso: string) {
 }
 
 export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab, single, asPage = false }: Props) {
-  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup' | 'movements' | 'movementTypes'>('thresholds');
+  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup' | 'movements' | 'movementTypes' | 'submissions'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
   const [backupLog, setBackupLog] = useState<any[]>([]);
@@ -225,6 +226,11 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
               onClick={() => setTab('movementTypes')}
               title="Configure the Move-to-status vocabulary"
             >Movement Types</button>
+            <button
+              className={`audit-tab${tab === 'submissions' ? ' active' : ''}`}
+              onClick={() => setTab('submissions')}
+              title="Lock / finalize the daily Malkhana register"
+            >Daily Submission</button>
             {onOpenSectionsManager && (
               <button
                 className="audit-tab"
@@ -446,6 +452,9 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
 
       {activeTab === 'movementTypes' && (
         <MovementTypesManager />
+      )}
+      {activeTab === 'submissions' && (
+        <DailySubmissionsTab />
       )}
     </>
   );
@@ -715,6 +724,119 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
     </div>
   );
 }
+// =============================================================
+// Daily Submission tab — lock / finalize the Malkhana register for a
+// given day.  Mirrors the court portal's "Daily Submissions" power:
+// once a day is FINALIZED, case-property edits for that receipt date
+// are blocked (unless a dev uses the override).  A merely LOCKED day
+// stays editable (ready-for-review).  "Force Finalize" bypasses any
+// gating requirement (the portal's dev power).
+// =============================================================
+function DailySubmissionsTab() {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const [date, setDate] = useState(today);
+  const [note, setNote] = useState('');
+  const [force, setForce] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function reload() {
+    setLoading(true);
+    try { const r = await api.submissionsList(60); setRows(r.submissions || []); }
+    catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { reload(); /* eslint-disable-line */ }, []);
+
+  async function act(action: 'lock' | 'finalize' | 'reopen') {
+    if (!date) { setMsg({ kind: 'error', text: 'Pick a date.' }); return; }
+    if (action === 'finalize' && !force && !confirm('Finalize this day? After finalize, edits for this date are locked unless a dev uses override.')) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.submissionSet(date, action, { note: note.trim() || undefined, force: action === 'finalize' ? force : undefined });
+      if (!r.ok) setMsg({ kind: 'error', text: r.error || 'Failed.' });
+      else { setMsg({ kind: 'ok', text: `Day ${r.date} → ${r.status}${action === 'finalize' && force ? ' (forced)' : ''}.` }); setNote(''); reload(); }
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  async function remove(id: number) {
+    if (!confirm('Delete this ledger entry? The day becomes editable again.')) return;
+    try { const r = await api.submissionDelete(id); if (r.ok) reload(); else setMsg({ kind: 'error', text: r.error || 'Delete failed.' }); }
+    catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+  }
+
+  const stamp = (s?: string) => s
+    ? new Date(s).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
+    : '—';
+
+  return (
+    <div>
+      <div className="sub" style={{ marginBottom: 12 }}>
+        Lock or finalize the daily Malkhana register by date. A <b>Locked</b> day is ready
+        for review but still editable. A <b>Finalized</b> day is signed off — case-property
+        edits for that receipt date are blocked (a developer can force-edit via override).
+      </div>
+
+      <div className="scan-bar" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <span className="scan-label">Date</span>
+        <input type="date" value={date} max={today} onChange={e => setDate(e.target.value)} style={{ width: 170 }} />
+        <input
+          placeholder="Optional note (e.g. SHO sign-off)"
+          value={note} onChange={e => setNote(e.target.value)}
+          style={{ flex: '1 1 200px', minWidth: 180 }}
+        />
+      </div>
+
+      <div className="form-actions" style={{ marginTop: 8 }}>
+        <button className="btn ghost" onClick={() => act('lock')} disabled={busy}>🔒 Lock</button>
+        <button className="btn" onClick={() => act('finalize')} disabled={busy}>✅ Finalize</button>
+        <button className="btn ghost" onClick={() => act('reopen')} disabled={busy}>↺ Reopen</button>
+        <label className="audit-chip" style={{ marginLeft: 'auto', cursor: 'pointer' }} title="Bypass gating — dev power (portal: Force Finalize)">
+          <input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} /> Force finalize
+        </label>
+      </div>
+
+      {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 8 }}>{msg.text}</div>}
+
+      <h3 style={{ fontFamily: 'Rajdhani, sans-serif', color: 'var(--ink-navy)', fontSize: 14, margin: '18px 0 8px' }}>
+        Ledger <span className="audit-tab-count">{rows.length}</span>
+      </h3>
+      {loading ? (
+        <div className="sub">Loading…</div>
+      ) : rows.length === 0 ? (
+        <div className="sub">No days locked or finalized yet.</div>
+      ) : (
+        <table className="audit-log-table">
+          <thead>
+            <tr><th>Date</th><th>Status</th><th>By</th><th>When</th><th></th></tr>
+          </thead>
+          <tbody>
+            {rows.map((r: any) => (
+              <tr key={r.id}>
+                <td style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 12 }}>{r.date}</td>
+                <td>
+                  <span className={`stamp ${r.status === 'finalized' ? 'disposed' : r.status === 'locked' ? 'expert' : 'malkhana'}`}>
+                    {r.status}
+                  </span>
+                </td>
+                <td style={{ fontSize: 11.5 }}>{r.finalizedBy || r.lockedBy || '—'}</td>
+                <td style={{ fontSize: 11.5, color: 'var(--slate-soft)' }}>{stamp(r.finalizedAt || r.lockedAt)}</td>
+                <td style={{ textAlign: 'right' }}>
+                  <button className="btn ghost" style={{ fontSize: 11, padding: '3px 9px', color: 'var(--seal-red)' }}
+                    onClick={() => remove(r.id)}>🗑️</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 // =============================================================
 // Item Type Fields manager — the spec's "Form Builder".  Lets an admin
           // configure, per Malkhana section (Narcotics / Weapons / Cash & Documents /

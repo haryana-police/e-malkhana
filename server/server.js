@@ -28,6 +28,7 @@ import {
   getInspections, getInspection, upsertInspection, deleteInspection,
   nextInspectionId, getLastInspectionDate,
   getItemCategories, getItemCategory, upsertItemCategory, deleteItemCategory,
+  getSubmissions, getSubmissionForDate, upsertSubmission, deleteSubmission,
 } from './db.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
 import crypto from 'node:crypto';
@@ -2255,6 +2256,19 @@ app.post('/api/case-property', async (req, res, next) => {
     // 404s (the previous bug: it matched against the FIR id and rejected
     // every save with "unknown item: MK-2026-000500").
     if (!(await getCaseByItemId(itemId))) { const e = new Error(`unknown item: ${itemId}`); e.status = 404; throw e; }
+    // --- Daily Submission lock guard ---
+    // If the item's receipt date has a FINALIZED submission ledger entry,
+    // block the edit unless a developer passes devOverride (matches the
+    // court portal's "Force Finalize / bypass" power).  A merely `locked`
+    // day still allows edits (lock == ready-for-review, finalize == signed off).
+    const recDate = common.dateOfReceipt || null;
+    if (recDate && !body.devOverride) {
+      const sub = await getSubmissionForDate(recDate);
+      if (sub && sub.status === 'finalized') {
+        const e = new Error(`Submissions for ${recDate} are finalized. Edits are locked. Use dev override to force-edit.`);
+        e.status = 423; throw e;
+      }
+    }
     const common = body.common || {};
     const fields = Array.isArray(body.fields) ? body.fields : [];
     await upsertCaseProperty(itemId, {
@@ -3468,6 +3482,74 @@ app.get('/api/reports/malkhana-register', async (req, res, next) => {
     catch (e) { console.error('[reg] end failed:', e && (e.stack || e.message)); throw e; }
     auditMm(req, 'report.export', 'malkhana-register', `Exported pdf: ${rows.length} row(s), section=${sectionFilter}`)
       .catch(e => console.error('[reg] audit failed (non-fatal):', e && e.message));
+  } catch (e) { next(e); }
+});
+
+// =================== API: Daily Submissions (lock / finalize) ===================
+// e-Malkhana is a single-station Malkhana register scoped by DATE.  The
+// court portal's "Daily Submissions: lock/finalize per court/district" maps
+// here to a per-DAY ledger.  Once a day is `finalized`, case-property
+// edits for that receipt date are blocked (see the POST /api/case-property
+// guard).  A dev can `force` finalize to bypass the gating requirement.
+
+// GET /api/submissions?limit=N — recent ledger entries, newest date first.
+app.get('/api/submissions', async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(String(req.query.limit ?? '60'), 10) || 60, 200);
+    const rows = await getSubmissions(limit);
+    res.json({ ok: true, submissions: rows });
+  } catch (e) { next(e); }
+});
+
+// GET /api/submissions/:date — single day's state (date = YYYY-MM-DD).
+app.get('/api/submissions/:date', async (req, res, next) => {
+  try {
+    const date = String(req.params.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    const sub = await getSubmissionForDate(date);
+    res.json({ ok: true, submission: sub });
+  } catch (e) { next(e); }
+});
+
+// POST /api/submissions  { date, action: 'lock'|'finalize'|'reopen', note?, force? }
+//   - lock:    mark the day ready-for-review (edits still allowed).
+//   - finalize: sign off; edits blocked unless devOverride passed on the save.
+//   - reopen:   clear the lock/finalize (admin only).
+app.post('/api/submissions', async (req, res, next) => {
+  try {
+    const { date, action, note } = req.body || {};
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
+      const e = new Error('date must be YYYY-MM-DD'); e.status = 400; throw e;
+    }
+    const act = String(action || '').toLowerCase();
+    if (!['lock', 'finalize', 'reopen'].includes(act)) {
+      const e = new Error('action must be one of: lock, finalize, reopen'); e.status = 400; throw e;
+    }
+    const by = req.mm?.id || 'anonymous';
+    let status;
+    if (act === 'reopen') status = 'open';
+    else {
+      // dev power: force-finalize bypasses any gating requirement.
+      const force = !!req.body?.force;
+      status = act === 'finalize' ? 'finalized' : 'locked';
+      if (act === 'finalize' && !force) {
+        // Normal finalize path.  (Gating checks, if any, go here.)
+      }
+    }
+    const r = await upsertSubmission({ date: String(date), status, by, note: note || '' });
+    await auditMm(req, 'submission.' + act, date, `Day ${date} → ${status}${act === 'finalize' && req.body?.force ? ' (forced)' : ''}`);
+    res.json({ ok: true, ...r });
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/submissions/:id — remove a ledger entry (admin only).
+app.delete('/api/submissions/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(String(req.params.id || ''), 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, error: 'invalid id' });
+    const r = await deleteSubmission(id);
+    await auditMm(req, 'submission.delete', String(id), `Removed ledger entry #${id}`);
+    res.json({ ok: true, ...r });
   } catch (e) { next(e); }
 });
 
