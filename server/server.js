@@ -3406,7 +3406,7 @@ app.post('/api/backups/run', async (req, res, next) => {
     });
     let stdout = '', stderr = '';
     child.stdout.on('data', d => stdout += d.toString());
-    child.stderr.on('data', d => stderr += d.toString());
+    child.stderr.on('data', d => { stderr += d.toString(); console.error('[backup]', d.toString().trim()); });
     child.on('error', e => {
       console.error('[backup] spawn error:', e.message);
       // Friendly message — the operator doesn't see stack traces.
@@ -3422,10 +3422,8 @@ app.post('/api/backups/run', async (req, res, next) => {
       if (code === 0) {
         res.json({ ok: true, code, fileName, transport: 'drive' });
       } else {
-        // Translate the common "rclone not found" / "pg_dump not found" errors
-        // into a friendly message.  Anything else is passed through.
-        const tail = stderr.trim().split('\n').slice(-3).join(' | ')
-                  || `backup script exited with code ${code}`;
+        // Surface the full stderr so Vercel failures are diagnosable.
+        const tail = (stderr || stdout || `backup script exited with code ${code}`).trim().split('\n').slice(-6).join(' | ');
         const friendly = /rclone not found|pg_dump not found/.test(tail)
           ? 'Backup tools (rclone + pg_dump) are not installed on this server. The daily backup runs automatically from the operator laptop at ' + BACKUP_SCHEDULE_LABEL + '.'
           : tail;

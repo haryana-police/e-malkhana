@@ -50,9 +50,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 const ROOT       = resolve(__dirname, '..', '..');
 
-function fail(msg) { console.error('✗ ' + msg); process.exit(1); }
-
-const IS_VERCEL = !!process.env.VERCEL;
+function fail(msg) { console.error('✗ ' + msg); appendStatus({ status: 'failed', transport: 'drive', timestamp: new Date().toISOString(), startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(), fileName: '', durationMs: Date.now() - startedAt.getTime(), error: msg }); process.exit(1); }
 
 // --- locate rclone (bundled at server/bin/rclone on Vercel, local elsewhere) ---
 function locateRclone() {
@@ -89,6 +87,9 @@ function locatePgDump() {
 
 const RCLONE_BIN = locateRclone();
 const DATABASE_URL = process.env.DATABASE_URL;
+const IS_VERCEL = !!process.env.VERCEL;
+
+console.error('[backup] start: IS_VERCEL=' + IS_VERCEL + ' RCLONE_BIN=' + RCLONE_BIN + ' hasConfigB64=' + !!process.env.RCLONE_CONFIG_BASE64 + ' VERCEL_ENV=' + (process.env.VERCEL_ENV || 'unset'));
 
 if (!RCLONE_BIN) fail('rclone not found — expected at server/bin/rclone (Vercel) or ~/bin/rclone-*-windows-amd64/ (laptop)');
 if (!DATABASE_URL) fail('DATABASE_URL is not set');
