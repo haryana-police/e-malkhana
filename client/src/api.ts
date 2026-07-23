@@ -277,18 +277,17 @@ export const api = {
 
   // backups (admin)
     backupStatus: () => get<{
-      transport: 'drive';
-      remote: string;
-      folderUrl: string;
-      folderId: string;
-      account: string;
-      retentionDays: number;
-      schedule: string;
-      scriptPath: string;
-      statusFile: string;
-      last: any; lastSuccess: any; lastFailed: any;
-      totalRuns: number; summary: string;
-    }>('/backups/status'),
+        transport: 'drive';
+        remote: string;
+        folderUrl: string;
+        folderId: string;
+        retentionDays: number;
+        schedule: string;
+        scriptPath: string;
+        statusFile: string;
+        last: any; lastSuccess: any; lastFailed: any;
+        totalRuns: number; summary: string;
+      }>('/backups/status'),
     backupLog:    (limit = 20) => get<any[]>(`/backups/log?limit=${limit}`),
     backupRun:    () => send<{ ok: boolean; code?: number; fileName?: string; error?: string; transport?: string }>('POST', '/backups/run', {}),
 

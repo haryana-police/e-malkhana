@@ -3318,8 +3318,10 @@ function readBackupStatus() {
 
 function fmtRun(r) {
   if (!r) return null;
+  // Strip any sensitive / unwanted fields before sending to the client.
+  const { account, ...safe } = r;
   return {
-    ...r,
+    ...safe,
     prettyTime: new Date(r.timestamp || r.finishedAt || r.startedAt).toLocaleString('en-IN', {
       day: '2-digit', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true,
@@ -3339,7 +3341,6 @@ app.get('/api/backups/status', async (req, res, next) => {
       remote: BACKUP_REMOTE,
       folderUrl: BACKUP_FOLDER_URL,
       folderId: '1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b',
-      account: BACKUP_ACCOUNT,
       retentionDays: BACKUP_RETENTION_DAYS,
       schedule: 'Windows Task Scheduler (daily 02:00)',
       scriptPath: BACKUP_SCRIPT,

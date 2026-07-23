@@ -500,10 +500,9 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
       })
     : '—';
   const folderUrl: string = backup?.folderUrl || 'https://drive.google.com/drive/folders/1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b';
-  const folderId = folderUrl.split('/folders/')[1] || '';
-  const account = backup?.account || 'asppanipat01@gmail.com';
-  const retentionDays = backup?.retentionDays ?? 10;
-  const schedule = backup?.schedule || 'Windows Task Scheduler (daily 02:00)';
+    const folderId = folderUrl.split('/folders/')[1] || '';
+    const retentionDays = backup?.retentionDays ?? 10;
+    const schedule = backup?.schedule || 'Windows Task Scheduler (daily 02:00)';
   return (
     <div>
       <div className="sub" style={{ marginBottom: 12 }}>
@@ -552,17 +551,13 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
             <div className="v" style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 12 }}>{schedule}</div>
           </div>
           <div>
-            <div className="k">Transport</div>
-            <div className="v">Google Drive</div>
-          </div>
-          <div>
-            <div className="k">Account</div>
-            <div className="v" style={{ fontSize: 12 }}>{account}</div>
-          </div>
-          <div>
-            <div className="k">Total runs</div>
-            <div className="v">{backup?.totalRuns ?? 0}</div>
-          </div>
+                      <div className="k">Transport</div>
+                      <div className="v">Google Drive</div>
+                    </div>
+                    <div>
+                      <div className="k">Total runs</div>
+                      <div className="v">{backup?.totalRuns ?? 0}</div>
+                    </div>
         </div>
         <div className="row" style={{ marginTop: 8 }}>
           <div>
