@@ -207,6 +207,28 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     api.sections('all').then(s => setSections(s.map(x => ({ letter: x.letter, name: x.name })))).catch(() => setSections([]));
   }, []);
 
+  // Scale the A4 sheet to fit exactly one screen (no page scroll) on the detail view.
+  useEffect(() => {
+    const fit = () => {
+      const sheet = document.querySelector('.case-a4-sheet') as HTMLElement | null;
+      if (!sheet) return;
+      const wrap = sheet.parentElement as HTMLElement | null;
+      // reset any prior scale to measure natural height
+      sheet.style.transform = 'none';
+      const natural = sheet.getBoundingClientRect().height;
+      const topChrome = sheet.getBoundingClientRect().top; // distance from viewport top (header + nav)
+      const avail = window.innerHeight - topChrome - 12; // 12px breathing room
+      const scale = Math.min(1, avail / natural);
+      sheet.style.transformOrigin = 'top center';
+      sheet.style.transform = `scale(${scale})`;
+      if (wrap) wrap.style.height = `${natural * scale}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    const t = setTimeout(fit, 350); // re-fit after fonts/images settle
+    return () => { window.removeEventListener('resize', fit); clearTimeout(t); };
+  }, [caseRow, movements]);
+
   useEffect(() => {
     if (!idParam) return;
     setErr(null);
