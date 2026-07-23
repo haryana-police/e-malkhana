@@ -3376,11 +3376,11 @@ app.get('/api/backups/log', async (req, res, next) => {
 // POST /api/backups/run — trigger a drive backup right now. Spawns the
 // Node script with the same env the server is running under.
 //
-// On Vercel (serverless), the script needs rclone + pg_dump, which aren't
-// installed in the serverless container.  The /api/backups/run endpoint
-// returns a friendly 200-with-ok:false instead of a raw 500 error so the
-// admin screen shows a useful message ("backup runs daily at 14:10 from
-// the operator laptop — no manual trigger available on the server").
+// On Vercel (serverless), the script falls back to a pure-SQL dump (using
+// the bundled @neondatabase/serverless pool) instead of pg_dump, and uses
+// the rclone binary fetched at build time (server/bin/rclone) plus the
+// RCLONE_CONFIG_BASE64 token for Drive auth.  So "Run backup now" works
+// from the server too — no laptop required.
 app.post('/api/backups/run', async (req, res, next) => {
   try {
     if (!existsSync(BACKUP_SCRIPT)) {
@@ -3395,9 +3395,12 @@ app.post('/api/backups/run', async (req, res, next) => {
         ...process.env,
         BACKUP_RETENTION_DAYS: String(BACKUP_RETENTION_DAYS),
         GDRIVE_FOLDER_URL:     BACKUP_FOLDER_URL,
+        GDRIVE_FOLDER_ID:      '1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b',
         GDRIVE_ACCOUNT:        BACKUP_ACCOUNT,
         GDRIVE_REMOTE:         BACKUP_REMOTE,
         BACKUP_STATUS_FILE:    BACKUP_STATUS_FILE,
+        RCLONE_CONFIG_BASE64:  process.env.RCLONE_CONFIG_BASE64 || '',
+        VERCEL:                process.env.VERCEL || '',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -3410,7 +3413,7 @@ app.post('/api/backups/run', async (req, res, next) => {
       res.json({
         ok: false,
         code: 1,
-        error: 'Backup could not run on this server (rclone/pg_dump not available here). The daily backup runs automatically from the operator laptop at ' + BACKUP_SCHEDULE_LABEL + '.',
+        error: 'Backup could not run on this server. The daily backup runs automatically from the operator laptop at ' + BACKUP_SCHEDULE_LABEL + '.',
       });
     });
     child.on('close', code => {

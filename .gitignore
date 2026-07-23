@@ -64,3 +64,4 @@ register-modal-*.png
 
 .env*
 backup-status.json
+server/bin/

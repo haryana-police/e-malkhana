@@ -544,7 +544,7 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
                 {busy ? 'Running…' : '▶ Run backup now'}
               </button>
               <div style={{ fontSize: 10.5, color: 'var(--slate-soft)', marginTop: 6, maxWidth: 240, textAlign: 'left' }}>
-                Backup runs automatically from the operator laptop daily at 14:10. Manual trigger here is a no-op on this server (rclone not installed in the serverless container).
+                Backup runs automatically from the operator laptop daily at 14:10. Manual trigger here works too (pure-SQL dump to Drive).
               </div>
             </div>
           </div>
