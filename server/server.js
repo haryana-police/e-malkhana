@@ -3698,6 +3698,57 @@ app.post('/api/admin/deploy', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/admin/entries — dev-only search across case_property, bypassing
+// the date-lock so an admin can fix Naib Court data-entry mistakes.
+// Filters: from, to (dd-mm-yyyy or yyyy-mm-dd), firNo, itemId, section.
+app.get('/api/admin/entries', async (req, res, next) => {
+  try {
+    const q = req.query || {};
+    const wheres = [];
+    const params = [];
+    const norm = (s) => String(s || '').trim();
+    if (norm(q.firNo)) { wheres.push(`fir_no ILIKE $${params.length + 1}`); params.push('%' + norm(q.firNo) + '%'); }
+    if (norm(q.itemId)) { wheres.push(`item_id ILIKE $${params.length + 1}`); params.push('%' + norm(q.itemId) + '%'); }
+    // date range against date_of_receipt (dd-mm-yyyy).  Convert to a
+    // comparable form: parse dd-mm-yyyy -> yyyy-mm-dd.
+    const toIso = (s) => {
+      const m = String(s).match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      if (m) { const [, d, mo, y] = m; return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`; }
+      const m2 = String(s).match(/^\d{4}-\d{2}-\d{2}$/);
+      return m2 ? String(s) : '';
+    };
+    const from = toIso(q.from), to = toIso(q.to);
+    if (from) { wheres.push(`to_date(date_of_receipt) >= $${params.length + 1}`); params.push(from); }
+    if (to)   { wheres.push(`to_date(date_of_receipt) <= $${params.length + 1}`); params.push(to); }
+    const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
+    const { rows } = await pool.query(
+      `SELECT item_id, fir_no, date_of_receipt, seized_time, quantity, malkhana_location, status, created_at
+         FROM case_property ${where} ORDER BY date_of_receipt NULLS LAST, item_id DESC LIMIT 200`,
+      params
+    );
+    res.json({ ok: true, count: rows.length, rows: rows.map(r => ({
+      itemId: r.item_id, firNo: r.fir_no, dateOfReceipt: r.date_of_receipt,
+      seizedTime: r.seized_time, quantity: r.quantity, malkhanaLocation: r.malkhana_location,
+      status: r.status, createdAt: String(r.created_at),
+    })) });
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/admin/entries/:itemId — dev-only hard delete of a case_property
+// row + its field values.  Bypasses the date-lock.  Audit-logged.
+app.delete('/api/admin/entries/:itemId', async (req, res, next) => {
+  try {
+    const itemId = decodeURIComponent(req.params.itemId).trim();
+    if (!itemId) return res.status(400).json({ ok: false, error: 'itemId required' });
+    const chk = await pool.query('SELECT item_id FROM case_property WHERE item_id = $1', [itemId]);
+    if (!chk.rows[0]) return res.status(404).json({ ok: false, error: 'not found' });
+    await pool.query('DELETE FROM case_property_fields WHERE item_id = $1', [itemId]);
+    await pool.query('DELETE FROM case_property WHERE item_id = $1', [itemId]);
+    await auditMm(req, 'admin.entry.delete', itemId, `Dev-deleted case property ${itemId} (bypassed lock)`);
+    res.json({ ok: true, deleted: itemId });
+  } catch (e) { next(e); }
+});
+
 // =================== API: Daily backup to Google Drive ===================
 // Reads server/data/backup-status.json (written by server/scripts/backup-to-drive.js
 // or server/scripts/backup-to-drive.sh, both run from the daily Windows Task

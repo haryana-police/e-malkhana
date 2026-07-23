@@ -8,7 +8,7 @@ interface Props {
   onUpdated: (cfg: AlertConfig) => void;
   onOpenSectionsManager?: () => void;
   onOpenItemTypeManager?: () => void;
-  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes' | 'submissions' | 'database';
+  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes' | 'submissions' | 'database' | 'live';
   // When true, show ONLY the requested part (no tab bar). Used when the
   // user clicks a specific System Setting part from the sidebar, so they
   // land on that one part instead of the whole settings surface.
@@ -29,6 +29,7 @@ const FOCUS_TITLE: Record<string, string> = {
   movementTypes: 'Movement Types',
   submissions: 'Daily Submission',
   database: 'Database',
+  live: 'Live Data',
 };
 
 const ACTION_LABELS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' | 'critical' }> = {
@@ -53,7 +54,7 @@ function fmtTime(iso: string) {
 }
 
 export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab, single, asPage = false }: Props) {
-  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup' | 'movements' | 'movementTypes' | 'submissions' | 'database'>('thresholds');
+  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup' | 'movements' | 'movementTypes' | 'submissions' | 'database' | 'live'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
   const [backupLog, setBackupLog] = useState<any[]>([]);
@@ -237,6 +238,11 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
               onClick={() => setTab('database')}
               title="Database cleanup & data integrity (dev)"
             >Database</button>
+            <button
+              className={`audit-tab${tab === 'live' ? ' active' : ''}`}
+              onClick={() => setTab('live')}
+              title="Developer live data modification (bypass locks)"
+            >Live Data</button>
             {onOpenSectionsManager && (
               <button
                 className="audit-tab"
@@ -464,6 +470,9 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
       )}
       {activeTab === 'database' && (
         <DatabaseAdminTab />
+      )}
+      {activeTab === 'live' && (
+        <LiveDataTab />
       )}
     </>
   );
@@ -733,6 +742,128 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
     </div>
   );
 }
+// =============================================================
+// Live Data tab — developer power: search + modify case-property rows
+// bypassing the date-lock (the portal's "Live Data Modification" /
+// "Force Finalize" override).  Edits carry devOverride so a finalized
+// day can still be corrected; every change is audit-logged.
+// =============================================================
+function LiveDataTab() {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [firNo, setFirNo] = useState('');
+  const [itemId, setItemId] = useState('');
+  const [rows, setRows] = useState<any[]>([]);
+  const [searched, setSearched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'error' | 'info'; text: string } | null>(null);
+  // inline edit state: itemId -> { quantity, status, malkhanaLocation }
+  const [edit, setEdit] = useState<Record<string, { quantity: string; status: string; malkhanaLocation: string }>>({});
+
+  async function search() {
+    setBusy(true); setMsg(null); setSearched(true);
+    try {
+      const r = await api.adminEntries({ from, to, firNo, itemId });
+      setRows(r.rows || []);
+      if ((r.rows || []).length === 0) setMsg({ kind: 'info', text: 'No matching entries.' });
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  function startEdit(r: any) {
+    setEdit(e => ({ ...e, [r.itemId]: { quantity: r.quantity || '', status: r.status || '', malkhanaLocation: r.malkhanaLocation || '' } }));
+  }
+  function setField(id: string, k: 'quantity' | 'status' | 'malkhanaLocation', v: string) {
+    setEdit(e => ({ ...e, [id]: { ...(e[id] || { quantity: '', status: '', malkhanaLocation: '' }), [k]: v } }));
+  }
+
+  async function save(id: string) {
+    const f = edit[id]; if (!f) return;
+    setBusy(true); setMsg(null);
+    try {
+      // Reuse the case-property save with devOverride so the date-lock is bypassed.
+      const r: any = await api.saveCasePropertyOverride(id, { quantity: f.quantity, status: f.status, malkhanaLocation: f.malkhanaLocation }, []);
+      if (!r.ok) setMsg({ kind: 'error', text: r.error || 'Save failed.' });
+      else { setMsg({ kind: 'ok', text: `Saved ${id} (override).` }); setEdit(e => { const n = { ...e }; delete n[id]; return n; }); search(); }
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  async function del(id: string) {
+    if (!confirm(`Dev-delete ${id}? This hard-deletes the case-property row + fields.`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.adminEntryDelete(id);
+      if (!r.ok) setMsg({ kind: 'error', text: r.error || 'Delete failed.' });
+      else { setMsg({ kind: 'ok', text: `Deleted ${id}.` }); search(); }
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div>
+      <div className="sub" style={{ marginBottom: 12 }}>
+        Developer power — search + fix case-property entries <b>bypassing the daily submission lock</b>
+        (Naib Court mistakes). Edits are audit-logged with a dev-override flag.
+      </div>
+
+      <div className="scan-bar" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <span className="scan-label">From</span>
+        <input type="text" placeholder="dd-mm-yyyy" value={from} onChange={e => setFrom(e.target.value)} style={{ width: 120 }} />
+        <span className="scan-label">To</span>
+        <input type="text" placeholder="dd-mm-yyyy" value={to} onChange={e => setTo(e.target.value)} style={{ width: 120 }} />
+        <input type="text" placeholder="FIR/DD no (or part)" value={firNo} onChange={e => setFirNo(e.target.value)} style={{ width: 150 }} />
+        <input type="text" placeholder="Item id (MK-…)" value={itemId} onChange={e => setItemId(e.target.value)} style={{ width: 150 }} />
+        <button className="btn" onClick={search} disabled={busy}>🔍 Search</button>
+        <button className="btn ghost" onClick={() => { setFrom(''); setTo(''); setFirNo(''); setItemId(''); setRows([]); setSearched(false); }}>Clear</button>
+      </div>
+
+      {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 8 }}>{msg.text}</div>}
+
+      {searched && rows.length > 0 && (
+        <table className="audit-log-table" style={{ marginTop: 12 }}>
+          <thead>
+            <tr><th>Item</th><th>FIR/DD</th><th>Receipt</th><th>Qty</th><th>Status</th><th>Location</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              const e = edit[r.itemId];
+              return (
+                <tr key={r.itemId}>
+                  <td style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }}>{r.itemId}</td>
+                  <td style={{ fontSize: 11.5 }}>{r.firNo}</td>
+                  <td style={{ fontSize: 11.5 }}>{r.dateOfReceipt || '—'}</td>
+                  {e ? (
+                    <>
+                      <td><input value={e.quantity} onChange={ev => setField(r.itemId, 'quantity', ev.target.value)} style={{ width: 70 }} /></td>
+                      <td><input value={e.status} onChange={ev => setField(r.itemId, 'status', ev.target.value)} style={{ width: 90 }} /></td>
+                      <td><input value={e.malkhanaLocation} onChange={ev => setField(r.itemId, 'malkhanaLocation', ev.target.value)} style={{ width: 110 }} /></td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn ghost" style={{ fontSize: 11, padding: '3px 9px' }} disabled={busy} onClick={() => save(r.itemId)}>💾 Save</button>
+                        <button className="btn ghost" style={{ fontSize: 11, padding: '3px 9px' }} onClick={() => startEdit(r)}>✕ Cancel</button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td style={{ fontSize: 11.5 }}>{r.quantity || '—'}</td>
+                      <td style={{ fontSize: 11.5 }}>{r.status}</td>
+                      <td style={{ fontSize: 11.5 }}>{r.malkhanaLocation || '—'}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn ghost" style={{ fontSize: 11, padding: '3px 9px' }} onClick={() => startEdit(r)}>✏️ Edit</button>
+                        <button className="btn ghost" style={{ fontSize: 11, padding: '3px 9px', color: 'var(--seal-red)' }} onClick={() => del(r.itemId)}>🗑️</button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 // =============================================================
 // Database Admin tab — cleanup + data integrity.  Mirrors the court
 // portal's "Database Cleanup" + "Round Off Decimals" panels, scoped to

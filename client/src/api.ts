@@ -142,6 +142,9 @@ export const api = {
   caseProperty: (itemId: string) => get<CasePropertyData>(`/case-property/${encodeURIComponent(itemId)}`),
   saveCaseProperty: (payload: { itemId: string; firNo?: string; common: Record<string, string>; fields: { key: string; value: string }[] }) =>
     send<CasePropertyData>('POST', '/case-property', payload),
+  // Dev override save — bypasses the daily-submission date-lock.
+  saveCasePropertyOverride: (itemId: string, common: Record<string, string>, fields: { key: string; value: string }[]) =>
+    send<CasePropertyData>('POST', '/case-property', { itemId, common, fields, devOverride: true }),
   // Multi-item registration under one FIR/DD.  See server.js POST /api/cases/batch.
   createCaseBatch: (payload: {
     firOrDd: string; firNo?: string; recordType?: 'FIR' | 'DD';
@@ -307,6 +310,12 @@ export const api = {
     roundDecimals: () => send<{ ok: boolean; touched: number; error?: string }>('POST', '/admin/round-decimals', { confirm: true }),
     deployStatus: () => get<{ ok: boolean; enabled: boolean; note: string }>('/admin/deploy-status'),
     deploy:       (reason?: string) => send<{ ok: boolean; status: number; accepted: boolean; body?: string; error?: string }>('POST', '/admin/deploy', { reason }),
+    // admin: live data modification (dev bypass)
+    adminEntries: (f: { from?: string; to?: string; firNo?: string; itemId?: string }) =>
+      get<{ ok: boolean; count: number; rows: { itemId: string; firNo: string; dateOfReceipt: string; seizedTime: string; quantity: string; malkhanaLocation: string; status: string; createdAt: string }[] }>(
+        `/admin/entries?from=${encodeURIComponent(f.from || '')}&to=${encodeURIComponent(f.to || '')}&firNo=${encodeURIComponent(f.firNo || '')}&itemId=${encodeURIComponent(f.itemId || '')}`
+      ),
+    adminEntryDelete: (itemId: string) => send<{ ok: boolean; deleted: string; error?: string }>('DELETE', `/admin/entries/${encodeURIComponent(itemId)}`, {}),
 
   // other
   renameSection: (letter: string, name: string) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}`, { name }),
