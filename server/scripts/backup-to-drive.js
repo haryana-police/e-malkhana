@@ -98,8 +98,10 @@ if (!DATABASE_URL) fail('DATABASE_URL is not set');
 // can pick it up on serverless (where we can't persist to ~/.config).
 let RCLONE_CONFIG_ARG = [];
 if (process.env.RCLONE_CONFIG_BASE64) {
-  const tmp = join(__dirname, '..', 'data', '.rclone-gdrive.conf');
-  mkdirSync(dirname(tmp), { recursive: true });
+  // Vercel's /var/task is read-only; only /tmp is writable.
+  const tmpDir = process.env.TMPDIR || process.env.TMP || '/tmp';
+  const tmp = join(tmpDir, '.rclone-gdrive.conf');
+  mkdirSync(tmpDir, { recursive: true });
   writeFileSync(tmp, Buffer.from(process.env.RCLONE_CONFIG_BASE64, 'base64'), 'utf8');
   RCLONE_CONFIG_ARG = ['--config', tmp];
 }
@@ -119,16 +121,22 @@ function ts() {
 }
 
 function appendStatus(entry) {
-  let cur = { runs: [] };
-  try { cur = JSON.parse(readFileSync(STATUS_FILE, 'utf8')); } catch { /* fresh file */ }
-  const id = (cur.runs.at(-1)?.id ?? 0) + 1;
-  cur.runs.push({ id, ...entry });
-  if (cur.runs.length > 50) cur.runs.splice(0, cur.runs.length - 50);
-  cur.last = cur.runs.at(-1);
-  cur.lastSuccess = [...cur.runs].reverse().find(r => r.status === 'success') || null;
-  cur.lastFailed  = [...cur.runs].reverse().find(r => r.status === 'failed')  || null;
-  mkdirSync(dirname(STATUS_FILE), { recursive: true });
-  writeFileSync(STATUS_FILE, JSON.stringify(cur, null, 2), 'utf8');
+  // On Vercel the status file lives on a read-only fs; writing is best-effort
+  // only — the upload itself must still succeed even if this fails.
+  try {
+    let cur = { runs: [] };
+    try { cur = JSON.parse(readFileSync(STATUS_FILE, 'utf8')); } catch { /* fresh file */ }
+    const id = (cur.runs.at(-1)?.id ?? 0) + 1;
+    cur.runs.push({ id, ...entry });
+    if (cur.runs.length > 50) cur.runs.splice(0, cur.runs.length - 50);
+    cur.last = cur.runs.at(-1);
+    cur.lastSuccess = [...cur.runs].reverse().find(r => r.status === 'success') || null;
+    cur.lastFailed  = [...cur.runs].reverse().find(r => r.status === 'failed')  || null;
+    mkdirSync(dirname(STATUS_FILE), { recursive: true });
+    writeFileSync(STATUS_FILE, JSON.stringify(cur, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[backup] status write skipped:', e.message);
+  }
 }
 
 const startedAt = new Date();
