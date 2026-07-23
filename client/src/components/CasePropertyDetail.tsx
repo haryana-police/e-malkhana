@@ -650,113 +650,118 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       {/* ============================================================
           SINGLE-PAGE A4 LAYOUT — mirrors the printable Case Detail
           exactly so what the user prints is exactly what they see.
-          ============================================================ */}
-      <div className="case-a4-sheet">
+          {/* ============================================================
+              SINGLE-PAGE A4 LAYOUT — mirrors the printable Case Detail
+              exactly so what the user prints is exactly what they see.
+              Every section (Step 1 + Step 2 + Movement + Photo) lives
+              inside ONE A4 sheet so nothing scrolls off the screen.
+              ============================================================ */}
+          <div className="case-a4-sheet">
 
-        {/* Title + status stamp (same as print head) */}
-        <div className="case-a4-head">
-          <div>
-            <div className="case-a4-id">{c.id}</div>
-            <h1 className="case-a4-title">{c.itemType}</h1>
-            {c.itemSub && <div className="case-a4-sub">{c.itemSub}</div>}
-          </div>
-          <span className={`case-a4-stamp ${STATUS_TONE[c.status] || ''}`}>{c.status}</span>
-        </div>
-
-        {/* STEP 1 — title + QR top-right, fields below */}
-        <div className="case-a4-card">
-          <div className="case-a4-step1-head">
-            <h3>Step 1 of 2 — {isDD ? 'DD' : 'FIR'} &amp; Receipt</h3>
-            <div className="case-a4-qr">
-              {qrUrl
-                ? <img src={qrUrl} alt={`Encrypted QR for ${c.id}`} className="case-a4-qr-img" />
-                : <div className="case-a4-qr-placeholder">No QR</div>}
-              {qrMask && <div className="case-a4-qr-mask">{qrMask}</div>}
-              <div className="case-a4-qr-cap">Encrypted — scan with e-Malkhana</div>
+            {/* Title + status stamp (same as print head) */}
+            <div className="case-a4-head">
+              <div>
+                <div className="case-a4-id">{c.id}</div>
+                <h1 className="case-a4-title">{c.itemType}</h1>
+                {c.itemSub && <div className="case-a4-sub">{c.itemSub}</div>}
+              </div>
+              <span className={`case-a4-stamp ${STATUS_TONE[c.status] || ''}`}>{c.status}</span>
             </div>
-          </div>
-          <div className="case-a4-grid">
-            <div><span className="k">Record Type</span><span className="v">{isDD ? 'DD (Daily Diary)' : 'FIR'}</span></div>
-            <div><span className="k">FIR / DD No.</span><span className="v mono">{c.id}</span></div>
-            <div><span className="k">{isDD ? 'DD Date' : 'FIR Date'}</span><span className="v mono">{fmtDate(c.firDate)}</span></div>
-            <div className="full"><span className="k">Section (U/S Legal Section)</span><span className="v mono">{detailUsText(c)}</span></div>
-            <div><span className="k">Received By (Malkhana Moharrir)</span><span className="v">{cp?.receivedBy || c.receivedBy || '—'}</span></div>
-            <div><span className="k">Seized Time</span><span className="v mono">{cp?.seizedTime || '—'}</span></div>
-            <div><span className="k">Seizing Officer</span><span className="v">{c.seizingOfficer || '—'}</span></div>
-          </div>
-        </div>
 
-        {/* STEP 2 */}
-        <div className="case-a4-card">
-          <h3>Step 2 of 2 — Seized Item Details</h3>
-          <div className="case-a4-grid">
-            <div><span className="k">Category of Item</span><span className="v">{c.itemType}</span></div>
-            <div>
-              <span className="k">Location</span>
-              <span className="v">
-                {c.sectionName
-                  ? `${c.sectionName} (Part ${sectionLetter(c) || '—'})`
-                  : sectionLetter(c)
-                    ? `Part ${sectionLetter(c)}`
-                    : '—'}
-              </span>
-            </div>
-            <div><span className="k">Quantity</span><span className="v">{cp?.quantity || c.quantity || c.itemSub || '—'}</span></div>
-            <div className="full"><span className="k">Item Description</span><span className="v">{cp?.remarks || c.description || '—'}</span></div>
-          </div>
-        </div>
-
-        {/* MOVEMENT + PHOTO side-by-side */}
-        <div className="case-a4-bottom">
-          <div className="case-a4-card case-a4-movement">
-            <h3>
-              Movement Chain
-              <span className="muted"> ({movements.length} {movements.length === 1 ? 'entry' : 'entries'})</span>
-            </h3>
-            {movements.length === 0
-              ? <div className="case-a4-empty">No movements recorded yet.</div>
-              : (
-                <ol className="case-a4-timeline">
-                  {movements.map((m, idx) => {
-                    const stepNo = movements.length - idx; // newest first = step 1
-                    return (
-                      <li key={idx}>
-                        <div className="t-step">Step {stepNo}</div>
-                        <div className="t-route">
-                          {m.fromLocation || 'New'}
-                          <span className="t-arrow">→</span>
-                          {m.toLocation || '—'}
-                        </div>
-                        <div className="t-meta">
-                          {m.movedBy || '—'} · {fmtTime(m.timestamp)}
-                          {m.purpose ? ` · ${m.purpose}` : ''}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-          </div>
-
-          <div className="case-a4-card case-a4-photo">
-            <h3>Photo of Seized Object</h3>
-            {photoUrl
-              ? (
-                <div className="case-a4-photo-body">
-                  <img className="case-a4-photo-lg" src={photoUrl} alt={`Seized ${c.itemType}`} />
-                  <span className="case-a4-photo-cap">{c.itemId} · captured at registration</span>
+            {/* STEP 1 — title + QR top-right, fields below */}
+            <div className="case-a4-card">
+              <div className="case-a4-step1-head">
+                <h3>Step 1 of 2 — {isDD ? 'DD' : 'FIR'} &amp; Receipt</h3>
+                <div className="case-a4-qr">
+                  {qrUrl
+                    ? <img src={qrUrl} alt={`Encrypted QR for ${c.id}`} className="case-a4-qr-img" />
+                    : <div className="case-a4-qr-placeholder">No QR</div>}
+                  {qrMask && <div className="case-a4-qr-mask">{qrMask}</div>}
+                  <div className="case-a4-qr-cap">Encrypted — scan with e-Malkhana</div>
                 </div>
-              )
-              : <div className="case-a4-empty case-a4-empty-photo">No photo was uploaded at registration.</div>}
-          </div>
-        </div>
+              </div>
+              <div className="case-a4-grid">
+                <div><span className="k">Record Type</span><span className="v">{isDD ? 'DD (Daily Diary)' : 'FIR'}</span></div>
+                <div><span className="k">FIR / DD No.</span><span className="v mono">{c.id}</span></div>
+                <div><span className="k">{isDD ? 'DD Date' : 'FIR Date'}</span><span className="v mono">{fmtDate(c.firDate)}</span></div>
+                <div className="full"><span className="k">Section (U/S Legal Section)</span><span className="v mono">{detailUsText(c)}</span></div>
+                <div><span className="k">Received By (Malkhana Moharrir)</span><span className="v">{cp?.receivedBy || c.receivedBy || '—'}</span></div>
+                <div><span className="k">Seized Time</span><span className="v mono">{cp?.seizedTime || '—'}</span></div>
+                <div><span className="k">Seizing Officer</span><span className="v">{c.seizingOfficer || '—'}</span></div>
+              </div>
+            </div>
 
-        {/* Footer (printed-style) */}
-        <div className="case-a4-footer">
-          <span>e-Malkhana · Case Detail · {recordType} {c.id}</span>
-          <span>{escapeHtml(new Date().toLocaleString('en-IN'))}</span>
-        </div>
-      </div>
+            {/* STEP 2 */}
+            <div className="case-a4-card">
+              <h3>Step 2 of 2 — Seized Item Details</h3>
+              <div className="case-a4-grid">
+                <div><span className="k">Category of Item</span><span className="v">{c.itemType}</span></div>
+                <div>
+                  <span className="k">Location</span>
+                  <span className="v">
+                    {c.sectionName
+                      ? `${c.sectionName} (Part ${sectionLetter(c) || '—'})`
+                      : sectionLetter(c)
+                        ? `Part ${sectionLetter(c)}`
+                        : '—'}
+                  </span>
+                </div>
+                <div><span className="k">Quantity</span><span className="v">{cp?.quantity || c.quantity || c.itemSub || '—'}</span></div>
+                <div className="full"><span className="k">Item Description</span><span className="v">{cp?.remarks || c.description || '—'}</span></div>
+              </div>
+            </div>
+
+            {/* MOVEMENT + PHOTO side-by-side */}
+            <div className="case-a4-bottom">
+              <div className="case-a4-card case-a4-movement">
+                <h3>
+                  Movement Chain
+                  <span className="muted"> ({movements.length} {movements.length === 1 ? 'entry' : 'entries'})</span>
+                </h3>
+                {movements.length === 0
+                  ? <div className="case-a4-empty">No movements recorded yet.</div>
+                  : (
+                    <ol className="case-a4-timeline">
+                      {movements.map((m, idx) => {
+                        const stepNo = movements.length - idx; // newest first = step 1
+                        return (
+                          <li key={idx}>
+                            <div className="t-step">Step {stepNo}</div>
+                            <div className="t-route">
+                              {m.fromLocation || 'New'}
+                              <span className="t-arrow">→</span>
+                              {m.toLocation || '—'}
+                            </div>
+                            <div className="t-meta">
+                              {m.movedBy || '—'} · {fmtTime(m.timestamp)}
+                              {m.purpose ? ` · ${m.purpose}` : ''}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+              </div>
+
+              <div className="case-a4-card case-a4-photo">
+                <h3>Photo of Seized Object</h3>
+                {photoUrl
+                  ? (
+                    <div className="case-a4-photo-body">
+                      <img className="case-a4-photo-lg" src={photoUrl} alt={`Seized ${c.itemType}`} />
+                      <span className="case-a4-photo-cap">{c.itemId} · captured at registration</span>
+                    </div>
+                  )
+                  : <div className="case-a4-empty case-a4-empty-photo">No photo was uploaded at registration.</div>}
+              </div>
+            </div>
+
+            {/* Footer (printed-style) */}
+            <div className="case-a4-footer">
+              <span>e-Malkhana · Case Detail · {recordType} {c.id}</span>
+              <span>{escapeHtml(new Date().toLocaleString('en-IN'))}</span>
+            </div>
+          </div>
 
       {/* Footer */}
       <footer className="case-property-foot">
