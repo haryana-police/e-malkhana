@@ -213,8 +213,9 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       const wrap = document.querySelector('.case-detail') as HTMLElement | null;
       if (!wrap) return;
       const sheet = wrap.querySelector('.case-a4-sheet') as HTMLElement | null;
-      // reset any prior scale to measure natural height
+      // reset prior scale + height override to measure true natural height
       wrap.style.transform = 'none';
+      wrap.style.height = 'auto';
       const natural = wrap.getBoundingClientRect().height;
       const topChrome = wrap.getBoundingClientRect().top; // distance from viewport top (header + nav)
       const avail = window.innerHeight - topChrome - 8; // 8px breathing room
