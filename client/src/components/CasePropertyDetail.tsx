@@ -487,10 +487,8 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
 
     const movementHtml = movements.length === 0
       ? '<div class="empty">No movements recorded yet.</div>'
-      : `<ol class="timeline">${movements.map((m, idx) => {
-          const stepNo = movements.length - idx; // newest first = step 1
+      : `<ol class="timeline">${movements.map((m) => {
           return `<li>
-            <div class="t-step">Step ${stepNo}</div>
             <div class="t-route">${escapeHtml(m.fromLocation || 'New')}<span class="t-arrow">→</span>${escapeHtml(m.toLocation || '—')}</div>
             <div class="t-meta">${escapeHtml(m.movedBy || '—')} · ${fmtTime(m.timestamp)}${m.purpose ? ' · ' + escapeHtml(m.purpose) : ''}</div>
           </li>`;
@@ -539,14 +537,12 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         .movement-card { border: 2px solid #14243D; padding: 14px 16px; }
         .movement-card h3 { font-size: 13px; color: #14243D; border-bottom: 2px solid #14243D; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
         .movement-card h3 .muted { font-size: 10.5px; font-weight: 400; color: #4F6079; text-transform: none; letter-spacing: 0; }
-        .timeline { list-style: none; padding: 0; margin: 8px 0 0; counter-reset: tstep; }
-        .timeline li { position: relative; padding: 10px 12px 10px 56px; border-left: 3px solid #14243D; margin-left: 14px; margin-bottom: 6px; background: #F2EDDB; border-radius: 0 4px 4px 0; }
+        .timeline { list-style: none; padding: 0; margin: 6px 0 0; }
+        .timeline li { position: relative; padding: 4px 10px 4px 14px; border-left: 2px solid #14243D; margin-left: 5px; margin-bottom: 4px; background: #F2EDDB; border-radius: 0 4px 4px 0; }
         .timeline li:last-child { margin-bottom: 0; border-left-color: transparent; }
-        .timeline li::before { content: counter(tstep); counter-increment: tstep; position: absolute; left: -16px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border-radius: 50%; background: #14243D; color: #FAF7EE; font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px #FAF7EE; }
-        .t-step { display: inline-block; font-family: 'Rajdhani', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8C7A54; background: #fff; border: 1px solid #8C7A54; padding: 1px 6px; border-radius: 2px; margin-bottom: 4px; }
-        .t-route { font-size: 13px; font-weight: 600; color: #14243D; }
+        .t-route { font-size: 12px; font-weight: 600; color: #14243D; }
         .t-arrow { color: #8C7A54; font-weight: 700; margin: 0 6px; }
-        .t-meta  { font-size: 11px; color: #4F6079; margin-top: 3px; }
+        .t-meta  { font-size: 10px; color: #4F6079; margin-top: 2px; }
         .empty   { color: #4F6079; font-size: 11px; font-style: italic; }
         .footer  { margin-top: 14px; padding-top: 8px; border-top: 1px solid #D9D2C2; font-size: 10px; color: #4F6079; display: flex; justify-content: space-between; }
         .noprint { display: block; text-align: right; margin: 12px 0; }
@@ -721,10 +717,8 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                   : (
                     <ol className="case-a4-timeline">
                       {movements.map((m, idx) => {
-                        const stepNo = movements.length - idx; // newest first = step 1
                         return (
                           <li key={idx}>
-                            <div className="t-step">Step {stepNo}</div>
                             <div className="t-route">
                               {m.fromLocation || 'New'}
                               <span className="t-arrow">→</span>

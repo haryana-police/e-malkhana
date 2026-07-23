@@ -3709,60 +3709,24 @@ input, select, textarea{
 .case-a4-timeline {
   list-style: none;
   padding: 0;
-  margin: 6px 0 0;
-  counter-reset: tstep;
-  max-height: 240px;
-  overflow-y: auto;
+  margin: 4px 0 0;
 }
 .case-a4-timeline li {
   position: relative;
-  padding: 6px 8px 6px 38px;
+  padding: 3px 8px 3px 14px;
   border-left: 2px solid #14243D;
-  margin-left: 12px;
-  margin-bottom: 4px;
+  margin-left: 5px;
+  margin-bottom: 3px;
   background: #F2EDDB;
   border-radius: 0 3px 3px 0;
 }
 .case-a4-timeline li:last-child { margin-bottom: 0; border-left-color: transparent; }
-.case-a4-timeline li::before {
-  content: counter(tstep);
-  counter-increment: tstep;
-  position: absolute;
-  left: -14px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #14243D;
-  color: #FAF7EE;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 0 2px #fff;
-}
-.case-a4-timeline .t-step {
-  display: inline-block;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #8C7A54;
-  background: #fff;
-  border: 1px solid #8C7A54;
-  padding: 0 5px;
-  border-radius: 2px;
-  margin-bottom: 2px;
-}
 .case-a4-timeline .t-route {
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
   color: #14243D;
   word-break: break-word;
+  line-height: 1.3;
 }
 .case-a4-timeline .t-arrow {
   color: #8C7A54;
@@ -3770,9 +3734,9 @@ input, select, textarea{
   margin: 0 4px;
 }
 .case-a4-timeline .t-meta {
-  font-size: 10px;
+  font-size: 9.5px;
   color: #4F6079;
-  margin-top: 2px;
+  margin-top: 1px;
   word-break: break-word;
 }
 
