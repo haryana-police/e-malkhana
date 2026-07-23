@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { CaseRow, CaseStatus } from '../types';
 
@@ -131,6 +131,7 @@ export function RegisterTable({
   const [openCol, setOpenCol] = useState<ColKey | null>(null);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, string>>>({});
   const [statusFilter, setStatusFilter] = useState<CaseStatus[]>([]);
+  const filterInputRef = useRef<HTMLInputElement>(null);
 
   // Reset the register pager when any search or filter changes.
   useEffect(() => { setPage(1); }, [textFilter, colFilters, statusFilter, activeSection, activeStatus, excludeDisposed]);
@@ -376,8 +377,9 @@ export function RegisterTable({
       )}
 
       <div className="scan-bar">
-        <span className="scan-label">Search</span>
         <input
+          ref={filterInputRef}
+          className="scan-bar-filter"
           placeholder="Filter by FIR/DD, item, officer, status…  (press Enter to open scanner)"
           value={textFilter}
           onChange={e => setTextFilter(e.target.value)}
@@ -390,6 +392,14 @@ export function RegisterTable({
             <span className="pg-info">Page {safePage} of {totalPages} · {shown.length} entries</span>
           </div>
         )}
+        <button
+          type="button"
+          className="search-btn"
+          onClick={() => { const el = filterInputRef.current; if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }}
+          title="Focus the filter input"
+        >
+          SEARCH
+        </button>
       </div>
 
       {visible.length === 0 && (

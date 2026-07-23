@@ -20,6 +20,8 @@
   --slate-soft:#5C5A4E;
   --line:#C9BFA0;
   --white-paper:#FAF7EE;
+  --accent-yellow:#F5D547;
+  --accent-yellow-ink:#3A2E0A;
 }
 
 *{ margin:0; padding:0; box-sizing:border-box; }
@@ -959,6 +961,41 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
   font-family:'Rajdhani', sans-serif; font-size:10.5px; letter-spacing:0.12em;
   text-transform:uppercase; color: var(--khaki); font-weight:700; white-space:nowrap;
 }
+.scan-bar .scan-bar-filter{
+  flex:1 1 220px; min-width:160px; border:none; outline:none; background:transparent;
+  font-family:'IBM Plex Mono', monospace; font-size:12px; color: var(--ink-navy);
+  padding:2px 0;
+}
+/* Yellow rectangular SEARCH button — sits at the right end of the row.
+   On mobile (≤768px) it drops onto its own line below, and the word
+   "SEARCH" wraps in place of the compact box. */
+.scan-bar .search-btn{
+  flex: 0 0 auto;
+  margin-left: 8px;
+  background: var(--accent-yellow);
+  color: var(--accent-yellow-ink);
+  border: 1px solid #C9A227;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-family:'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.1;
+  min-width: 78px;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+  transition: background 0.12s ease, transform 0.06s ease;
+}
+.scan-bar .search-btn:hover{ background:#EBC934; }
+.scan-bar .search-btn:active{ transform: translateY(1px); }
+.scan-bar .search-btn:focus-visible{
+  outline: 2px solid var(--ink-navy);
+  outline-offset: 2px;
+}
 .scan-bar input{
   flex:1 1 220px; min-width:160px; border:none; outline:none; background:transparent;
   font-family:'IBM Plex Mono', monospace; font-size:12px; color: var(--ink-navy);
@@ -1185,6 +1222,10 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
   .scan-bar .scan-label{ order: 1; }
   .scan-bar .scan-btn{ order: 3; }
   .scan-bar .scan-result{ order: 4; width: 100%; }
+  /* Mobile: pager wraps to its own line, then SEARCH button drops onto
+     the next line with the word "SEARCH" wrapping in place of the box. */
+  .scan-bar .rt-pager.rt-pager-inline{ flex: 1 1 100%; order: 3; flex-wrap: wrap; justify-content: flex-start; margin-left: 0; }
+  .scan-bar .search-btn{ order: 4; flex: 1 1 100%; margin-left: 0; padding: 8px 14px; min-width: 0; }
 
   /* Tables — keep min-width so the panel scrolls, hide non-essential cols */
   .panel table{ min-width: 640px; font-size: 12px; }
