@@ -8,7 +8,7 @@ interface Props {
   onUpdated: (cfg: AlertConfig) => void;
   onOpenSectionsManager?: () => void;
   onOpenItemTypeManager?: () => void;
-  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes' | 'submissions';
+  initialTab?: 'thresholds' | 'fields' | 'backup' | 'log' | 'movements' | 'movementTypes' | 'submissions' | 'database';
   // When true, show ONLY the requested part (no tab bar). Used when the
   // user clicks a specific System Setting part from the sidebar, so they
   // land on that one part instead of the whole settings surface.
@@ -28,6 +28,7 @@ const FOCUS_TITLE: Record<string, string> = {
   movements: 'Movement Logs',
   movementTypes: 'Movement Types',
   submissions: 'Daily Submission',
+  database: 'Database',
 };
 
 const ACTION_LABELS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' | 'critical' }> = {
@@ -52,7 +53,7 @@ function fmtTime(iso: string) {
 }
 
 export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager, onOpenItemTypeManager, initialTab, single, asPage = false }: Props) {
-  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup' | 'movements' | 'movementTypes' | 'submissions'>('thresholds');
+  const [tab, setTab] = useState<'thresholds' | 'fields' | 'log' | 'backup' | 'movements' | 'movementTypes' | 'submissions' | 'database'>('thresholds');
   const [cfg, setCfg] = useState<AlertConfig | null>(null);
   const [backup, setBackup] = useState<any>(null);
   const [backupLog, setBackupLog] = useState<any[]>([]);
@@ -231,6 +232,11 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
               onClick={() => setTab('submissions')}
               title="Lock / finalize the daily Malkhana register"
             >Daily Submission</button>
+            <button
+              className={`audit-tab${tab === 'database' ? ' active' : ''}`}
+              onClick={() => setTab('database')}
+              title="Database cleanup & data integrity (dev)"
+            >Database</button>
             {onOpenSectionsManager && (
               <button
                 className="audit-tab"
@@ -455,6 +461,9 @@ export function SettingsModal({ open, onClose, onUpdated, onOpenSectionsManager,
       )}
       {activeTab === 'submissions' && (
         <DailySubmissionsTab />
+      )}
+      {activeTab === 'database' && (
+        <DatabaseAdminTab />
       )}
     </>
   );
@@ -724,6 +733,125 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
     </div>
   );
 }
+// =============================================================
+// Database Admin tab — cleanup + data integrity.  Mirrors the court
+// portal's "Database Cleanup" + "Round Off Decimals" panels, scoped to
+// e-Malkhana's REAL tables.  Destructive actions require an explicit
+// confirm click; FULL SYSTEM WIPE additionally requires a typed "WIPE".
+// `users` + `kv` are never cleared (operators stay logged in).
+// =============================================================
+function DatabaseAdminTab() {
+  const [targets, setTargets] = useState<Record<string, { label: string; tables: string[]; rows: number }>>({});
+  const [fullRows, setFullRows] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [wipeConfirm, setWipeConfirm] = useState('');
+
+  async function reload() {
+    setLoading(true); setMsg(null);
+    try {
+      const r = await api.cleanupTargets();
+      setTargets(r.targets || {});
+      setFullRows(r.fullWipeRows || 0);
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { reload(); /* eslint-disable-line */ }, []);
+
+  async function run(target: string, label: string) {
+    if (!confirm(`CLEAR ${label}?\n\nThis deletes the data and cannot be undone. A backup is recommended first.`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.cleanupRun(target);
+      if (!r.ok) setMsg({ kind: 'error', text: r.error || 'Cleanup failed.' });
+      else { setMsg({ kind: 'ok', text: `Cleared ${r.cleared} row(s) from ${label}.` }); reload(); }
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  async function round() {
+    if (!confirm('Round all decimal values to the nearest integer? Safe to run repeatedly.')) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.roundDecimals();
+      if (!r.ok) setMsg({ kind: 'error', text: r.error || 'Failed.' });
+      else setMsg({ kind: 'ok', text: `Rounded ${r.touched} decimal value(s) to nearest integer.` });
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  async function wipe() {
+    if (wipeConfirm.trim() !== 'WIPE') { setMsg({ kind: 'error', text: 'Type WIPE to confirm.' }); return; }
+    if (!confirm('FULL SYSTEM WIPE — this clears ALL case/property/movement/inspection data (users + settings preserved). IRREVERSIBLE.')) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.cleanupRun('FULL_SYSTEM_WIPE');
+      if (!r.ok) setMsg({ kind: 'error', text: r.error || 'Wipe failed.' });
+      else { setMsg({ kind: 'ok', text: `Wiped ${r.cleared} row(s). Users + settings preserved.` }); setWipeConfirm(''); reload(); }
+    } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div>
+      <div className="sub" style={{ marginBottom: 12 }}>
+        Clear redundant data while keeping core functionality. Every action is audit-logged and
+        requires a confirm click. <b>Users &amp; settings are never touched.</b>
+      </div>
+
+      <h3 style={{ fontFamily: 'Rajdhani, sans-serif', color: 'var(--ink-navy)', fontSize: 14, margin: '4px 0 8px' }}>
+        Clear Table Entries <span className="audit-tab-count">{Object.keys(targets).length}</span>
+      </h3>
+      {loading ? <div className="sub">Loading…</div> : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, alignItems: 'center' }}>
+          {Object.entries(targets).map(([k, t]) => (
+            <div key={k} style={{ display: 'contents' }}>
+              <div style={{ fontSize: 12.5 }}>
+                {t.label} <span className="sub" style={{ fontSize: 11 }}>({t.rows} row{t.rows === 1 ? '' : 's'})</span>
+              </div>
+              <button className="btn ghost" style={{ fontSize: 11, padding: '3px 12px', color: 'var(--seal-red)' }}
+                disabled={busy || t.rows === 0} onClick={() => run(k, t.label)}>Clear</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <h3 style={{ fontFamily: 'Rajdhani, sans-serif', color: 'var(--ink-navy)', fontSize: 14, margin: '18px 0 8px' }}>
+        Data Integrity
+      </h3>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn ghost" onClick={round} disabled={busy}>
+          🔢 Round Off All Decimal Entries
+        </button>
+      </div>
+      <div className="sub" style={{ fontSize: 11.5, marginTop: 6 }}>
+        Scans number-type columns and rounds decimal values (3.5 → 4, 2.1 → 2) to the nearest integer. Idempotent.
+      </div>
+
+      <h3 style={{ fontFamily: 'Rajdhani, sans-serif', color: 'var(--seal-red)', fontSize: 14, margin: '18px 0 8px' }}>
+        💣 Full System Wipe <span className="sub" style={{ fontSize: 11, color: 'var(--slate-soft)' }}>({fullRows} rows)</span>
+      </h3>
+      <div className="scan-bar" style={{ gap: 8 }}>
+        <input
+          placeholder='type WIPE to enable'
+          value={wipeConfirm} onChange={e => setWipeConfirm(e.target.value)}
+          style={{ flex: 1, minWidth: 160, fontFamily: 'IBM Plex Mono, monospace' }}
+        />
+        <button className="btn" style={{ background: 'var(--seal-red)', color: '#fff' }}
+          disabled={busy || wipeConfirm.trim() !== 'WIPE'} onClick={wipe}>
+          WIPE ALL DATA
+        </button>
+      </div>
+      <div className="sub" style={{ fontSize: 11.5, marginTop: 6 }}>
+        Clears every data table (cases, property, movements, inspections, FIR/DD master, audit log, item types, BNS sections, submission ledger). Users &amp; key-value settings are preserved so you stay logged in.
+      </div>
+
+      {msg && <div className={`form-msg show ${msg.kind}`} style={{ marginTop: 10 }}>{msg.text}</div>}
+    </div>
+  );
+}
+
 // =============================================================
 // Daily Submission tab — lock / finalize the Malkhana register for a
 // given day.  Mirrors the court portal's "Daily Submissions" power:

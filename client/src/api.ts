@@ -301,6 +301,11 @@ export const api = {
       send<{ ok: boolean; id: number; date: string; status: string; error?: string }>('POST', '/submissions', { date, action, ...(opts || {}) }),
     submissionDelete: (id: number) => send<{ ok: boolean; deleted: boolean; error?: string }>('DELETE', `/submissions/${id}`, {}),
 
+    // admin: cleanup + data integrity
+    cleanupTargets: () => get<{ ok: boolean; targets: Record<string, { label: string; tables: string[]; rows: number }>; fullWipeTables: string[]; fullWipeRows: number }>('/admin/cleanup-targets'),
+    cleanupRun:    (target: string) => send<{ ok: boolean; target: string; label: string; tables: string[]; cleared: number; error?: string }>('POST', '/admin/cleanup', { target, confirm: true }),
+    roundDecimals: () => send<{ ok: boolean; touched: number; error?: string }>('POST', '/admin/round-decimals', { confirm: true }),
+
   // other
   renameSection: (letter: string, name: string) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}`, { name }),
   setSectionActive: (letter: string, active: boolean) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}/active`, { active }),

@@ -29,6 +29,7 @@ import {
   nextInspectionId, getLastInspectionDate,
   getItemCategories, getItemCategory, upsertItemCategory, deleteItemCategory,
   getSubmissions, getSubmissionForDate, upsertSubmission, deleteSubmission,
+  pool,
 } from './db.js';
 import { ensureUploadsDir, writeUpload, ensureCaseImage, UPLOADS_DIR } from './uploads.js';
 import crypto from 'node:crypto';
@@ -3550,6 +3551,112 @@ app.delete('/api/submissions/:id', async (req, res, next) => {
     const r = await deleteSubmission(id);
     await auditMm(req, 'submission.delete', String(id), `Removed ledger entry #${id}`);
     res.json({ ok: true, ...r });
+  } catch (e) { next(e); }
+});
+
+// =================== API: Admin — Database Cleanup & Data Integrity ===================
+// Maps the court portal's "Database Cleanup" + "Round Off Decimals" panels
+// to e-Malkhana's REAL tables (single-station Malkhana register).
+//
+// Safety rules:
+//   * Every mutating call requires `confirm: true` from the client.
+//   * FULL_SYSTEM_WIPE only clears DATA tables — `users` and `kv` are
+//     preserved on purpose so operators don't lock themselves out.
+//   * Every action is written to the audit log.
+//   * These are dev/operator tools; they run only on the operator context.
+
+// Tables that can be cleared, grouped by the portal's cleanup vocabulary.
+// `related` lets one button clear a parent + its child rows atomically.
+const CLEANUP_TARGETS = {
+  cases:            { tables: ['cases'],                                            label: 'Case Register (all FIR/DD entries)' },
+  case_property:   { tables: ['case_property_fields', 'case_property'],         label: 'Case Property (articles + type fields)' },
+  movements:        { tables: ['movements'],                                         label: 'Movement Logs' },
+  inspections:      { tables: ['inspections'],                                       label: 'Inspection Reports' },
+  fir_master:       { tables: ['fir_master'],                                         label: 'FIR / DD Master' },
+  audit_log:        { tables: ['audit_log'],                                         label: 'Activity Log' },
+  item_types:       { tables: ['item_type_fields', 'item_categories', 'item_types'], label: 'Item Types + Categories + Fields' },
+  bns_sections:     { tables: ['bns_sections'],                                       label: 'BNS Sections corpus' },
+  submissions:      { tables: ['submissions'],                                       label: 'Daily Submission ledger' },
+};
+// FULL_SYSTEM_WIPE = every data table EXCEPT users + kv (preserved deliberately).
+const FULL_WIPE_TABLES = [
+  'case_property_fields', 'case_property', 'movements', 'inspections', 'fir_master',
+  'cases', 'audit_log', 'item_type_fields', 'item_categories', 'item_types',
+  'bns_sections', 'submissions', 'sections',
+];
+
+// GET /api/admin/cleanup-targets — list clearable targets + live row counts.
+app.get('/api/admin/cleanup-targets', async (_req, res, next) => {
+  try {
+    const targets = {};
+    for (const [key, def] of Object.entries(CLEANUP_TARGETS)) {
+      let total = 0;
+      for (const t of def.tables) {
+        try {
+          const { rows } = await pool.query(`SELECT count(*)::int AS n FROM "${t}"`);
+          total += rows[0]?.n || 0;
+        } catch { /* table may not exist yet on a fresh boot */ }
+      }
+      targets[key] = { label: def.label, tables: def.tables, rows: total };
+    }
+    let wipeRows = 0;
+    for (const t of FULL_WIPE_TABLES) {
+      try { const { rows } = await pool.query(`SELECT count(*)::int AS n FROM "${t}"`); wipeRows += rows[0]?.n || 0; } catch {}
+    }
+    res.json({ ok: true, targets, fullWipeTables: FULL_WIPE_TABLES, fullWipeRows: wipeRows });
+  } catch (e) { next(e); }
+});
+
+// POST /api/admin/cleanup  { target: key|FULL_SYSTEM_WIPE, confirm: true }
+app.post('/api/admin/cleanup', async (req, res, next) => {
+  try {
+    const { target, confirm } = req.body || {};
+    if (confirm !== true) return res.status(400).json({ ok: false, error: 'confirm:true is required for a destructive cleanup.' });
+    let tables = [];
+    let label = '';
+    if (target === 'FULL_SYSTEM_WIPE') { tables = [...FULL_WIPE_TABLES]; label = 'FULL SYSTEM WIPE'; }
+    else if (CLEANUP_TARGETS[target]) { tables = [...CLEANUP_TARGETS[target].tables]; label = CLEANUP_TARGETS[target].label; }
+    else return res.status(400).json({ ok: false, error: `unknown target: ${target}` });
+    if (tables.length === 0) return res.status(400).json({ ok: false, error: 'no tables resolved' });
+    let cleared = 0;
+    for (const t of tables) {
+      try { const { rows } = await pool.query(`DELETE FROM "${t}"`); cleared += rows[0]?.n ?? 0; } catch (e) { console.error('[cleanup]', t, e.message); }
+    }
+    await auditMm(req, 'admin.cleanup', label, `Cleared ${cleared} row(s) across: ${tables.join(', ')}`);
+    res.json({ ok: true, target, label, tables, cleared });
+  } catch (e) { next(e); }
+});
+
+// POST /api/admin/round-decimals — round numeric-looking values to integers.
+// e-Malkhana stores most quantities as TEXT, so we round the TEXT cells
+// that match a decimal pattern, plus real numeric columns. Idempotent.
+app.post('/api/admin/round-decimals', async (req, res, next) => {
+  try {
+    const { confirm } = req.body || {};
+    if (confirm !== true) return res.status(400).json({ ok: false, error: 'confirm:true is required.' });
+    let touched = 0;
+    // 1) case_property_fields.value : "3.5" -> "4", "2.1" -> "2"
+    {
+      const { rows } = await pool.query(
+        `UPDATE case_property_fields
+           SET value = (value::numeric(20,4) + 0.5)::int::text
+           WHERE value ~ '^[0-9]+\\.[0-9]+$'
+           RETURNING id`
+      );
+      touched += rows.length;
+    }
+    // 2) numeric-looking TEXT columns on case_property (quantity, weight, amount…)
+    for (const col of ['quantity', 'seized_time']) {
+      try {
+        const { rows } = await pool.query(
+          `UPDATE case_property SET "${col}" = (("${col}"::numeric(20,4) + 0.5)::int)::text
+             WHERE "${col}" ~ '^[0-9]+\\.[0-9]+$' RETURNING item_id`
+        );
+        touched += rows.length;
+      } catch {}
+    }
+    await auditMm(req, 'admin.round_decimals', 'all-data', `Rounded ${touched} decimal value(s) to nearest integer`);
+    res.json({ ok: true, touched });
   } catch (e) { next(e); }
 });
 
