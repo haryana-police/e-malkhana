@@ -3514,172 +3514,322 @@ input, select, textarea{
 }
 
 /* ============================================================
-   CASE PROPERTY DETAIL — Step 1 layout matches the printable
-   Case Detail: QR anchored TOP-RIGHT of the Step 1 card, and the
-   Movement Chain + Photo card live in a 2-column row below
-   Step 1 + Step 2.
+   CASE PROPERTY DETAIL — single-page A4 sheet layout.
+   On-screen detail page renders the SAME structure as the
+   printable Case Detail (no separate stacked cards) so what
+   the user prints is exactly what they see.
 
-   Mirrors the printDetail() layout exactly, just rendered in
-   the SPA shell instead of a popup window.
+   - .case-a4-sheet → A4 width 210mm, fits in viewport without scroll.
+   - One flat sheet of Step 1 + Step 2 + Movement + Photo + footer.
    ============================================================ */
 
-/* Step 1: title left, QR right (replaces the page-header QR) */
-.case-step1-card { padding-top: 14px; padding-bottom: 14px; }
-.case-step1-head {
+.case-a4-sheet {
+  /* Mirror of the printable sheet, scaled to viewport. A4 = 210mm. */
+  width: min(100%, 210mm);
+  max-width: 210mm;
+  margin: 0 auto;
+  background: #FAF7EE;
+  color: #14243D;
+  font-family: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+  padding: 14mm 12mm 10mm;
+  border: 1px solid #D9D2C2;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(20, 36, 61, 0.06);
+  /* Ensure the whole sheet is reachable in viewport — gentle scale if narrow */
+  box-sizing: border-box;
+}
+
+/* Title + status stamp (matches print `.head`) */
+.case-a4-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 12px;
+  border-bottom: 2px solid #8C7A54;
   padding-bottom: 6px;
-  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
 }
-.case-step1-head h3 {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.case-step1-qr {
-  flex: 0 0 auto;
-  width: 140px;
-  text-align: center;
-  padding: 6px 8px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
-.case-step1-qr .case-property-qr-img {
-  width: 120px;
-  height: 120px;
-  display: block;
-  margin: 0 auto 4px;
-  border: 2px solid var(--ink-navy);
-  border-radius: 4px;
-}
-.case-step1-qr .case-property-qr-placeholder {
-  width: 120px;
-  height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 4px;
-  border: 2px dashed var(--line);
-  color: var(--slate-soft);
-  font-size: 12px;
-  border-radius: 4px;
-}
-.case-step1-qr .case-property-qr-mask {
+.case-a4-id {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 9px;
-  color: var(--khaki);
-  word-break: break-all;
-  margin-bottom: 4px;
+  font-size: 10px;
+  color: #8C7A54;
 }
-.case-step1-qr .case-property-qr-cap {
-  font-size: 9px;
-  color: var(--slate-soft);
-  letter-spacing: 0.04em;
+.case-a4-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 22px;
+  margin: 3px 0;
+  color: #14243D;
+  font-weight: 700;
+}
+.case-a4-sub {
+  color: #4F6079;
+  font-size: 11.5px;
+}
+.case-a4-stamp {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 3px;
+  background: #E6ECF2;
+  color: #14243D;
+  font-size: 10.5px;
   text-transform: uppercase;
-  margin-top: 2px;
+  letter-spacing: 0.04em;
+  flex: 0 0 auto;
+  margin-top: 4px;
 }
+.case-a4-stamp.tone-warn { background: #FFEED1; color: #8A4B00; }
+.case-a4-stamp.tone-good { background: #D6F0DC; color: #1A5A33; }
 
-/* Bottom row: Movement (LEFT) + Photo (RIGHT) side-by-side */
-.case-bottom-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 14px;
-  margin-top: 14px;
+/* Each card on the sheet */
+.case-a4-card {
+  border: 1px solid #D9D2C2;
+  border-radius: 4px;
+  padding: 8px 12px 10px;
+  margin-bottom: 10px;
+  background: #fff;
 }
-.case-movement-card, .case-photo-card { padding: 14px 16px; }
-.case-movement-head {
+.case-a4-card h3 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #14243D;
+  margin: 0 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #D9D2C2;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 10px;
-  padding-bottom: 6px;
-  border-bottom: 2px solid var(--ink-navy);
 }
-.case-movement-head h3 {
+.case-a4-card h3 .muted {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: #4F6079;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Step 1 card: title left, QR right */
+.case-a4-step1-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #D9D2C2;
+}
+.case-a4-step1-head h3 {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
-.case-movement-head .muted {
-  font-size: 11.5px;
-  color: var(--slate-soft);
+.case-a4-qr {
+  flex: 0 0 auto;
+  text-align: center;
+  padding: 4px 6px;
+  border: 1px solid #D9D2C2;
+  border-radius: 3px;
+  background: #fff;
+}
+.case-a4-qr-img {
+  width: 90px;
+  height: 90px;
+  display: block;
+  margin: 0 auto 2px;
+  border: 2px solid #14243D;
+  border-radius: 3px;
+}
+.case-a4-qr-placeholder {
+  width: 90px;
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 2px;
+  border: 2px dashed #D9D2C2;
+  color: #4F6079;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.case-a4-qr-mask {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  color: #8C7A54;
+  word-break: break-all;
+  margin-bottom: 2px;
+}
+.case-a4-qr-cap {
+  font-size: 8px;
+  color: #4F6079;
+  margin-top: 2px;
+  max-width: 100px;
 }
 
-/* Numbered timeline list — matches the printDetail() ol.timeline */
-.case-timeline {
+/* Field grid — same .k/.v as the printable template */
+.case-a4-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 16px;
+}
+.case-a4-grid .full { grid-column: 1 / -1; }
+.case-a4-grid .k {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: #8C7A54;
+  display: block;
+  letter-spacing: 0.06em;
+  margin-bottom: 1px;
+}
+.case-a4-grid .v {
+  font-size: 11.5px;
+  color: #14243D;
+  font-weight: 500;
+  word-break: break-word;
+  display: block;
+}
+.case-a4-grid .v.mono {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+/* Bottom row: Movement LEFT + Photo RIGHT, side-by-side */
+.case-a4-bottom {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: stretch;
+}
+.case-a4-movement { flex: 1.15 1 0; }
+.case-a4-photo { flex: 1 1 0; }
+
+/* Movement timeline on the sheet */
+.case-a4-timeline {
   list-style: none;
   padding: 0;
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   counter-reset: tstep;
+  max-height: 240px;
+  overflow-y: auto;
 }
-.case-timeline li {
+.case-a4-timeline li {
   position: relative;
-  padding: 10px 12px 10px 50px;
-  border-left: 3px solid var(--ink-navy);
-  margin-left: 14px;
-  margin-bottom: 6px;
+  padding: 6px 8px 6px 38px;
+  border-left: 2px solid #14243D;
+  margin-left: 12px;
+  margin-bottom: 4px;
   background: #F2EDDB;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 3px 3px 0;
 }
-.case-timeline li:last-child { margin-bottom: 0; border-left-color: transparent; }
-.case-timeline li::before {
+.case-a4-timeline li:last-child { margin-bottom: 0; border-left-color: transparent; }
+.case-a4-timeline li::before {
   content: counter(tstep);
   counter-increment: tstep;
   position: absolute;
-  left: -16px;
+  left: -14px;
   top: 50%;
   transform: translateY(-50%);
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: var(--ink-navy);
-  color: var(--cream);
+  background: #14243D;
+  color: #FAF7EE;
   font-family: 'Rajdhani', sans-serif;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 0 3px var(--cream-paper);
+  box-shadow: 0 0 0 2px #fff;
 }
-.case-timeline .t-step {
+.case-a4-timeline .t-step {
   display: inline-block;
   font-family: 'Rajdhani', sans-serif;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--khaki);
+  color: #8C7A54;
   background: #fff;
-  border: 1px solid var(--khaki);
-  padding: 1px 6px;
+  border: 1px solid #8C7A54;
+  padding: 0 5px;
   border-radius: 2px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
-.case-timeline .t-route {
-  font-size: 13px;
+.case-a4-timeline .t-route {
+  font-size: 11.5px;
   font-weight: 600;
-  color: var(--ink-navy);
+  color: #14243D;
   word-break: break-word;
 }
-.case-timeline .t-arrow { color: var(--khaki); font-weight: 700; margin: 0 6px; }
-.case-timeline .t-meta {
-  font-size: 11px;
-  color: var(--slate-soft);
-  margin-top: 3px;
+.case-a4-timeline .t-arrow {
+  color: #8C7A54;
+  font-weight: 700;
+  margin: 0 4px;
+}
+.case-a4-timeline .t-meta {
+  font-size: 10px;
+  color: #4F6079;
+  margin-top: 2px;
   word-break: break-word;
 }
 
-/* On narrower screens stack Photo below Movement */
-@media (max-width: 880px) {
-  .case-bottom-row { grid-template-columns: 1fr; }
-  .case-step1-head { flex-direction: column; align-items: stretch; }
-  .case-step1-qr { width: auto; }
-  .case-step1-qr .case-property-qr-img { width: 100%; height: auto; max-height: 200px; }
+/* Photo card body on the sheet */
+.case-a4-photo-body {
+  text-align: center;
+  background: #FAF7EE;
+  border-radius: 4px;
+  padding: 6px;
 }
+.case-a4-photo-lg {
+  max-width: 100%;
+  max-height: 200px;
+  display: inline-block;
+  border: 2px solid #14243D;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(20, 36, 61, 0.12);
+  background: #fff;
+}
+.case-a4-photo-cap {
+  display: block;
+  font-size: 10px;
+  color: #4F6079;
+  margin-top: 4px;
+}
+
+/* Empty / placeholder states */
+.case-a4-empty {
+  color: #4F6079;
+  font-size: 10.5px;
+  font-style: italic;
+  padding: 8px 10px;
+}
+.case-a4-empty-photo {
+  background: #FAF7EE;
+  border: 1px dashed #D9D2C2;
+  border-radius: 3px;
+  text-align: center;
+}
+
+/* Footer (printed-style) */
+.case-a4-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 6px;
+  border-top: 1px solid #D9D2C2;
+  font-size: 9.5px;
+  color: #4F6079;
+}
+
+/* On narrower screens, stack Movement above Photo */
+@media (max-width: 880px) {
+  .case-a4-bottom { flex-direction: column; }
+  .case-a4-step1-head { flex-direction: column; align-items: stretch; }
+  .case-a4-qr { width: auto; align-self: flex-end; }
+  .case-a4-qr-img,
+  .case-a4-qr-placeholder { width: 80px; height: 80px; }
+}
+
