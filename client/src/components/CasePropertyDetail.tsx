@@ -207,21 +207,22 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     api.sections('all').then(s => setSections(s.map(x => ({ letter: x.letter, name: x.name })))).catch(() => setSections([]));
   }, []);
 
-  // Scale the A4 sheet to fit exactly one screen (no page scroll) on the detail view.
+  // Scale the whole detail view to fit exactly one screen (no page scroll).
   useEffect(() => {
     const fit = () => {
-      const sheet = document.querySelector('.case-a4-sheet') as HTMLElement | null;
-      if (!sheet) return;
-      const wrap = sheet.parentElement as HTMLElement | null;
+      const wrap = document.querySelector('.case-detail') as HTMLElement | null;
+      if (!wrap) return;
+      const sheet = wrap.querySelector('.case-a4-sheet') as HTMLElement | null;
       // reset any prior scale to measure natural height
-      sheet.style.transform = 'none';
-      const natural = sheet.getBoundingClientRect().height;
-      const topChrome = sheet.getBoundingClientRect().top; // distance from viewport top (header + nav)
-      const avail = window.innerHeight - topChrome - 12; // 12px breathing room
+      wrap.style.transform = 'none';
+      const natural = wrap.getBoundingClientRect().height;
+      const topChrome = wrap.getBoundingClientRect().top; // distance from viewport top (header + nav)
+      const avail = window.innerHeight - topChrome - 8; // 8px breathing room
       const scale = Math.min(1, avail / natural);
-      sheet.style.transformOrigin = 'top center';
-      sheet.style.transform = `scale(${scale})`;
-      if (wrap) wrap.style.height = `${natural * scale}px`;
+      wrap.style.transformOrigin = 'top center';
+      wrap.style.transform = `scale(${scale})`;
+      wrap.style.height = `${natural * scale}px`;
+      if (sheet) sheet.style.transform = 'none';
     };
     fit();
     window.addEventListener('resize', fit);
