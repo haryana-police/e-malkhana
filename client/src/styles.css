@@ -3512,3 +3512,174 @@ input, select, textarea{
   .settings-row-actions .btn.ghost { flex: 1 1 auto; text-align: center; justify-content: center; }
   .settings-inline-input { max-width: 100%; }
 }
+
+/* ============================================================
+   CASE PROPERTY DETAIL — Step 1 layout matches the printable
+   Case Detail: QR anchored TOP-RIGHT of the Step 1 card, and the
+   Movement Chain + Photo card live in a 2-column row below
+   Step 1 + Step 2.
+
+   Mirrors the printDetail() layout exactly, just rendered in
+   the SPA shell instead of a popup window.
+   ============================================================ */
+
+/* Step 1: title left, QR right (replaces the page-header QR) */
+.case-step1-card { padding-top: 14px; padding-bottom: 14px; }
+.case-step1-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.case-step1-head h3 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.case-step1-qr {
+  flex: 0 0 auto;
+  width: 140px;
+  text-align: center;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.case-step1-qr .case-property-qr-img {
+  width: 120px;
+  height: 120px;
+  display: block;
+  margin: 0 auto 4px;
+  border: 2px solid var(--ink-navy);
+  border-radius: 4px;
+}
+.case-step1-qr .case-property-qr-placeholder {
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 4px;
+  border: 2px dashed var(--line);
+  color: var(--slate-soft);
+  font-size: 12px;
+  border-radius: 4px;
+}
+.case-step1-qr .case-property-qr-mask {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--khaki);
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+.case-step1-qr .case-property-qr-cap {
+  font-size: 9px;
+  color: var(--slate-soft);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Bottom row: Movement (LEFT) + Photo (RIGHT) side-by-side */
+.case-bottom-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+.case-movement-card, .case-photo-card { padding: 14px 16px; }
+.case-movement-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--ink-navy);
+}
+.case-movement-head h3 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.case-movement-head .muted {
+  font-size: 11.5px;
+  color: var(--slate-soft);
+}
+
+/* Numbered timeline list — matches the printDetail() ol.timeline */
+.case-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  counter-reset: tstep;
+}
+.case-timeline li {
+  position: relative;
+  padding: 10px 12px 10px 50px;
+  border-left: 3px solid var(--ink-navy);
+  margin-left: 14px;
+  margin-bottom: 6px;
+  background: #F2EDDB;
+  border-radius: 0 4px 4px 0;
+}
+.case-timeline li:last-child { margin-bottom: 0; border-left-color: transparent; }
+.case-timeline li::before {
+  content: counter(tstep);
+  counter-increment: tstep;
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ink-navy);
+  color: var(--cream);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 3px var(--cream-paper);
+}
+.case-timeline .t-step {
+  display: inline-block;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--khaki);
+  background: #fff;
+  border: 1px solid var(--khaki);
+  padding: 1px 6px;
+  border-radius: 2px;
+  margin-bottom: 4px;
+}
+.case-timeline .t-route {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-navy);
+  word-break: break-word;
+}
+.case-timeline .t-arrow { color: var(--khaki); font-weight: 700; margin: 0 6px; }
+.case-timeline .t-meta {
+  font-size: 11px;
+  color: var(--slate-soft);
+  margin-top: 3px;
+  word-break: break-word;
+}
+
+/* On narrower screens stack Photo below Movement */
+@media (max-width: 880px) {
+  .case-bottom-row { grid-template-columns: 1fr; }
+  .case-step1-head { flex-direction: column; align-items: stretch; }
+  .case-step1-qr { width: auto; }
+  .case-step1-qr .case-property-qr-img { width: 100%; height: auto; max-height: 200px; }
+}

@@ -638,7 +638,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         </div>
       </div>
 
-      {/* Header — title LEFT, encrypted QR TOP-RIGHT corner */}
+      {/* Header — title LEFT (no QR here; QR lives inside Step 1 to match print) */}
       <header className="case-property-head">
         <div className="case-property-head-text">
           <div className="case-property-eyebrow">Case Property · {recordType}</div>
@@ -649,25 +649,21 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             {isDD ? 'DD Date' : 'FIR Date'}: <span className="mono">{fmtDate(c.firDate)}</span>
           </div>
         </div>
-        <div className="case-property-qr">
-          {qrUrl
-            ? <img src={qrUrl} alt={`Encrypted QR for ${c.id}`} className="case-property-qr-img" />
-            : <div className="case-property-qr-placeholder">No QR</div>}
-          {qrMask && <div className="case-property-qr-mask">{qrMask}</div>}
-          <div className="case-property-qr-cap">Encrypted — scan with e-Malkhana</div>
-        </div>
       </header>
 
       {/* ============================================================
-          Step 1 of 2 — FIR/DD & Receipt
+          Step 1 of 2 — FIR/DD & Receipt  (QR top-right, inside card)
           ============================================================ */}
-      <section className="case-property-card">
-        <h3>Step 1 of 2 — {isDD ? 'DD' : 'FIR'} &amp; Receipt</h3>
-
-        <div className="case-property-context">
-          <span><b>Station:</b> {fm?.policeStation || '—'}</span>
-          <span><b>Moharrir:</b> {cp?.receivedBy || c.receivedBy || '—'}</span>
-          <span><b>Item:</b> {c.id}</span>
+      <section className="case-property-card case-step1-card">
+        <div className="case-step1-head">
+          <h3>Step 1 of 2 — {isDD ? 'DD' : 'FIR'} &amp; Receipt</h3>
+          <div className="case-step1-qr">
+            {qrUrl
+              ? <img src={qrUrl} alt={`Encrypted QR for ${c.id}`} className="case-property-qr-img" />
+              : <div className="case-property-qr-placeholder">No QR</div>}
+            {qrMask && <div className="case-property-qr-mask">{qrMask}</div>}
+            <div className="case-property-qr-cap">Encrypted — scan with e-Malkhana</div>
+          </div>
         </div>
 
         <span className="rc-field-label">Record Type</span>
@@ -699,7 +695,8 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       </section>
 
       {/* ============================================================
-          Step 2 of 2 — Seized Item Details
+          Step 2 of 2 — Seized Item Details (item fields ONLY; photo
+          removed from here so it can sit beside Movement Chain below)
           ============================================================ */}
       <section className="case-property-card">
         <h3>Step 2 of 2 — Seized Item Details</h3>
@@ -728,8 +725,45 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             value={cp?.remarks || c.description || '—'}
           />
         </div>
+      </section>
 
-        <label className="full rc-photo-label">Photo of the seized object
+      {/* ============================================================
+          BOTTOM ROW — Movement Chain (LEFT)  +  Photo (RIGHT) side-by-side
+          Same layout as the printable Case Detail.
+          ============================================================ */}
+      <div className="case-bottom-row">
+        <section className="case-property-card case-movement-card">
+          <div className="case-movement-head">
+            <h3>Movement Chain</h3>
+            <span className="muted">({movements.length} {movements.length === 1 ? 'entry' : 'entries'})</span>
+          </div>
+          {movements.length === 0
+            ? <div className="rc-photo-empty">No movements recorded yet.</div>
+            : (
+              <ol className="case-timeline">
+                {movements.map((m, idx) => {
+                  const stepNo = movements.length - idx; // newest first = step 1
+                  return (
+                    <li key={idx}>
+                      <div className="t-step">Step {stepNo}</div>
+                      <div className="t-route">
+                        {m.fromLocation || 'New'}
+                        <span className="t-arrow">→</span>
+                        {m.toLocation || '—'}
+                      </div>
+                      <div className="t-meta">
+                        {m.movedBy || '—'} · {fmtTime(m.timestamp)}
+                        {m.purpose ? ` · ${m.purpose}` : ''}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+        </section>
+
+        <section className="case-property-card case-photo-card">
+          <h3>Photo of Seized Object</h3>
           {photoUrl
             ? (
               <div className="rc-photo-readonly">
@@ -740,8 +774,8 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             : (
               <div className="rc-photo-empty">No photo was uploaded at registration.</div>
             )}
-        </label>
-      </section>
+        </section>
+      </div>
 
       {/* Footer */}
       <footer className="case-property-foot">
