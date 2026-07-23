@@ -3660,6 +3660,44 @@ app.post('/api/admin/round-decimals', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/admin/deploy-status — does this server have a deploy hook?
+app.get('/api/admin/deploy-status', (_req, res) => {
+  res.json({ ok: true, enabled: !!DEPLOY_HOOK_URL, note: DEPLOY_HOOK_URL ? 'Manual deploy hook configured.' : 'Set DEPLOY_HOOK_URL to enable manual deploys.' });
+});
+
+// POST /api/admin/deploy — trigger a manual CI/CD deploy via webhook.
+// On Vercel this re-pulls from GitHub + re-deploys (no in-process git).
+// Refuses cleanly if DEPLOY_HOOK_URL is not configured.
+app.post('/api/admin/deploy', async (req, res, next) => {
+  try {
+    if (!DEPLOY_HOOK_URL) {
+      return res.status(503).json({
+        ok: false,
+        error: 'No DEPLOY_HOOK_URL configured. Set it to a GitHub webhook / Vercel deploy-hook URL to enable manual deploys.',
+      });
+    }
+    const body = req.body || {};
+    let r;
+    try {
+      r = await fetch(DEPLOY_HOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'e-malkhana-admin' },
+        body: JSON.stringify({ ref: 'main', reason: body.reason || 'manual deploy from admin console', by: req.mm?.id || 'anonymous' }),
+      });
+    } catch (e) {
+      return res.status(502).json({ ok: false, error: 'Deploy hook unreachable: ' + (e && e.message ? e.message : String(e)) });
+    }
+    const text = await r.text().catch(() => '');
+    await auditMm(req, 'admin.deploy', 'main', `Triggered deploy hook (HTTP ${r.status})`);
+    res.json({
+      ok: r.ok,
+      status: r.status,
+      accepted: r.status < 400,
+      body: text.slice(0, 400),
+    });
+  } catch (e) { next(e); }
+});
+
 // =================== API: Daily backup to Google Drive ===================
 // Reads server/data/backup-status.json (written by server/scripts/backup-to-drive.js
 // or server/scripts/backup-to-drive.sh, both run from the daily Windows Task
@@ -3680,6 +3718,12 @@ const BACKUP_FOLDER_URL     = process.env.GDRIVE_FOLDER_URL
   || 'https://drive.google.com/drive/folders/1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b';
 const BACKUP_ACCOUNT        = process.env.GDRIVE_ACCOUNT || 'asppanipat01@gmail.com';
 const BACKUP_REMOTE         = process.env.GDRIVE_REMOTE  || 'gdrive:e-Malkhana Backups';
+// Manual CI/CD deploy hook.  On Vercel there is no in-process git pull
+// (the function is stateless), so the honest equivalent of the court portal's
+// "Pull Latest Code & Restart" is a deploy hook: a GitHub webhook /
+// Vercel deploy URL that re-pulls from GitHub and re-deploys.  Set
+// DEPLOY_HOOK_URL to enable the button; if unset the UI disables it.
+const DEPLOY_HOOK_URL     = process.env.DEPLOY_HOOK_URL || '';
 // Schedule label kept in one place — shown on the admin page and in
 // friendly error messages.
 const BACKUP_SCHEDULE_LABEL  = '14:10 daily';

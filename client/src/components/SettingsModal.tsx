@@ -747,6 +747,8 @@ function DatabaseAdminTab() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [wipeConfirm, setWipeConfirm] = useState('');
+  const [deployEnabled, setDeployEnabled] = useState(false);
+  const [deployMsg, setDeployMsg] = useState<{ kind: 'ok' | 'error' | 'info'; text: string } | null>(null);
 
   async function reload() {
     setLoading(true); setMsg(null);
@@ -754,6 +756,8 @@ function DatabaseAdminTab() {
       const r = await api.cleanupTargets();
       setTargets(r.targets || {});
       setFullRows(r.fullWipeRows || 0);
+      const ds = await api.deployStatus();
+      setDeployEnabled(ds.enabled);
     } catch (e) { setMsg({ kind: 'error', text: (e as Error).message }); }
     finally { setLoading(false); }
   }
@@ -793,9 +797,35 @@ function DatabaseAdminTab() {
     finally { setBusy(false); }
   }
 
+  async function deploy() {
+    if (!deployEnabled) return;
+    if (!confirm('Trigger deploy? This re-pulls from GitHub and re-deploys (no downtime on Vercel).')) return;
+    setBusy(true); setDeployMsg(null);
+    try {
+      const r = await api.deploy('manual deploy from admin console');
+      if (!r.ok) setDeployMsg({ kind: 'error', text: r.error || `HTTP ${r.status}` });
+      else setDeployMsg({ kind: r.accepted ? 'ok' : 'error', text: r.accepted ? 'Deploy triggered ✓ (build will run on the host).' : `Hook responded HTTP ${r.status}: ${r.body || ''}` });
+    } catch (e) { setDeployMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+
   return (
     <div>
       <div className="sub" style={{ marginBottom: 12 }}>
+        Manual CI/CD — re-pull from GitHub and re-deploy without touching the operator laptop.
+      </div>
+
+      <div className="scan-bar" style={{ gap: 8, alignItems: 'center' }}>
+        <button className="btn" onClick={deploy} disabled={busy || !deployEnabled} style={{ background: deployEnabled ? undefined : '#9aa3b2' }}>
+          ⬇️ Pull Latest Code &amp; Restart Server
+        </button>
+        <span className="sub" style={{ fontSize: 11.5 }}>
+          {deployEnabled ? 'Deploy hook active.' : 'Disabled — set DEPLOY_HOOK_URL on the host to enable.'}
+        </span>
+      </div>
+      {deployMsg && <div className={`form-msg show ${deployMsg.kind}`} style={{ marginTop: 8 }}>{deployMsg.text}</div>}
+
+      <div className="sub" style={{ margin: '22px 0 12px', borderTop: '1px solid var(--slate-line, #e2e6ee)', paddingTop: 14 }}>
         Clear redundant data while keeping core functionality. Every action is audit-logged and
         requires a confirm click. <b>Users &amp; settings are never touched.</b>
       </div>
