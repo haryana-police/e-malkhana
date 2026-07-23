@@ -3299,7 +3299,9 @@ app.get('/api/reports/malkhana-register', async (req, res, next) => {
 //     "e-Malkhana Backups" owned by asppanipat01@gmail.com.
 
 const BACKUP_RETENTION_DAYS = parseInt(process.env.BACKUP_RETENTION_DAYS || '10', 10);
-const BACKUP_STATUS_FILE    = join(__dirname, 'data', 'backup-status.json');
+const BACKUP_STATUS_FILE    = process.env.BACKUP_STATUS_FILE
+  || (process.env.VERCEL ? join(process.env.TMPDIR || '/tmp', 'backup-status.json')
+                         : join(__dirname, 'data', 'backup-status.json'));
 const BACKUP_SCRIPT         = join(__dirname, 'scripts', 'backup-to-drive.js');
 const BACKUP_FOLDER_URL     = process.env.GDRIVE_FOLDER_URL
   || 'https://drive.google.com/drive/folders/1gcQEnhcF9cXCYnURwYDnJt6mTzt2Ur2b';

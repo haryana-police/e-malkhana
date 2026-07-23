@@ -112,7 +112,8 @@ const FOLDER_ID     = process.env.GDRIVE_FOLDER_ID || '1gcQEnhcF9cXCYnURwYDnJt6m
 const ACCOUNT       = process.env.GDRIVE_ACCOUNT  || 'asppanipat01@gmail.com';
 const RETENTION     = parseInt(process.env.BACKUP_RETENTION_DAYS || '10', 10);
 const STATUS_FILE   = process.env.BACKUP_STATUS_FILE
-  || join(ROOT, 'server', 'data', 'backup-status.json');
+  || (IS_VERCEL ? join(process.env.TMPDIR || '/tmp', 'backup-status.json')
+                : join(ROOT, 'server', 'data', 'backup-status.json'));
 
 function ts() {
   const d = new Date();
