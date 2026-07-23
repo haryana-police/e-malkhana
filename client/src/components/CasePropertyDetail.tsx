@@ -198,13 +198,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [edRecordType, setEdRecordType] = useState<'FIR' | 'DD'>('FIR');
   const [edFirNo, setEdFirNo] = useState('');              // FIR/DD No. (read-only on detail, but carried for save)
   const [edFirDate, setEdFirDate] = useState('');
-  // DD-specific (only used when edRecordType === 'DD')
-  const [edDdDate, setEdDdDate] = useState('');
-  const [edNatureOfDd, setEdNatureOfDd] = useState('');
-  const [edNameOfDeceased, setEdNameOfDeceased] = useState('');
-  const [edReportingPerson, setEdReportingPerson] = useState('');
-  const [edActualSeizureDdNo, setEdActualSeizureDdNo] = useState('');
-  const [edActualSeizureDate, setEdActualSeizureDate] = useState('');
   // Common block
   const [edUs, setEdUs] = useState('');
   const [edReceivedBy, setEdReceivedBy] = useState('');
@@ -216,14 +209,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [edSection, setEdSection] = useState('');
   const [edStatus, setEdStatus] = useState<CaseStatus>('Seized');
   const [edQuantity, setEdQuantity] = useState('');
-  const [edSubType, setEdSubType] = useState('');          // per-category "Type" (e.g. Narcotic Type)
-  const [edPlaceOfSeizure, setEdPlaceOfSeizure] = useState('');
-  const [edSealSealed, setEdSealSealed] = useState('Sealed');
-  const [edSealNo, setEdSealNo] = useState('');
-  const [edSealBy, setEdSealBy] = useState('');
   const [edRemarks, setEdRemarks] = useState('');
-  // Per-category popup fields (key -> value)
-  const [edCatValues, setEdCatValues] = useState<Record<string, string>>({});
 
   // ---- Photo edit state ----
   // `null` = server had no photo and user hasn't picked one yet,
@@ -334,12 +320,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEdRecordType(isDD ? 'DD' : 'FIR');
     setEdFirNo(caseRow.id || '');
     setEdFirDate(caseRow.firDate || '');
-    setEdDdDate(fm?.ddDate || '');
-    setEdNatureOfDd(fm?.natureOfDd || '');
-    setEdNameOfDeceased(fm?.nameOfDeceased || '');
-    setEdReportingPerson(fm?.reportingPerson || '');
-    setEdActualSeizureDdNo(fm?.actualSeizureDdNo || '');
-    setEdActualSeizureDate(fm?.actualSeizureDate || '');
     setEdReceivedBy(caseRow.receivedBy || caseProperty?.receivedBy || '');
     setEdSeizedTime(caseProperty?.seizedTime || '10:00');
     setEdSeizingOfficer(caseRow.seizingOfficer || '');
@@ -352,19 +332,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEdSection(caseRow.section?.replace('PART ', '') || '');
     setEdStatus(caseRow.status || 'Seized');
     setEdQuantity(caseProperty?.quantity || caseRow.quantity || caseRow.itemSub || '');
-    setEdSubType(
-      (caseProperty?.fields || []).find(f => f.key === 'sub_type')?.value ||
-      caseRow.itemSub || ''
-    );
-    setEdPlaceOfSeizure(caseProperty?.placeOfSeizure || caseProperty?.physicalStorage || '');
-    setEdSealSealed(caseProperty?.sealSealed || 'Sealed');
-    setEdSealNo(caseProperty?.sealNo || '');
-    setEdSealBy(caseProperty?.sealBy || '');
     setEdRemarks(caseProperty?.remarks || caseRow.description || '');
-    // Per-category popup fields
-    const cv: Record<string, string> = {};
-    for (const f of caseProperty?.fields || []) cv[f.key] = f.value;
-    setEdCatValues(cv);
 
     // ---- Photo: prefill from current photoUrl (data-URL we can't reopen),
     //       so the user can either KEEP / REPLACE with a new file.
@@ -372,11 +340,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEdPhotoOriginalUrl(initialPhoto);
     setEdPhotoDataUrl(null);     // null = "no change to what the server has"
     setEdPhotoFile(null);
-  }
-
-  // ---- Edit form helpers ----
-  function setEdCatVal(key: string, value: string) {
-    setEdCatValues(prev => ({ ...prev, [key]: value }));
   }
 
   // Open the in-app camera modal to capture a new photo for the Edit modal.
@@ -413,27 +376,18 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       if (!edSection) throw new Error('Pick a location');
       if (!edSeizingOfficer.trim()) throw new Error('Seizing Officer cannot be empty');
 
-      // Build the case_property payload (common + per-item popup fields +
-      // sub_type + description). Sent as a separate PATCH endpoint so the
-      // main /cases/:id endpoint can stay focused on the FIR/DD master
-      // and the case-level fields.
-      const catValues = { ...edCatValues };
-      catValues['sub_type'] = edSubType;   // carry the Type dropdown under its own key
+      // Slim case_property patch — only the fields the Edit modal renders
+      // (seized time, moharrir, quantity, description).  No seal block,
+      // no per-category popup fields, no sub-type — the modal doesn't
+      // expose them so sending nothing preserves any existing value.
       const cpPatch: Partial<{
         seizedTime: string; receivedBy: string; quantity: string;
-        placeOfSeizure: string; remarks: string;
-        sealSealed: string; sealNo: string; sealBy: string;
-        fields: Record<string, string>;
+        remarks: string;
       }> = {
-        seizedTime:     edSeizedTime.trim() || undefined,
-        receivedBy:     edReceivedBy.trim() || undefined,
-        quantity:       edQuantity.trim() || undefined,
-        placeOfSeizure: edPlaceOfSeizure.trim() || undefined,
-        sealSealed:     edSealSealed || undefined,
-        sealNo:         edSealNo.trim() || undefined,
-        sealBy:         edSealBy.trim() || undefined,
-        remarks:        edRemarks.trim() || undefined,
-        fields:         catValues,
+        seizedTime: edSeizedTime.trim() || undefined,
+        receivedBy: edReceivedBy.trim() || undefined,
+        quantity:   edQuantity.trim() || undefined,
+        remarks:    edRemarks.trim() || undefined,
       };
 
       // Photo: explicit user action always wins.
@@ -445,6 +399,9 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           ? undefined
           : (edPhotoDataUrl === '' ? null : edPhotoDataUrl);
 
+      // Slim updateCase payload — 13 fields exactly.  No DD-extras, no
+      // caseProperty seal/per-cat block, no recordType flip (case id
+      // immutable — see server.js).
       const updated = await api.updateCase(caseRow.id, {
         itemType:       edItemType.trim(),
         section:        edSection,
@@ -455,23 +412,10 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         description:    edRemarks.trim() || null,
         imageUrl:       imageUrlOverride,
         legalSections:  usArr,
-        // Step 2 + Step 1 DD extras + per-category fields go to the
-        // dedicated case-property endpoint.
-        // caseProperty payload:
         caseProperty:   cpPatch,
-        // DD-extras + recordType → fir_master
-        recordType:     edRecordType,
-        ddDate:         edRecordType === 'DD' ? (edDdDate || null) : null,
-        natureOfDd:     edRecordType === 'DD' ? (edNatureOfDd || null) : null,
-        nameOfDeceased: edRecordType === 'DD' ? (edNameOfDeceased || null) : null,
-        reportingPerson: edRecordType === 'DD' ? (edReportingPerson || null) : null,
-        actualSeizureDdNo: edActualSeizureDdNo.trim() || null,
-        actualSeizureDate: edActualSeizureDate.trim() || null,
       });
       setCaseRow(updated);
-      // Re-fetch detail + case-property so the on-screen fields reflect what
-      // we just wrote. Best-effort — if either fails the new row is still
-      // shown.
+      // Re-fetch so the on-screen detail cards reflect the edits.
       const [fresh, cpFresh, fmFresh] = await Promise.all([
         api.case(caseRow.id).catch(() => updated),
         api.caseProperty(caseRow.itemId).catch(() => null),
@@ -898,17 +842,17 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         </div>
       )}
 
-      {/* Edit Case Property (full Step 1 + Step 2 + Photo, with Save button). */}
+      {/* Edit Case Property — slim modal.  Only the fields that already
+          appear on the on-screen detail card are editable (the same Step 1 +
+          Step 2 layout the registration form uses, but trimmed to the
+          actual-rendered columns).  No DD-extras block (case id immutable),
+          no seal block (visible only on a few categories — not in the
+          screenshot register path), no per-cat popup fields (visible only
+          on a few categories).  Save writes 13 fields in one PATCH. */}
       {showEdit && (() => {
-        const edCat = findCategory(categories, edItemType);
-        const edCatId = edCat?.id || '';
-        const edNoType       = edCatId === 'cash' || edCatId === 'liquor';
-        const edIsMinimal    = edCatId === 'lost_items' || edCatId === 'viscera' || edCatId === 'other';
-        const edSkipCommon   = ['narcotics','arms','cash','gold','vehicle','liquor'].includes(edCatId) || edIsMinimal;
-        const edSkipQuantity = ['narcotics','arms','cash','gold','vehicle','liquor'].includes(edCatId) || edIsMinimal;
         const today = new Date().toISOString().slice(0, 10);
-        // Photo preview to show in the modal — picks the freshly captured
-        // data-URL if any, else the original server URL (read-only).
+        // Photo preview — pick the freshly captured data-URL if any, else
+        // the original server URL (read-only).
         const previewPhoto = edPhotoDataUrl === null ? edPhotoOriginalUrl : edPhotoDataUrl;
         return (
         <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !editBusy) setShowEdit(false); }}>
@@ -921,8 +865,8 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             <fieldset className="edit-step">
               <legend>Step 1 of 2 — FIR / DD &amp; Receipt</legend>
 
-              {/* Record Type radio + FIR/DD No. read-only (case id is immutable) */}
               <div className="form-grid rc-grid">
+                {/* Record Type radio + FIR/DD No. read-only (case id immutable) */}
                 <div className="rc-radio-row full">
                   <span className="rc-field-label">Record Type</span>
                   <div className="rc-radio-row-inner">
@@ -940,37 +884,9 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                 <label>FIR / DD No.
                   <input value={edFirNo} readOnly className="ro-val mono" title="Case id cannot be changed" />
                 </label>
-                <label>{edRecordType === 'DD' ? 'DD Date' : 'FIR Date'}
+                <label>FIR Date
                   <input type="date" value={edFirDate} onChange={e => setEdFirDate(e.target.value)} max={today} />
                 </label>
-
-                {edRecordType === 'DD' && (
-                  <>
-                    <label>DD No.
-                      <input value={edActualSeizureDdNo} onChange={e => setEdActualSeizureDdNo(e.target.value)} placeholder="DD 12/2026" />
-                    </label>
-                    <label>Date
-                      <input type="date" value={edActualSeizureDate} onChange={e => setEdActualSeizureDate(e.target.value)} max={today} />
-                    </label>
-                    <label>Nature of DD
-                      <select value={edNatureOfDd} onChange={e => setEdNatureOfDd(e.target.value)}>
-                        <option value="">— select —</option>
-                        <option value="UD">UD (Unnatural Death)</option>
-                        <option value="Lost Property">Lost Property</option>
-                        <option value="Other Misc">Other Misc</option>
-                      </select>
-                    </label>
-                    <label>DD Date (info)
-                      <input type="date" value={edDdDate} onChange={e => setEdDdDate(e.target.value)} max={today} />
-                    </label>
-                    <label className="full">Name of Deceased
-                      <input value={edNameOfDeceased} onChange={e => setEdNameOfDeceased(e.target.value)} placeholder="Name of deceased (UD case)" />
-                    </label>
-                    <label className="full">Reporting Person Name &amp; Address
-                      <input value={edReportingPerson} onChange={e => setEdReportingPerson(e.target.value)} placeholder="Name & address of reporter" />
-                    </label>
-                  </>
-                )}
 
                 <label className="full">Section (U/S Legal Section) — multiple allowed
                   <input
@@ -998,22 +914,12 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
 
                 <label>Category of Item
                   <select
-                    value={edCatId || edItemType}
-                    onChange={e => {
-                      // Edit Category — pick from the DB-loaded list.
-                      const v = e.target.value;
-                      // The form stores the displayed label, so resolve the
-                      // matching master row to get the canonical label.
-                      const hit = (categories || []).find(c => c.id === v);
-                      setEdItemType(hit?.label || v);
-                      // Switching category wipes the sub-type and per-cat fields.
-                      setEdSubType('');
-                      setEdCatValues({});
-                    }}
+                    value={edItemType}
+                    onChange={e => setEdItemType(e.target.value)}
                   >
                     <option value="">— pick a category —</option>
                     {(categories || []).filter(c => c.active).map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.label}</option>
+                      <option key={cat.id} value={cat.label}>{cat.label}</option>
                     ))}
                   </select>
                 </label>
@@ -1033,91 +939,9 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                   </select>
                 </label>
 
-                {!edSkipQuantity && (
-                  <label>Quantity
-                    <input value={edQuantity} onChange={e => setEdQuantity(e.target.value)} placeholder="e.g. 1 or 2 kg" />
-                  </label>
-                )}
-
-                {/* Per-category Type dropdown / radio — mirrors RegisterCaseModal */}
-                {!edNoType && !edIsMinimal && edCat?.subTypes && edCat.subTypes.length > 0 && (
-                  edCat.subTypeControl === 'radio' ? (
-                    <label className="full">{edCat.subTypeLabel || 'Type'}
-                      <div className="rc-radio-row">
-                        {edCat.subTypes.map(t => (
-                          <label key={t} className={`rc-radio-opt ${edSubType === t ? 'on' : ''}`}>
-                            <input type="radio" name="ed-subtype" value={t}
-                                   checked={edSubType === t}
-                                   onChange={e => setEdSubType(e.target.value)} />
-                            <span>{t}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </label>
-                  ) : (
-                    <label>{edCat.subTypeLabel || 'Type'}
-                      <select value={edSubType} onChange={e => setEdSubType(e.target.value)}>
-                        <option value="">— select —</option>
-                        {edCat.subTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </label>
-                  )
-                )}
-
-                {!edSkipCommon && (
-                  <>
-                    <label>Place of Seizure
-                      <input value={edPlaceOfSeizure} onChange={e => setEdPlaceOfSeizure(e.target.value)} placeholder="e.g. Near bus stand" />
-                    </label>
-                    <label>Sealed / Unsealed
-                      <select value={edSealSealed} onChange={e => setEdSealSealed(e.target.value)}>
-                        <option value="Sealed">Sealed</option>
-                        <option value="Unsealed">Unsealed</option>
-                      </select>
-                    </label>
-                    <label>Seal No. / Mark
-                      <input value={edSealNo} onChange={e => setEdSealNo(e.target.value)} placeholder="Seal no. / mark" />
-                    </label>
-                    <label>Sealed By (Officer)
-                      <input value={edSealBy} onChange={e => setEdSealBy(e.target.value)} placeholder="Officer name" />
-                    </label>
-                  </>
-                )}
-
-                {/* Per-category popup fields (the same ones RegisterCaseModal shows) */}
-                {(edCat?.fields || []).map(f => (
-                  <label key={f.key}>
-                    {f.unit ? `${f.label} (${f.unit})` : f.label}
-                    {f.type === 'select' ? (
-                      <select
-                        value={edCatValues[f.key] || ''}
-                        onChange={e => setEdCatVal(f.key, e.target.value)}
-                      >
-                        <option value="">— select —</option>
-                        {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    ) : f.type === 'number' ? (
-                      <input type="number"
-                        value={edCatValues[f.key] || ''}
-                        placeholder={f.placeholder}
-                        onChange={e => setEdCatVal(f.key, e.target.value)} />
-                    ) : f.type === 'date' ? (
-                      <input type="date"
-                        value={edCatValues[f.key] || ''}
-                        max={today}
-                        onChange={e => setEdCatVal(f.key, e.target.value)} />
-                    ) : f.type === 'time' ? (
-                      <input type="time"
-                        value={edCatValues[f.key] || ''}
-                        onChange={e => setEdCatVal(f.key, e.target.value)} />
-                    ) : (
-                      <input type="text"
-                        value={edCatValues[f.key] || ''}
-                        placeholder={f.placeholder}
-                        onChange={e => setEdCatVal(f.key, e.target.value)} />
-                    )}
-                  </label>
-                ))}
+                <label>Quantity
+                  <input value={edQuantity} onChange={e => setEdQuantity(e.target.value)} placeholder="e.g. 1 or 2 kg" />
+                </label>
 
                 <label className="full">Item Description (detailed — brand, colour, size, marks)
                   <textarea

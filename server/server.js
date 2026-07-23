@@ -1181,7 +1181,6 @@ app.patch('/api/cases/:id', async (req, res, next) => {
           await dbSaveCaseProperty(cp);
         }
       }
-      let firDateTouched = false;
       if (newFirDate !== undefined) {
         const fmKey = String(c.firNo || c.id || '').trim();
         if (fmKey) {
@@ -1191,29 +1190,25 @@ app.patch('/api/cases/:id', async (req, res, next) => {
           if ((next || '') !== old) {
             changes.push(`fir date: ${old || '—'} → ${next || '—'}`);
             await upsertFirMasterPartial({ firNo: fmKey, firDate: next });
-            firDateTouched = true;
           }
         }
       }
 
-      // ---- case_property STEP-2 payload (full common block + per-item
-      //      popup fields + sub_type + remarks).  Goes through the
-      //      helper that mirrors to Postgres + keeps the in-memory mirror
-      //      in lock-step. ----
+      // ---- case_property STEP-2 slim payload (only the 4 fields the
+      //      Edit modal actually sends).  Goes through the helper that
+      //      mirrors to Postgres + keeps the in-memory mirror in sync. ----
       if (patch.caseProperty && typeof patch.caseProperty === 'object') {
         const cpPatch = patch.caseProperty || {};
         const cp = ensureCasePropertyFor(c);
         let cpChanged = false;
-        // Each row updated individually with a diff line for the audit log.
+        // Only the 4 fields the modal exposes — seized time, moharrir,
+        // quantity, remarks.  Seal / place-of-seizure / per-category popup
+        // fields are not in the modal (they live on the registration form).
         const fields = [
-          ['seizedTime',     cpPatch.seizedTime],
-          ['receivedBy',     cpPatch.receivedBy],
-          ['quantity',       cpPatch.quantity],
-          ['placeOfSeizure', cpPatch.placeOfSeizure],
-          ['remarks',        cpPatch.remarks],
-          ['sealSealed',     cpPatch.sealSealed],
-          ['sealNo',         cpPatch.sealNo],
-          ['sealBy',         cpPatch.sealBy],
+          ['seizedTime', cpPatch.seizedTime],
+          ['receivedBy', cpPatch.receivedBy],
+          ['quantity',   cpPatch.quantity],
+          ['remarks',    cpPatch.remarks],
         ];
         for (const [k, v] of fields) {
           if (v === undefined) continue;
@@ -1225,73 +1220,13 @@ app.patch('/api/cases/:id', async (req, res, next) => {
             cpChanged = true;
           }
         }
-        // Per-item popup fields (object) — diff each key against the
-        // current case_property.fields mirror and upsert only the diffs.
-        if (cpPatch.fields && typeof cpPatch.fields === 'object') {
-          if (!Array.isArray(cp.fields)) cp.fields = [];
-          const incoming = cpPatch.fields;
-          for (const [k, v] of Object.entries(incoming)) {
-            if (v === undefined) continue;
-            const sv = v == null ? '' : String(v);
-            const cur = cp.fields.find(f => f.key === k);
-            if (!cur) {
-              if (sv !== '') {
-                cp.fields.push({ key: k, value: sv });
-                changes.push(`field ${k}: — → ${shortVal(sv)}`);
-                cpChanged = true;
-              }
-            } else if ((cur.value || '') !== sv) {
-              const oldV = cur.value;
-              cur.value = sv;
-              changes.push(`field ${k}: ${shortVal(oldV)} → ${shortVal(sv)}`);
-              cpChanged = true;
-            }
-          }
-        }
         if (cpChanged) await dbSaveCaseProperty(cp);
       }
 
-      // ---- fir_master STEP-1 DD extras + recordType.  Always upsert
-      //      (no-op if every field is unchanged) so the mirror and
-      //      Postgres see the new recordType / DD fields. ----
-      const fmFieldsTouched = {};
-      ['recordType','ddDate','natureOfDd','nameOfDeceased','reportingPerson',
-       'actualSeizureDdNo','actualSeizureDate'].forEach(k => {
-        if (Object.prototype.hasOwnProperty.call(patch, k)) fmFieldsTouched[k] = patch[k];
-      });
-      if (Object.keys(fmFieldsTouched).length > 0 || firDateTouched) {
-        const fmKey = String(c.firNo || c.id || '').trim();
-        if (fmKey) {
-          try {
-            const current = await getFirMaster(fmKey);
-            const merged = {
-              firNo: fmKey,
-              policeStation: current?.policeStation || '',
-              firDate: (newFirDate !== undefined ? newFirDate : current?.firDate) || null,
-              usSections: current?.usSections || null,
-              io: current?.io || null,
-              recordType: (fmFieldsTouched.recordType !== undefined ? fmFieldsTouched.recordType : current?.recordType) || 'FIR',
-              ddDate:          fmFieldsTouched.ddDate          !== undefined ? fmFieldsTouched.ddDate          : (current?.ddDate || null),
-              natureOfDd:      fmFieldsTouched.natureOfDd      !== undefined ? fmFieldsTouched.natureOfDd      : (current?.natureOfDd || null),
-              nameOfDeceased:  fmFieldsTouched.nameOfDeceased  !== undefined ? fmFieldsTouched.nameOfDeceased  : (current?.nameOfDeceased || null),
-              reportingPerson: fmFieldsTouched.reportingPerson !== undefined ? fmFieldsTouched.reportingPerson : (current?.reportingPerson || null),
-              actualSeizureDdNo: fmFieldsTouched.actualSeizureDdNo !== undefined ? fmFieldsTouched.actualSeizureDdNo : (current?.actualSeizureDdNo || null),
-              actualSeizureDate: fmFieldsTouched.actualSeizureDate !== undefined ? fmFieldsTouched.actualSeizureDate : (current?.actualSeizureDate || null),
-            };
-            // Audit log diff for the DD extras
-            for (const k of ['recordType','ddDate','natureOfDd','nameOfDeceased','reportingPerson','actualSeizureDdNo','actualSeizureDate']) {
-              if (fmFieldsTouched[k] === undefined) continue;
-              const old = current ? (current[k] || '') : '';
-              const next = fmFieldsTouched[k] || '';
-              if (String(old) !== String(next)) {
-                changes.push(`fir ${k}: ${shortVal(old)} → ${shortVal(next)}`);
-              }
-            }
-            const { upsertFirMaster } = await import('./db.js');
-            await upsertFirMaster(merged);
-          } catch { /* silent */ }
-        }
-      }
+      // No DD-extras or fir_master merging here — the slim PATCH payload
+      // (see ALLOWED above) no longer carries recordType / DD fields.
+      // fir_master is still touched when `firDate` changes (see the
+      // upsertFirMasterPartial call earlier in this handler).
 
       // section counts are derived from the cases table; recompute so the
       // sidebar/dashboard counters stay accurate after a move.
