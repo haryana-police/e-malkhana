@@ -257,7 +257,7 @@ export const api = {
   casePropertyReportUrl: (filters: {
     section?: string; status?: string | null; excludeDisposed?: boolean;
     from?: string; to?: string; q?: string; ids?: string[];
-  }, format: 'xlsx' | 'pdf') => {
+  }, format: 'xlsx' | 'pdf' | 'html') => {
     const p = new URLSearchParams();
     p.set('format', format);
     if (filters.ids && filters.ids.length) {
@@ -290,6 +290,10 @@ export const api = {
       }>('/backups/status'),
     backupLog:    (limit = 20) => get<any[]>(`/backups/log?limit=${limit}`),
     backupRun:    () => send<{ ok: boolean; code?: number; fileName?: string; error?: string; transport?: string }>('POST', '/backups/run', {}),
+    backupList:   () => get<{ ok: boolean; files: { name: string; sizeBytes: number; modTime: string }[]; folderUrl: string; restoreSupported?: boolean; note?: string; error?: string }>('/backups/list'),
+    backupDownloadUrl: (name: string) => `${base}/backups/${encodeURIComponent(name)}/download`,
+    backupDelete: (name: string) => send<{ ok: boolean; error?: string }>('DELETE', `/backups/${encodeURIComponent(name)}`, {}),
+    backupRestore: (name: string) => send<{ ok: boolean; stagingSchema?: string; note?: string; counts?: string; error?: string }>('POST', `/backups/${encodeURIComponent(name)}/restore`, {}),
 
   // other
   renameSection: (letter: string, name: string) => send<{ letter: string; name: string; count: number; active?: boolean }>('PATCH', `/sections/${encodeURIComponent(letter)}`, { name }),

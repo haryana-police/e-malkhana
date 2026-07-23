@@ -488,6 +488,45 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
   msg: { kind: 'ok' | 'error'; text: string } | null;
   onRun: () => void;
 }) {
+  // --- Restore-from-Archive: list / download / delete / restore Drive backups ---
+  const [archives, setArchives] = useState<any[]>([]);
+  const [archLoading, setArchLoading] = useState(false);
+  const [archMsg, setArchMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [restoreSupported, setRestoreSupported] = useState(false);
+  const [busyFile, setBusyFile] = useState<string | null>(null);
+
+  async function loadArchives() {
+    setArchLoading(true); setArchMsg(null);
+    try {
+      const r = await api.backupList();
+      if (!r.ok) { setArchMsg({ kind: 'error', text: r.error || 'Could not list archives.' }); setArchives([]); }
+      else { setArchives(r.files || []); setRestoreSupported(!!r.restoreSupported); }
+    } catch (e) { setArchMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setArchLoading(false); }
+  }
+
+  async function del(name: string) {
+    if (!confirm(`Delete archive "${name}" from Drive? This cannot be undone.`)) return;
+    setBusyFile(name);
+    try {
+      const r = await api.backupDelete(name);
+      if (!r.ok) setArchMsg({ kind: 'error', text: r.error || 'Delete failed.' });
+      else { setArchMsg({ kind: 'ok', text: `Deleted ${name}.` }); loadArchives(); }
+    } catch (e) { setArchMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusyFile(null); }
+  }
+
+  async function restore(name: string) {
+    if (!confirm(`Load "${name}" into a STAGING schema for inspection?\n\nThis does NOT overwrite live data. You can promote from the operator laptop after verifying.`)) return;
+    setBusyFile(name); setArchMsg(null);
+    try {
+      const r = await api.backupRestore(name);
+      if (!r.ok) setArchMsg({ kind: 'error', text: r.error || 'Restore failed.' });
+      else setArchMsg({ kind: 'ok', text: `${r.note || 'Loaded into staging.'} ${r.counts ? '\nTables: ' + r.counts : ''}` });
+    } catch (e) { setArchMsg({ kind: 'error', text: (e as Error).message }); }
+    finally { setBusyFile(null); }
+  }
+
   const last = backup?.last;
   const lastClass = !last ? ''
     : last.status === 'success' ? 'backup-status-ok'
@@ -622,10 +661,60 @@ function BackupTabContent({ backup, backupLog, busy, msg, onRun }: {
           </tbody>
         </table>
       )}
+
+      {/* ===== Restore from Archive ===== */}
+      <h3 style={{ fontFamily: 'Rajdhani, sans-serif', color: 'var(--ink-navy)', fontSize: 14, margin: '18px 0 8px' }}>
+        Restore from Archive <span className="audit-tab-count">{archives.length}</span>
+        <button className="btn ghost" style={{ float: 'right', fontSize: 11, padding: '3px 10px' }}
+          onClick={loadArchives} disabled={archLoading}>
+          {archLoading ? 'Loading…' : '↻ Refresh list'}
+        </button>
+      </h3>
+      <div className="sub" style={{ marginBottom: 8 }}>
+        Archives are stored in Google Drive (rclone). <b>Download</b> fetches the <code>.sql.gz</code>;
+        <b>Revert ↺</b> loads it into a staging schema for inspection (live data is never touched);
+        <b>Delete 🗑️</b> removes it from Drive. Promote-from-staging is done on the operator laptop.
+      </div>
+      {archMsg && <div className={`form-msg show ${archMsg.kind}`} style={{ marginBottom: 8 }}>{archMsg.text}</div>}
+      {archives.length === 0 ? (
+        <div className="sub">No archives found. Click "↻ Refresh list" to query the Drive folder, or run a backup first.</div>
+      ) : (
+        <table className="audit-log-table">
+          <thead>
+            <tr>
+              <th>Archive</th>
+              <th>Size</th>
+              <th>Modified (IST)</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {archives.map((f: any) => (
+              <tr key={f.name}>
+                <td style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11 }}>{f.name}</td>
+                <td style={{ fontSize: 11.5, color: 'var(--slate-soft)' }}>
+                  {f.sizeBytes ? `${(f.sizeBytes / 1024).toFixed(1)} KB` : '—'}
+                </td>
+                <td style={{ fontSize: 11.5, color: 'var(--slate-soft)' }}>{f.modTime}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <a className="btn ghost" style={{ fontSize: 11, padding: '3px 9px', marginRight: 6 }}
+                    href={api.backupDownloadUrl(f.name)}>⬇️ Download</a>
+                  <button className="btn ghost" style={{ fontSize: 11, padding: '3px 9px', marginRight: 6 }}
+                    disabled={busyFile === f.name || !restoreSupported}
+                    title={restoreSupported ? 'Load into staging schema' : 'Restore only available on operator laptop'}
+                    onClick={() => restore(f.name)}>↺ Revert</button>
+                  <button className="btn ghost" style={{ fontSize: 11, padding: '3px 9px', color: 'var(--seal-red)' }}
+                    disabled={busyFile === f.name}
+                    onClick={() => del(f.name)}>🗑️ Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
 // =============================================================
 // Item Type Fields manager — the spec's "Form Builder".  Lets an admin
           // configure, per Malkhana section (Narcotics / Weapons / Cash & Documents /
