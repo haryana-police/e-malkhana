@@ -5,6 +5,17 @@ import type {
   CaseRow, CasePropertyData, FirMaster, CategoryOfItem, CaseStatus, MovementLogRow,
 } from '../types';
 import { MovementForm, type MovementFormData } from './MovementForm';
+import { CameraCaptureModal } from './CameraCaptureModal';
+
+// Convert a File picked from <input type="file"> to a data-URL string.
+function fileToDataUrl(f: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(f);
+  });
+}
 
 // ============================================================
 // CasePropertyDetail — REGISTRATION SNAPSHOT (read-only fields)
@@ -183,12 +194,47 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [showEdit, setShowEdit] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
+  // ---- Step 1 (FIR / DD & Receipt) — Edit state ----
+  const [edRecordType, setEdRecordType] = useState<'FIR' | 'DD'>('FIR');
+  const [edFirNo, setEdFirNo] = useState('');              // FIR/DD No. (read-only on detail, but carried for save)
+  const [edFirDate, setEdFirDate] = useState('');
+  // DD-specific (only used when edRecordType === 'DD')
+  const [edDdDate, setEdDdDate] = useState('');
+  const [edNatureOfDd, setEdNatureOfDd] = useState('');
+  const [edNameOfDeceased, setEdNameOfDeceased] = useState('');
+  const [edReportingPerson, setEdReportingPerson] = useState('');
+  const [edActualSeizureDdNo, setEdActualSeizureDdNo] = useState('');
+  const [edActualSeizureDate, setEdActualSeizureDate] = useState('');
+  // Common block
+  const [edUs, setEdUs] = useState('');
+  const [edReceivedBy, setEdReceivedBy] = useState('');
+  const [edSeizedTime, setEdSeizedTime] = useState('');
+  const [edSeizingOfficer, setEdSeizingOfficer] = useState('');
+
+  // ---- Step 2 (Seized Item Details) — Edit state ----
   const [edItemType, setEdItemType] = useState('');
   const [edSection, setEdSection] = useState('');
   const [edStatus, setEdStatus] = useState<CaseStatus>('Seized');
-  const [edReceivedBy, setEdReceivedBy] = useState('');
-  const [edFirDate, setEdFirDate] = useState('');
-  const [edUs, setEdUs] = useState('');
+  const [edQuantity, setEdQuantity] = useState('');
+  const [edSubType, setEdSubType] = useState('');          // per-category "Type" (e.g. Narcotic Type)
+  const [edPlaceOfSeizure, setEdPlaceOfSeizure] = useState('');
+  const [edSealSealed, setEdSealSealed] = useState('Sealed');
+  const [edSealNo, setEdSealNo] = useState('');
+  const [edSealBy, setEdSealBy] = useState('');
+  const [edRemarks, setEdRemarks] = useState('');
+  // Per-category popup fields (key -> value)
+  const [edCatValues, setEdCatValues] = useState<Record<string, string>>({});
+
+  // ---- Photo edit state ----
+  // `null` = server had no photo and user hasn't picked one yet,
+  // `''` = explicitly cleared, `'data:...'` = picked/re-captured photo.
+  // We always PATCH the server with the latest chosen state (data-URL
+  // or null) so the on-disk file matches what the user sees.
+  const [edPhotoDataUrl, setEdPhotoDataUrl] = useState<string | null>(null);
+  const [edPhotoFile, setEdPhotoFile] = useState<File | null>(null);
+  const [edPhotoOriginalUrl, setEdPhotoOriginalUrl] = useState<string | null>(null);
+  // Camera modal
+  const [editCamOpen, setEditCamOpen] = useState(false);
 
   const [showDelete, setShowDelete] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
@@ -281,15 +327,80 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     if (!caseRow) return;
     setShowEdit(true);
     setEditErr(null);
-    setEdItemType(caseRow.itemType || '');
-    setEdSection(caseRow.section?.replace('PART ', '') || '');
-    setEdStatus(caseRow.status || 'Seized');
-    setEdReceivedBy(caseRow.receivedBy || '');
+
+    // ---- Step 1: FIR/DD & Receipt ----
+    const isDD = recordTypeOf(caseRow, firMaster) === 'DD';
+    const fm = firMaster;
+    setEdRecordType(isDD ? 'DD' : 'FIR');
+    setEdFirNo(caseRow.id || '');
     setEdFirDate(caseRow.firDate || '');
-    // raw ACT:N comma-separated for the input
+    setEdDdDate(fm?.ddDate || '');
+    setEdNatureOfDd(fm?.natureOfDd || '');
+    setEdNameOfDeceased(fm?.nameOfDeceased || '');
+    setEdReportingPerson(fm?.reportingPerson || '');
+    setEdActualSeizureDdNo(fm?.actualSeizureDdNo || '');
+    setEdActualSeizureDate(fm?.actualSeizureDate || '');
+    setEdReceivedBy(caseRow.receivedBy || caseProperty?.receivedBy || '');
+    setEdSeizedTime(caseProperty?.seizedTime || '10:00');
+    setEdSeizingOfficer(caseRow.seizingOfficer || '');
     if (caseRow.legalSections && caseRow.legalSections.length) setEdUs(caseRow.legalSections.join(', '));
     else if (caseRow.legalSection) setEdUs(caseRow.legalSection);
     else setEdUs('');
+
+    // ---- Step 2: Seized Item ----
+    setEdItemType(caseRow.itemType || '');
+    setEdSection(caseRow.section?.replace('PART ', '') || '');
+    setEdStatus(caseRow.status || 'Seized');
+    setEdQuantity(caseProperty?.quantity || caseRow.quantity || caseRow.itemSub || '');
+    setEdSubType(
+      (caseProperty?.fields || []).find(f => f.key === 'sub_type')?.value ||
+      caseRow.itemSub || ''
+    );
+    setEdPlaceOfSeizure(caseProperty?.placeOfSeizure || caseProperty?.physicalStorage || '');
+    setEdSealSealed(caseProperty?.sealSealed || 'Sealed');
+    setEdSealNo(caseProperty?.sealNo || '');
+    setEdSealBy(caseProperty?.sealBy || '');
+    setEdRemarks(caseProperty?.remarks || caseRow.description || '');
+    // Per-category popup fields
+    const cv: Record<string, string> = {};
+    for (const f of caseProperty?.fields || []) cv[f.key] = f.value;
+    setEdCatValues(cv);
+
+    // ---- Photo: prefill from current photoUrl (data-URL we can't reopen),
+    //       so the user can either KEEP / REPLACE with a new file.
+    const initialPhoto = caseRow.imageUrl || caseProperty?.photoUrl || null;
+    setEdPhotoOriginalUrl(initialPhoto);
+    setEdPhotoDataUrl(null);     // null = "no change to what the server has"
+    setEdPhotoFile(null);
+  }
+
+  // ---- Edit form helpers ----
+  function setEdCatVal(key: string, value: string) {
+    setEdCatValues(prev => ({ ...prev, [key]: value }));
+  }
+
+  // Open the in-app camera modal to capture a new photo for the Edit modal.
+  function openEditCam() {
+    setEditCamOpen(true);
+  }
+  // Camera captured a new image — store as data-URL + File, close modal.
+  function onEditCamCapture(dataUrl: string, file: File) {
+    setEdPhotoDataUrl(dataUrl);
+    setEdPhotoFile(file);
+    setEditCamOpen(false);
+  }
+  // File input picked a new photo.
+  async function onEditPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const d = await fileToDataUrl(f);
+    setEdPhotoDataUrl(d);
+    setEdPhotoFile(f);
+  }
+  // Remove the photo — clears state and we PATCH `imageUrl: null` on save.
+  function clearEditPhoto() {
+    setEdPhotoDataUrl('');
+    setEdPhotoFile(null);
   }
 
   async function submitEdit(e: React.FormEvent) {
@@ -300,17 +411,75 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       const usArr = (edUs || '').split(',').map(s => s.replace(/^BNS\s+/i, '').trim()).filter(Boolean);
       if (!edItemType.trim()) throw new Error('Category of Item cannot be empty');
       if (!edSection) throw new Error('Pick a location');
+      if (!edSeizingOfficer.trim()) throw new Error('Seizing Officer cannot be empty');
+
+      // Build the case_property payload (common + per-item popup fields +
+      // sub_type + description). Sent as a separate PATCH endpoint so the
+      // main /cases/:id endpoint can stay focused on the FIR/DD master
+      // and the case-level fields.
+      const catValues = { ...edCatValues };
+      catValues['sub_type'] = edSubType;   // carry the Type dropdown under its own key
+      const cpPatch: Partial<{
+        seizedTime: string; receivedBy: string; quantity: string;
+        placeOfSeizure: string; remarks: string;
+        sealSealed: string; sealNo: string; sealBy: string;
+        fields: Record<string, string>;
+      }> = {
+        seizedTime:     edSeizedTime.trim() || undefined,
+        receivedBy:     edReceivedBy.trim() || undefined,
+        quantity:       edQuantity.trim() || undefined,
+        placeOfSeizure: edPlaceOfSeizure.trim() || undefined,
+        sealSealed:     edSealSealed || undefined,
+        sealNo:         edSealNo.trim() || undefined,
+        sealBy:         edSealBy.trim() || undefined,
+        remarks:        edRemarks.trim() || undefined,
+        fields:         catValues,
+      };
+
+      // Photo: explicit user action always wins.
+      //   - data-URL set: user picked/captured a new photo → upload data-URL.
+      //   - '' (empty string): user clicked Remove → clear the photo.
+      //   - null: user did nothing with the photo → leave server value as-is.
+      const imageUrlOverride: string | null | undefined =
+        edPhotoDataUrl === null
+          ? undefined
+          : (edPhotoDataUrl === '' ? null : edPhotoDataUrl);
+
       const updated = await api.updateCase(caseRow.id, {
-        itemType: edItemType.trim(),
-        section: edSection,
-        status: edStatus,
-        receivedBy: edReceivedBy.trim() || null,
-        firDate: edFirDate.trim() || null,
-        legalSections: usArr,
+        itemType:       edItemType.trim(),
+        section:        edSection,
+        status:         edStatus,
+        seizingOfficer: edSeizingOfficer.trim(),
+        receivedBy:     edReceivedBy.trim() || null,
+        firDate:        edFirDate.trim() || null,
+        description:    edRemarks.trim() || null,
+        imageUrl:       imageUrlOverride,
+        legalSections:  usArr,
+        // Step 2 + Step 1 DD extras + per-category fields go to the
+        // dedicated case-property endpoint.
+        // caseProperty payload:
+        caseProperty:   cpPatch,
+        // DD-extras + recordType → fir_master
+        recordType:     edRecordType,
+        ddDate:         edRecordType === 'DD' ? (edDdDate || null) : null,
+        natureOfDd:     edRecordType === 'DD' ? (edNatureOfDd || null) : null,
+        nameOfDeceased: edRecordType === 'DD' ? (edNameOfDeceased || null) : null,
+        reportingPerson: edRecordType === 'DD' ? (edReportingPerson || null) : null,
+        actualSeizureDdNo: edActualSeizureDdNo.trim() || null,
+        actualSeizureDate: edActualSeizureDate.trim() || null,
       });
       setCaseRow(updated);
-      const fresh = await api.case(caseRow.id).catch(() => updated);
+      // Re-fetch detail + case-property so the on-screen fields reflect what
+      // we just wrote. Best-effort — if either fails the new row is still
+      // shown.
+      const [fresh, cpFresh, fmFresh] = await Promise.all([
+        api.case(caseRow.id).catch(() => updated),
+        api.caseProperty(caseRow.itemId).catch(() => null),
+        api.firMaster(caseRow.firNo || caseRow.id).catch(() => null),
+      ]);
       setCaseRow(fresh);
+      setCaseProperty(cpFresh);
+      setFirMaster(fmFresh);
       setShowEdit(false);
     } catch (err) {
       setEditErr((err as Error).message);
@@ -729,61 +898,285 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         </div>
       )}
 
-      {/* Edit Case Property (single modal-form, like the registration layout) */}
-      {showEdit && (
+      {/* Edit Case Property (full Step 1 + Step 2 + Photo, with Save button). */}
+      {showEdit && (() => {
+        const edCat = findCategory(categories, edItemType);
+        const edCatId = edCat?.id || '';
+        const edNoType       = edCatId === 'cash' || edCatId === 'liquor';
+        const edIsMinimal    = edCatId === 'lost_items' || edCatId === 'viscera' || edCatId === 'other';
+        const edSkipCommon   = ['narcotics','arms','cash','gold','vehicle','liquor'].includes(edCatId) || edIsMinimal;
+        const edSkipQuantity = ['narcotics','arms','cash','gold','vehicle','liquor'].includes(edCatId) || edIsMinimal;
+        const today = new Date().toISOString().slice(0, 10);
+        // Photo preview to show in the modal — picks the freshly captured
+        // data-URL if any, else the original server URL (read-only).
+        const previewPhoto = edPhotoDataUrl === null ? edPhotoOriginalUrl : edPhotoDataUrl;
+        return (
         <div className="overlay open" onClick={e => { if (e.target === e.currentTarget && !editBusy) setShowEdit(false); }}>
-          <form className="form-card" onSubmit={submitEdit}>
+          <form className="form-card form-card-wide" onSubmit={submitEdit}>
             <button type="button" className="tag-close" onClick={() => setShowEdit(false)} aria-label="Close">✕</button>
             <h3>Edit Case Property — {c.id}</h3>
-            <div className="sub">{c.itemType} · Current: {c.sectionName}</div>
-            <div className="form-grid">
-              <label className="full">Category of Item
-                <input
-                  value={edItemType}
-                  onChange={e => setEdItemType(e.target.value)}
-                  placeholder="e.g. Narcotics / NDPS Article"
-                  required />
-              </label>
+            <div className="sub">{c.itemType} · Current: {c.sectionName} · Current status: {c.status}</div>
 
-              <label>Location
-                <select value={edSection} onChange={e => setEdSection(e.target.value)} required>
-                  <option value="">— pick a section —</option>
-                  {sections.map(s => (
-                    <option key={s.letter} value={s.letter}>{s.letter} — {s.name}</option>
-                  ))}
-                </select>
-              </label>
+            {/* ============= Step 1 of 2 — FIR/DD & Receipt ============= */}
+            <fieldset className="edit-step">
+              <legend>Step 1 of 2 — FIR / DD &amp; Receipt</legend>
 
-              <label>Status
-                <select value={edStatus} onChange={e => setEdStatus(e.target.value as CaseStatus)}>
-                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
+              {/* Record Type radio + FIR/DD No. read-only (case id is immutable) */}
+              <div className="form-grid rc-grid">
+                <div className="rc-radio-row full">
+                  <span className="rc-field-label">Record Type</span>
+                  <div className="rc-radio-row-inner">
+                    <label className={`rc-radio-opt ${edRecordType === 'FIR' ? 'on' : ''}`}>
+                      <input type="radio" name="ed-record-type" checked={edRecordType === 'FIR'} onChange={() => setEdRecordType('FIR')} />
+                      <span>FIR</span>
+                    </label>
+                    <label className={`rc-radio-opt ${edRecordType === 'DD' ? 'on' : ''}`}>
+                      <input type="radio" name="ed-record-type" checked={edRecordType === 'DD'} onChange={() => setEdRecordType('DD')} />
+                      <span>DD (Daily Diary)</span>
+                    </label>
+                  </div>
+                </div>
 
-              <label>Received By (Moharrir)
-                <input value={edReceivedBy} onChange={e => setEdReceivedBy(e.target.value)} placeholder="Officer name" />
-              </label>
+                <label>FIR / DD No.
+                  <input value={edFirNo} readOnly className="ro-val mono" title="Case id cannot be changed" />
+                </label>
+                <label>{edRecordType === 'DD' ? 'DD Date' : 'FIR Date'}
+                  <input type="date" value={edFirDate} onChange={e => setEdFirDate(e.target.value)} max={today} />
+                </label>
 
-              <label>FIR Date
-                <input type="date" value={edFirDate} onChange={e => setEdFirDate(e.target.value)} />
-              </label>
+                {edRecordType === 'DD' && (
+                  <>
+                    <label>DD No.
+                      <input value={edActualSeizureDdNo} onChange={e => setEdActualSeizureDdNo(e.target.value)} placeholder="DD 12/2026" />
+                    </label>
+                    <label>Date
+                      <input type="date" value={edActualSeizureDate} onChange={e => setEdActualSeizureDate(e.target.value)} max={today} />
+                    </label>
+                    <label>Nature of DD
+                      <select value={edNatureOfDd} onChange={e => setEdNatureOfDd(e.target.value)}>
+                        <option value="">— select —</option>
+                        <option value="UD">UD (Unnatural Death)</option>
+                        <option value="Lost Property">Lost Property</option>
+                        <option value="Other Misc">Other Misc</option>
+                      </select>
+                    </label>
+                    <label>DD Date (info)
+                      <input type="date" value={edDdDate} onChange={e => setEdDdDate(e.target.value)} max={today} />
+                    </label>
+                    <label className="full">Name of Deceased
+                      <input value={edNameOfDeceased} onChange={e => setEdNameOfDeceased(e.target.value)} placeholder="Name of deceased (UD case)" />
+                    </label>
+                    <label className="full">Reporting Person Name &amp; Address
+                      <input value={edReportingPerson} onChange={e => setEdReportingPerson(e.target.value)} placeholder="Name & address of reporter" />
+                    </label>
+                  </>
+                )}
 
-              <label className="full">Section (U/S)
-                <input
-                  value={edUs}
-                  onChange={e => setEdUs(e.target.value)}
-                  placeholder="e.g. 244, 245"
-                />
+                <label className="full">Section (U/S Legal Section) — multiple allowed
+                  <input
+                    value={edUs}
+                    onChange={e => setEdUs(e.target.value)}
+                    placeholder="e.g. 244, 245 or BNS 101"
+                  />
+                </label>
+                <label>Received By (Malkhana Moharrir)
+                  <input value={edReceivedBy} onChange={e => setEdReceivedBy(e.target.value)} placeholder="Officer name" />
+                </label>
+                <label>Seized Time
+                  <input type="time" value={edSeizedTime} onChange={e => setEdSeizedTime(e.target.value)} />
+                </label>
+                <label>Seizing Officer
+                  <input value={edSeizingOfficer} onChange={e => setEdSeizingOfficer(e.target.value)} placeholder="Officer name" required />
+                </label>
+              </div>
+            </fieldset>
+
+            {/* ============= Step 2 of 2 — Seized Item Details ============= */}
+            <fieldset className="edit-step">
+              <legend>Step 2 of 2 — Seized Item Details</legend>
+              <div className="form-grid rc-grid item-grid">
+
+                <label>Category of Item
+                  <select
+                    value={edCatId || edItemType}
+                    onChange={e => {
+                      // Edit Category — pick from the DB-loaded list.
+                      const v = e.target.value;
+                      // The form stores the displayed label, so resolve the
+                      // matching master row to get the canonical label.
+                      const hit = (categories || []).find(c => c.id === v);
+                      setEdItemType(hit?.label || v);
+                      // Switching category wipes the sub-type and per-cat fields.
+                      setEdSubType('');
+                      setEdCatValues({});
+                    }}
+                  >
+                    <option value="">— pick a category —</option>
+                    {(categories || []).filter(c => c.active).map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>Location
+                  <select value={edSection} onChange={e => setEdSection(e.target.value)} required>
+                    <option value="">— pick a section —</option>
+                    {sections.map(s => (
+                      <option key={s.letter} value={s.letter}>{s.letter} — {s.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>Status
+                  <select value={edStatus} onChange={e => setEdStatus(e.target.value as CaseStatus)}>
+                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+
+                {!edSkipQuantity && (
+                  <label>Quantity
+                    <input value={edQuantity} onChange={e => setEdQuantity(e.target.value)} placeholder="e.g. 1 or 2 kg" />
+                  </label>
+                )}
+
+                {/* Per-category Type dropdown / radio — mirrors RegisterCaseModal */}
+                {!edNoType && !edIsMinimal && edCat?.subTypes && edCat.subTypes.length > 0 && (
+                  edCat.subTypeControl === 'radio' ? (
+                    <label className="full">{edCat.subTypeLabel || 'Type'}
+                      <div className="rc-radio-row">
+                        {edCat.subTypes.map(t => (
+                          <label key={t} className={`rc-radio-opt ${edSubType === t ? 'on' : ''}`}>
+                            <input type="radio" name="ed-subtype" value={t}
+                                   checked={edSubType === t}
+                                   onChange={e => setEdSubType(e.target.value)} />
+                            <span>{t}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </label>
+                  ) : (
+                    <label>{edCat.subTypeLabel || 'Type'}
+                      <select value={edSubType} onChange={e => setEdSubType(e.target.value)}>
+                        <option value="">— select —</option>
+                        {edCat.subTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </label>
+                  )
+                )}
+
+                {!edSkipCommon && (
+                  <>
+                    <label>Place of Seizure
+                      <input value={edPlaceOfSeizure} onChange={e => setEdPlaceOfSeizure(e.target.value)} placeholder="e.g. Near bus stand" />
+                    </label>
+                    <label>Sealed / Unsealed
+                      <select value={edSealSealed} onChange={e => setEdSealSealed(e.target.value)}>
+                        <option value="Sealed">Sealed</option>
+                        <option value="Unsealed">Unsealed</option>
+                      </select>
+                    </label>
+                    <label>Seal No. / Mark
+                      <input value={edSealNo} onChange={e => setEdSealNo(e.target.value)} placeholder="Seal no. / mark" />
+                    </label>
+                    <label>Sealed By (Officer)
+                      <input value={edSealBy} onChange={e => setEdSealBy(e.target.value)} placeholder="Officer name" />
+                    </label>
+                  </>
+                )}
+
+                {/* Per-category popup fields (the same ones RegisterCaseModal shows) */}
+                {(edCat?.fields || []).map(f => (
+                  <label key={f.key}>
+                    {f.unit ? `${f.label} (${f.unit})` : f.label}
+                    {f.type === 'select' ? (
+                      <select
+                        value={edCatValues[f.key] || ''}
+                        onChange={e => setEdCatVal(f.key, e.target.value)}
+                      >
+                        <option value="">— select —</option>
+                        {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ) : f.type === 'number' ? (
+                      <input type="number"
+                        value={edCatValues[f.key] || ''}
+                        placeholder={f.placeholder}
+                        onChange={e => setEdCatVal(f.key, e.target.value)} />
+                    ) : f.type === 'date' ? (
+                      <input type="date"
+                        value={edCatValues[f.key] || ''}
+                        max={today}
+                        onChange={e => setEdCatVal(f.key, e.target.value)} />
+                    ) : f.type === 'time' ? (
+                      <input type="time"
+                        value={edCatValues[f.key] || ''}
+                        onChange={e => setEdCatVal(f.key, e.target.value)} />
+                    ) : (
+                      <input type="text"
+                        value={edCatValues[f.key] || ''}
+                        placeholder={f.placeholder}
+                        onChange={e => setEdCatVal(f.key, e.target.value)} />
+                    )}
+                  </label>
+                ))}
+
+                <label className="full">Item Description (detailed — brand, colour, size, marks)
+                  <textarea
+                    value={edRemarks}
+                    onChange={e => setEdRemarks(e.target.value)}
+                    placeholder="Detailed description"
+                    rows={3}
+                  />
+                </label>
+              </div>
+
+              {/* Photo of the seized object — replace / remove / keep */}
+              <label className="full rc-photo-label">Photo of the seized object
+                <div className="edit-photo-zone">
+                  {previewPhoto ? (
+                    <div className="edit-photo-preview">
+                      <img src={previewPhoto} alt={`Seized ${edItemType || ''}`} />
+                      <span className="edit-photo-meta">
+                        {edPhotoDataUrl && edPhotoDataUrl !== ''
+                          ? 'New photo selected — click Save to upload.'
+                          : 'Current photo (unchanged).'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="rc-photo-empty">No photo on this case property.</div>
+                  )}
+                  <div className="edit-photo-actions">
+                    <label className="btn ghost edit-photo-btn">
+                      📁 Upload new
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onEditPhotoFile} />
+                    </label>
+                    <button type="button" className="btn ghost edit-photo-btn" onClick={openEditCam}>📷 Use camera</button>
+                    {previewPhoto && (
+                      <button type="button" className="btn ghost edit-photo-btn danger" onClick={clearEditPhoto}>🗑 Remove</button>
+                    )}
+                  </div>
+                </div>
               </label>
-            </div>
+            </fieldset>
+
             {editErr && <div className="form-msg show error" style={{ marginTop: 8 }}>{editErr}</div>}
             <div className="form-actions">
               <button type="button" className="btn ghost" onClick={() => setShowEdit(false)} disabled={editBusy}>Cancel</button>
-              <button type="submit" className="btn" disabled={editBusy || !edItemType.trim() || !edSection}>{editBusy ? 'Saving…' : 'Save'}</button>
+              <button type="submit" className="btn"
+                      disabled={editBusy || !edItemType.trim() || !edSection || !edSeizingOfficer.trim()}>
+                {editBusy ? 'Saving…' : 'Save all changes'}
+              </button>
             </div>
           </form>
         </div>
-      )}
+        );
+      })()}
+
+      {/* Camera capture for the Edit modal */}
+      <CameraCaptureModal
+        open={editCamOpen}
+        onClose={() => setEditCamOpen(false)}
+        onCapture={onEditCamCapture}
+      />
 
       {/* Delete confirm */}
       {showDelete && (

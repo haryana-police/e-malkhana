@@ -678,6 +678,90 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .btn.danger:hover{ background: #931F23; border-color: #931F23; }
 .btn.danger:disabled{ opacity: 0.5; cursor: not-allowed; }
 
+/* Edit Case Property modal — Step 1 / Step 2 fieldsets.
+   Each step is a bordered box with a colored legend.  Two steps live
+   inside the same scrollable .form-card-wide so the page stays a
+   single page. */
+.edit-step{
+  border: 1px solid #E6DDC4;
+  border-radius: 6px;
+  padding: 10px 14px 14px;
+  margin: 14px 0 0;
+  background: #FFFEFA;
+}
+.edit-step legend{
+  font-family:'Rajdhani',sans-serif;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-navy);
+  padding: 0 6px;
+  font-weight: 700;
+  background: #FFFEFA;
+}
+.edit-step .form-grid{ margin-top: 6px; }
+.edit-step textarea{ resize: vertical; min-height: 60px; font-family: inherit; font-size: 13px; }
+.edit-step input[type="time"], .edit-step input[type="date"]{ font-family: inherit; }
+
+/* Inner wrapper for the Record Type radios inside Step 1 — sits inline
+   with the .rc-radio-row outer flex that the registration form uses. */
+.rc-radio-row.full{ display: block; }
+.rc-radio-row-inner{ display: flex; gap: 14px; margin-top: 4px; }
+
+/* The Edit Case Property photo zone — preview + 3 action buttons.
+   Sized so the existing on-screen card keeps the same vertical proportions. */
+.edit-photo-zone{
+  border: 1px dashed #A99968;
+  border-radius: 4px;
+  padding: 10px;
+  background: #FAF7EE;
+  margin-top: 6px;
+}
+.edit-photo-preview{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  background: #fff;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+.edit-photo-preview img{
+  max-height: 120px;
+  max-width: 180px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+.edit-photo-meta{
+  font-size: 11.5px;
+  color: var(--slate-soft);
+  line-height: 1.4;
+}
+.edit-photo-actions{
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.edit-photo-btn{
+  font-size: 12px !important;
+  padding: 6px 10px !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.edit-photo-btn.danger{
+  border-color: #B1373B;
+  color: #B1373B;
+}
+.edit-photo-btn.danger:hover{
+  background: rgba(177,55,59,0.08);
+}
+
+/* Footer banner colour (mirror existing pattern) — adjust when needed. */
+
 /* Post-delete banner shown by App.tsx after a successful case delete
    from the Edit Case Property modal.  Top-center, auto-dismisses in 6s. */
 .delete-toast{

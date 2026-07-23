@@ -946,10 +946,30 @@ async function upsertFirMasterPartial({ firNo, firDate }) {
 //     seizedOn?:        string  (ISO date "2026-03-11" or display "11 Mar 2026"),
 //     itemId?:          string,
 //     legalSection?:    string  (BNS section no., bare "101" or "BNS 101"; null/"" to clear),
+//     description?:     string,
 //     receivedBy?:      string  (Malkhana Moharrir — written to case_property.received_by),
 //     firDate?:         string  (YYYY-MM-DD — upserted into fir_master.fir_date),
-//     imageUrl?:        string  (overwrite or clear the photo URL),
-//     status?:          string  (must be one of STATUSES — bypasses /status PATCH)
+//     imageUrl?:        string  (data-URL OR existing URL OR null/"" to clear),
+//     status?:          string  (must be one of STATUSES),
+//
+//     // Step-2 / case_property payload — applies ALL common + per-item popup
+//     // fields in one shot.  mirror updated to match Postgres via
+//     // upsertCaseProperty.
+//     caseProperty?: {
+//        seizedTime?, receivedBy?, quantity?, placeOfSeizure?, remarks?,
+//        sealSealed?, sealNo?, sealBy?, fields?: { [key]: value },
+//     },
+//
+//     // Step-1 / fir_master DD extras + recordType.  When `recordType` is
+//     // provided, the row is upserted with the matching fields.  When 'DD'
+//     // is chosen, the DD-specific fields take effect.
+//     recordType?:    'FIR' | 'DD',
+//     ddDate?:        string|null,
+//     natureOfDd?:    string|null,
+//     nameOfDeceased?:string|null,
+//     reportingPerson?:string|null,
+//     actualSeizureDdNo?:string|null,
+//     actualSeizureDate?:string|null,
 //   }
 //
 // Returns the updated CaseRow (with fresh sectionName joined from the
@@ -968,10 +988,18 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     // `status` is included so the inline-edit grid on the Case Property page
     // can mutate it directly; the dedicated PATCH /:id/status endpoint stays
     // in place for callers that only want to bump the status without any of
-    // the other editable fields.
+    // the other editable fields.  `caseProperty` and the DD-extras keys
+    // extend the allow-list so the Edit Case Property modal can update
+    // every registration field in one round-trip.
+    // shortVal: trim noisy strings for the audit log diff so a 200-char
+    // remarks change doesn't balloon the entry to multiple lines.
+    const shortVal = (s) => (s == null ? '—' : String(s).length > 30 ? String(s).slice(0, 27) + '…' : String(s));
     const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'itemId', 'legalSection',
                       'legalSections', 'itemTypeId', 'description',
-                      'receivedBy', 'firDate', 'imageUrl', 'status'];
+                      'receivedBy', 'firDate', 'imageUrl', 'status',
+                      'caseProperty',
+                      'recordType', 'ddDate', 'natureOfDd', 'nameOfDeceased', 'reportingPerson',
+                      'actualSeizureDdNo', 'actualSeizureDate'];
     const patch = {};
     for (const k of ALLOWED) {
       if (Object.prototype.hasOwnProperty.call(body, k)) patch[k] = body[k];
@@ -998,7 +1026,21 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     let newImageUrl = undefined;        // undefined = no change requested
     if (Object.prototype.hasOwnProperty.call(patch, 'imageUrl')) {
       const raw = patch.imageUrl;
-      newImageUrl = (raw == null || String(raw).trim() === '') ? null : String(raw).trim();
+      if (raw == null || String(raw).trim() === '') {
+        newImageUrl = null;
+      } else {
+        const s = String(raw).trim();
+        // data: URL — upload via the existing inline helper and replace
+        // the file on disk.  Caller is the Edit Case Property modal.
+        if (s.startsWith('data:')) {
+          const uploaded = await apiUploadInline(s);
+          if (!uploaded) { const e = new Error('failed to upload photo (bad data URL)'); e.status = 400; throw e; }
+          newImageUrl = uploaded;
+        } else {
+          // Pass-through URL (already on disk, e.g. user untouched it).
+          newImageUrl = s;
+        }
+      }
     }
     let newReceivedBy = undefined;      // undefined = no change requested
     if (Object.prototype.hasOwnProperty.call(patch, 'receivedBy')) {
@@ -1176,6 +1218,103 @@ app.patch('/api/cases/:id', async (req, res, next) => {
             await upsertFirMasterPartial({ firNo: fmKey, firDate: next });
             firDateTouched = true;
           }
+        }
+      }
+
+      // ---- case_property STEP-2 payload (full common block + per-item
+      //      popup fields + sub_type + remarks).  Goes through the
+      //      helper that mirrors to Postgres + keeps the in-memory mirror
+      //      in lock-step. ----
+      if (patch.caseProperty && typeof patch.caseProperty === 'object') {
+        const cpPatch = patch.caseProperty || {};
+        const cp = ensureCasePropertyFor(c);
+        let cpChanged = false;
+        // Each row updated individually with a diff line for the audit log.
+        const fields = [
+          ['seizedTime',     cpPatch.seizedTime],
+          ['receivedBy',     cpPatch.receivedBy],
+          ['quantity',       cpPatch.quantity],
+          ['placeOfSeizure', cpPatch.placeOfSeizure],
+          ['remarks',        cpPatch.remarks],
+          ['sealSealed',     cpPatch.sealSealed],
+          ['sealNo',         cpPatch.sealNo],
+          ['sealBy',         cpPatch.sealBy],
+        ];
+        for (const [k, v] of fields) {
+          if (v === undefined) continue;
+          const next = v == null ? (k === 'receivedBy' ? null : '') : String(v);
+          const old = cp[k] == null ? (k === 'receivedBy' ? '' : '') : String(cp[k]);
+          if (next !== old) {
+            changes.push(`${k}: ${shortVal(cp[k])} → ${shortVal(next)}`);
+            cp[k] = next || null;
+            cpChanged = true;
+          }
+        }
+        // Per-item popup fields (object) — diff each key against the
+        // current case_property.fields mirror and upsert only the diffs.
+        if (cpPatch.fields && typeof cpPatch.fields === 'object') {
+          if (!Array.isArray(cp.fields)) cp.fields = [];
+          const incoming = cpPatch.fields;
+          for (const [k, v] of Object.entries(incoming)) {
+            if (v === undefined) continue;
+            const sv = v == null ? '' : String(v);
+            const cur = cp.fields.find(f => f.key === k);
+            if (!cur) {
+              if (sv !== '') {
+                cp.fields.push({ key: k, value: sv });
+                changes.push(`field ${k}: — → ${shortVal(sv)}`);
+                cpChanged = true;
+              }
+            } else if ((cur.value || '') !== sv) {
+              const oldV = cur.value;
+              cur.value = sv;
+              changes.push(`field ${k}: ${shortVal(oldV)} → ${shortVal(sv)}`);
+              cpChanged = true;
+            }
+          }
+        }
+        if (cpChanged) await dbSaveCaseProperty(cp);
+      }
+
+      // ---- fir_master STEP-1 DD extras + recordType.  Always upsert
+      //      (no-op if every field is unchanged) so the mirror and
+      //      Postgres see the new recordType / DD fields. ----
+      const fmFieldsTouched = {};
+      ['recordType','ddDate','natureOfDd','nameOfDeceased','reportingPerson',
+       'actualSeizureDdNo','actualSeizureDate'].forEach(k => {
+        if (Object.prototype.hasOwnProperty.call(patch, k)) fmFieldsTouched[k] = patch[k];
+      });
+      if (Object.keys(fmFieldsTouched).length > 0 || firDateTouched) {
+        const fmKey = String(c.firNo || c.id || '').trim();
+        if (fmKey) {
+          try {
+            const current = await getFirMaster(fmKey);
+            const merged = {
+              firNo: fmKey,
+              policeStation: current?.policeStation || '',
+              firDate: (newFirDate !== undefined ? newFirDate : current?.firDate) || null,
+              usSections: current?.usSections || null,
+              io: current?.io || null,
+              recordType: (fmFieldsTouched.recordType !== undefined ? fmFieldsTouched.recordType : current?.recordType) || 'FIR',
+              ddDate:          fmFieldsTouched.ddDate          !== undefined ? fmFieldsTouched.ddDate          : (current?.ddDate || null),
+              natureOfDd:      fmFieldsTouched.natureOfDd      !== undefined ? fmFieldsTouched.natureOfDd      : (current?.natureOfDd || null),
+              nameOfDeceased:  fmFieldsTouched.nameOfDeceased  !== undefined ? fmFieldsTouched.nameOfDeceased  : (current?.nameOfDeceased || null),
+              reportingPerson: fmFieldsTouched.reportingPerson !== undefined ? fmFieldsTouched.reportingPerson : (current?.reportingPerson || null),
+              actualSeizureDdNo: fmFieldsTouched.actualSeizureDdNo !== undefined ? fmFieldsTouched.actualSeizureDdNo : (current?.actualSeizureDdNo || null),
+              actualSeizureDate: fmFieldsTouched.actualSeizureDate !== undefined ? fmFieldsTouched.actualSeizureDate : (current?.actualSeizureDate || null),
+            };
+            // Audit log diff for the DD extras
+            for (const k of ['recordType','ddDate','natureOfDd','nameOfDeceased','reportingPerson','actualSeizureDdNo','actualSeizureDate']) {
+              if (fmFieldsTouched[k] === undefined) continue;
+              const old = current ? (current[k] || '') : '';
+              const next = fmFieldsTouched[k] || '';
+              if (String(old) !== String(next)) {
+                changes.push(`fir ${k}: ${shortVal(old)} → ${shortVal(next)}`);
+              }
+            }
+            const { upsertFirMaster } = await import('./db.js');
+            await upsertFirMaster(merged);
+          } catch { /* silent */ }
         }
       }
 
