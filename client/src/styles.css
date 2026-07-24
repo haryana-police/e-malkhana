@@ -166,17 +166,126 @@ body{
   display:flex; align-items:center; justify-content:center;
   flex-shrink:0;
 }
-.rack-name-input{
-  background:transparent; border:none; outline:none;
+.rack-name{
   color: var(--paper); font-size:12.5px; font-weight:500;
-  width:100%;
+  width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   font-family:'IBM Plex Sans', sans-serif;
-  border-bottom:1px dashed transparent;
+  cursor:pointer;
 }
-.rack-name-input:focus{ border-bottom-color: var(--khaki-light); }
-.rack-count{ font-size:10.5px; color: rgba(240,235,221,0.55); flex-shrink:0; }
+.rack-count{ font-size:10.5px; color: rgba(240,235,221,0.55); flex-shrink:0; cursor:pointer; }
 .rack-hint{
   padding: 2px 16px 0; font-size:10.5px; color: rgba(240,235,221,0.4); line-height:1.4;
+}
+
+/* ============ SIDEBAR MINI-RAIL (desktop ≥769px) ============
+   Click any nav option → sidebar collapses to a 64px icon rail.
+   Hover the rail → full 250px detail view expands as an OVERLAY
+   (negative right margin keeps the flex slot at 64px, so the main
+   content never reflows). Pin (📌 / «) locks it permanently open. */
+.sidebar-pin-btn{
+  display:none;                          /* desktop-only affordance */
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 5px;
+  color: var(--paper);
+  width: 22px; height: 22px;
+  align-items:center; justify-content:center;
+  font-size: 12px; line-height:1;
+  cursor:pointer;
+  transition: background 0.15s;
+}
+.sidebar-pin-btn:hover{ background: rgba(255,255,255,0.16); }
+
+@media (min-width: 769px){
+  .sidebar-pin-btn{ display:inline-flex; }
+  .sidebar{ transition: width 0.2s ease, margin-right 0.2s ease; }
+
+  /* Rail mode: pin the sidebar to the viewport (sticky, 100vh) so the
+     bottom rail group (System Setting ⚙ / Sign out ⎋) is ALWAYS visible
+     even when the page content is taller than the screen. */
+  .sidebar.rail-mode{
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    max-height: 100vh;
+    align-self: flex-start;
+  }
+
+  /* Rail mode frees ~186px — let the main content auto-fill it instead
+     of leaving blank space on the right. */
+  .app:has(.sidebar.rail-mode) .main{ max-width: none; }
+
+  /* Collapsed rail — 64px column of icon buttons */
+  .sidebar.rail{
+    width: 64px;
+    padding: 14px 0;
+    gap: 18px;
+    align-items:center;
+    overflow: visible;
+  }
+  /* Hover-expanded: full width again, but overlay via negative margin so
+     the layout slot stays 64px and the register table doesn't jump. */
+  .sidebar.rail-mode.hover-open{
+    width: 250px;
+    margin-right: -186px;                /* 250 − 64 */
+    z-index: 90;
+    box-shadow: 8px 0 28px rgba(20,36,61,0.45);
+    overflow-y: auto;                    /* full detail can exceed 100vh */
+  }
+
+  .rail-group{
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    width:100%;
+  }
+  .rail-bottom{ margin-top:auto; }
+  .rail-btn{
+    position: relative;
+    width: 42px; height: 42px;
+    display:flex; align-items:center; justify-content:center;
+    background: rgba(0,0,0,0.15);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    color: rgba(240,235,221,0.8);
+    font-size: 17px; line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .rail-btn:hover{
+    background: rgba(140,122,84,0.22);
+    border-color: var(--khaki-light);
+    color: var(--paper);
+  }
+  .rail-btn.active{
+    background: rgba(140,122,84,0.32);
+    border-color: var(--khaki-light);
+    color: var(--paper);
+    box-shadow: inset 3px 0 0 var(--khaki-light);
+  }
+  .rail-pin{
+    width: 34px; height: 30px;
+    font-size: 14px;
+    background: transparent;
+    border-color: transparent;
+  }
+  .rail-rack .rail-letter{
+    font-family:'Rajdhani', sans-serif;
+    font-weight:700; font-size:15px;
+    color: var(--khaki-light);
+  }
+  .rail-btn.rail-rack.active .rail-letter{ color: var(--paper); }
+  .rail-count{
+    position:absolute; top:-5px; right:-5px;
+    min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 8px;
+    background: var(--khaki);
+    color: var(--ink-navy);
+    font-size: 9.5px; font-weight: 700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .rail-logout:hover{
+    background: rgba(178,58,58,0.3);
+    border-color: rgba(220,90,90,0.7);
+  }
 }
 
 /* ============ MAIN ============ */
@@ -206,6 +315,8 @@ body{
 .btn.ghost{ background:transparent; color: var(--ink-navy); }
 .btn-excel{ background:#1f7a3d; border:1px solid #1f7a3d; color:#fff; }
 .btn-excel:hover{ opacity:0.9; }
+.btn-html{ background:#2f6fb0; border:1px solid #2f6fb0; color:#fff; }
+.btn-html:hover{ opacity:0.9; }
 .btn-pdf{ background:#c0392b; border:1px solid #c0392b; color:#fff; }
 .btn-pdf:hover{ opacity:0.9; }
 
@@ -534,6 +645,9 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
    off-canvas drawer, so we drop back to full-viewport centering. */
 @media (min-width: 769px){
   .overlay{ left:250px; right:0; padding-left:24px; padding-right:24px; }
+  /* When the sidebar is collapsed to the 64px mini-rail, the content area
+     starts at 64px — recenter modals accordingly. */
+  body:has(.sidebar.rail-mode) .overlay{ left:64px; }
 }
 /* The System Setting surface is a standalone screen, not a popup that
    sits beside the left nav. Stretch it across the FULL viewport (left:0)
@@ -3258,7 +3372,7 @@ input, select, textarea{
   .system-setting-list{ gap: 6px; }
   .rack-row{ min-height: 44px; padding: 9px 10px; }
   .rack-letter{ width: 28px; height: 28px; font-size: 14px; }
-  .rack-name-input{ font-size: 16px; }     /* ≥16px: no iOS zoom */
+  .rack-name{ font-size: 16px; }     /* ≥16px: no iOS zoom */
 
   /* Sticky header is fine — it's short (no rank, icon-only logout) on mobile. */
   .letterhead{ padding: 8px 12px; }
