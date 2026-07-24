@@ -248,60 +248,41 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
           Setting). Click a row or count to filter the Case Property list to that section.
         </div>
 
-        {onSettingsRoute ? (
-          // On the /settings page the System Setting card would just repeat
-          // what the page already shows — and on mobile it stacks on top of
-          // the page content, hiding the focused Item Type Fields view.
-          // Replace it with a single back-to-dashboard link so the user has
-          // one obvious way out of the settings page.
-          <div className="system-setting-card settings-route-back">
+        <div className="system-setting-card">
+          <div className="system-setting-head">
+            <span className="system-setting-title">System Setting</span>
+          </div>
+          <div className="system-setting-list">
             <button
               type="button"
               className="sys-setting-item"
-              onClick={() => { onNav('dashboard'); collapseAfterNav(); }}
-              title="Back to dashboard"
-            >
-              <span className="sys-back-arrow" aria-hidden="true">←</span>
-              Back to Dashboard
+              onClick={() => { onOpenSettings('fields'); collapseAfterNav(); }}
+            >Item Type Fields</button>
+            <button
+              type="button"
+              className="sys-setting-item"
+              onClick={() => { onOpenSettings('backup'); collapseAfterNav(); }}
+            >Backup &amp; Restore</button>
+            <button
+              type="button"
+              className="sys-setting-item"
+              onClick={() => { onOpenSettings('log'); collapseAfterNav(); }}
+            >Activity log
+              {auditCount != null && <span className="sys-setting-count">{auditCount}</span>}
             </button>
+            <button
+              type="button"
+              className="sys-setting-item"
+              onClick={() => { onOpenSettings('movementTypes'); collapseAfterNav(); }}
+              title="Configure the Move-to-status vocabulary"
+            >Movement Types</button>
+            <button
+              type="button"
+              className="sys-setting-item"
+              onClick={() => { (onOpenSectionsManagerPage ? onOpenSectionsManagerPage() : onOpenSectionsManager()); collapseAfterNav(); }}
+            >Malkhana Locations</button>
           </div>
-        ) : (
-          <div className="system-setting-card">
-            <div className="system-setting-head">
-              <span className="system-setting-title">System Setting</span>
-            </div>
-            <div className="system-setting-list">
-              <button
-                type="button"
-                className="sys-setting-item"
-                onClick={() => { onOpenSettings('fields'); collapseAfterNav(); }}
-              >Item Type Fields</button>
-              <button
-                type="button"
-                className="sys-setting-item"
-                onClick={() => { onOpenSettings('backup'); collapseAfterNav(); }}
-              >Backup &amp; Restore</button>
-              <button
-                type="button"
-                className="sys-setting-item"
-                onClick={() => { onOpenSettings('log'); collapseAfterNav(); }}
-              >Activity log
-                {auditCount != null && <span className="sys-setting-count">{auditCount}</span>}
-              </button>
-              <button
-                type="button"
-                className="sys-setting-item"
-                onClick={() => { onOpenSettings('movementTypes'); collapseAfterNav(); }}
-                title="Configure the Move-to-status vocabulary"
-              >Movement Types</button>
-              <button
-                type="button"
-                className="sys-setting-item"
-                onClick={() => { (onOpenSectionsManagerPage ? onOpenSectionsManagerPage() : onOpenSectionsManager()); collapseAfterNav(); }}
-              >Malkhana Locations</button>
-            </div>
-          </div>
-        )}
+        </div>
 
         {user && onLogout && (
           <button
