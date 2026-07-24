@@ -120,7 +120,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   const legalBoxRef = useRef<HTMLLabelElement>(null);
 
   // ---------- common block (once) ----------
-  const [seizedTime, setSeizedTime] = useState('10:00');
   const [receivedBy, setReceivedBy] = useState('');
 
   // ---------- multi-item list ----------
@@ -169,7 +168,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     setActualSeizureDdNo(''); setActualSeizureDate('');
     setFirHits([]); setFirOpen(false); setFirActive(-1);
     setLegalAct(''); setLegalQuery(''); setLegalSections([]);
-    setSeizedTime('10:00'); setReceivedBy('');
+    setReceivedBy('');
     setItems([]); setMsg(null); setErrors([]); setItemsCollapsed(false);
   }
 
@@ -367,6 +366,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   }
 
   const prefix = recordType === 'DD' ? 'DD ' : 'FIR ';
+  // Dynamic label for the primary FIR/DD reference column — the use-case
+  // keyword in brackets tells the MM what the number is for (case registration).
+  const refLabel = recordType === 'FIR' ? 'FIR No. (Registration)' : 'DD No. (Registration)';
 
   // ---------- validation ----------
   // All fields are optional — no compulsory inputs (per request). Returning []
@@ -407,7 +409,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
         actualSeizureDdNo: actualSeizureDdNo.trim() || null,
         actualSeizureDate: actualSeizureDate.trim() || null,
         common: {
-          seizedTime,
+          seizedTime: null,
           witness1: null, witness2: null,  // removed from form
           receivedBy, malkhanaLocation: '',
           legalSections: legalSections.map(s => lsKey(s.actCode, s.sectionNo)),
@@ -543,7 +545,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                     </div>
                   </label>
 
-                  <label>FIR / DD No.
+                  <label>{refLabel}
                     <div className="rc-fir-row fir-typeahead" ref={firBoxRef}>
                       <input
                         type="text"
@@ -618,7 +620,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
               {/* --- Actual Seizure group --- */}
               <section className="rc-group">
                 <div className="rc-grid">
-                  <label>DD No.
+                  <label>DD No. (Seizure)
                     <input value={actualSeizureDdNo} onChange={e => setActualSeizureDdNo(e.target.value)} placeholder="e.g. DD 12/2026" />
                   </label>
                   <label>Date
@@ -699,9 +701,6 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                 <div className="rc-grid">
                   <label>Received By (Malkhana Moharrir)
                     <input value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Moharrir name" />
-                  </label>
-                  <label>Seized Time
-                    <input type="time" value={seizedTime} onChange={e => setSeizedTime(e.target.value)} />
                   </label>
                   <label>Seizing Officer
                     <input value={items[0]?.seizingOfficer || defaultIo(user)} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizingOfficer: e.target.value } : it))} />
