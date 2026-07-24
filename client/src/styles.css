@@ -3399,21 +3399,37 @@ input, select, textarea{
      all 10 columns are legible, and let header/cell text WRAP rather than
      clip with "…" so every value is fully visible (scroll sideways to see
      the rest). */
-  .panel.is-mobile table.register-table{ min-width: 920px; }
+  .panel.is-mobile table.register-table{ min-width: 980px; }
   .panel.is-mobile .register-table thead th{
     white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.25; min-height: 34px;
   }
   .panel.is-mobile .register-table tbody td{ white-space: normal; word-break: break-word; }
+  /* Location column a touch wider so the rack name (Narcotics Rack,
+     Documents & Cash) stays on fewer wrapped lines. */
+  .panel.is-mobile .register-table .col-location{ width: 15%; min-width: 130px; }
   /* Status column: stop the rotated stamp from breaking into stacked
      letters — give it room and un-rotate on small screens. */
   .panel.is-mobile .register-table .col-status{ width: 9%; min-width: 96px; }
   .panel.is-mobile .register-table .stamp{ transform: none; white-space: nowrap; }
+  /* Action column: give it real width and stack the 3 buttons vertically
+     so the red "Change status" label can't bleed over / ghost onto its
+     neighbours (the earlier overlap was the narrow col forcing wraps). */
+  .panel.is-mobile .register-table .col-actions{ width: 17%; min-width: 150px; }
+  .panel.is-mobile .register-table .actions-cell{ padding: 6px 8px; }
+  .panel.is-mobile .register-table .row-actions-hover{
+    flex-direction: column; align-items: stretch; gap: 6px; flex-wrap: nowrap;
+  }
+  .panel.is-mobile .register-table .row-actions-hover .act-btn{
+    width: 100%; min-height: 40px; justify-content: flex-start; gap: 8px;
+    font-size: 12px; padding: 8px 10px;
+  }
+  .panel.is-mobile .register-table .row-actions-hover .act-lbl{ display: inline; }
   /* Sticky header inside a scroll container is fine; keep it. */
   .register-table thead th{ font-size: 9.5px; padding: 9px 10px; }
   .register-table tbody td{ padding: 9px 10px; font-size: 12px; }
   /* Action buttons: 44px touch targets, labels always visible on mobile. */
-  .row-actions-hover{ gap: 6px; flex-wrap: wrap; }
-  .row-actions-hover .act-btn{ min-height: 44px; padding: 6px 10px; }
+  .row-actions-hover{ gap: 6px; flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+  .row-actions-hover .act-btn{ min-height: 40px; padding: 8px 10px; width: 100%; justify-content: flex-start; gap: 8px; }
   .row-actions-hover .act-ico{ font-size: 13px; }
   .row-actions-hover .act-lbl{ display: inline; font-size: 12px; }
 
