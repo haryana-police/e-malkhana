@@ -3395,9 +3395,19 @@ input, select, textarea{
   .panel{ overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .panel.is-mobile{ overflow-x: auto; }
   /* On mobile the register is now rendered as a real (horizontally
-     scrollable) table instead of stacked cards, so guarantee a sensible
-     min-width and keep the column-filter popover from clipping. */
-  .panel.is-mobile table.register-table{ min-width: 720px; }
+     scrollable) table instead of stacked cards. Give it enough width that
+     all 10 columns are legible, and let header/cell text WRAP rather than
+     clip with "…" so every value is fully visible (scroll sideways to see
+     the rest). */
+  .panel.is-mobile table.register-table{ min-width: 920px; }
+  .panel.is-mobile .register-table thead th{
+    white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.25; min-height: 34px;
+  }
+  .panel.is-mobile .register-table tbody td{ white-space: normal; word-break: break-word; }
+  /* Status column: stop the rotated stamp from breaking into stacked
+     letters — give it room and un-rotate on small screens. */
+  .panel.is-mobile .register-table .col-status{ width: 9%; min-width: 96px; }
+  .panel.is-mobile .register-table .stamp{ transform: none; white-space: nowrap; }
   /* Sticky header inside a scroll container is fine; keep it. */
   .register-table thead th{ font-size: 9.5px; padding: 9px 10px; }
   .register-table tbody td{ padding: 9px 10px; font-size: 12px; }
