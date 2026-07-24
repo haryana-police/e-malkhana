@@ -3,8 +3,11 @@
 # reach Google Drive from Vercel serverless (no pg_dump / rclone preinstalled).
 # Runs as part of `vercel-build`.  Skips if already present.
 set -e
-BIN_DIR="$(cd "$(dirname "$0")/../server/bin" && pwd)"
+# mkdir BEFORE resolving with cd — on a fresh Vercel clone server/bin does not
+# exist (git doesn't track empty dirs) and `cd` into it would fail the build.
+BIN_DIR="$(dirname "$0")/../server/bin"
 mkdir -p "$BIN_DIR"
+BIN_DIR="$(cd "$BIN_DIR" && pwd)"
 if [ -x "$BIN_DIR/rclone" ]; then
   echo "[fetch-rclone] already present: $BIN_DIR/rclone"
   exit 0
