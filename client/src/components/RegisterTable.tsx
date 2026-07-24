@@ -39,7 +39,7 @@ interface Props {
   onOpenTimeline?: (fir: string) => void;
   onOpenScan?: () => void;
   onChangeStatus?: (c: CaseRow) => void;
-  onDownloadReport?: (format: 'xlsx' | 'pdf', ids?: string[]) => void;
+  onDownloadReport?: (format: 'xlsx' | 'pdf' | 'html', ids?: string[]) => void;
   onOpenRegister?: () => void;
 };
 
@@ -328,8 +328,9 @@ export function RegisterTable({
             <h1>Case Property Register</h1>
           </div>
           <div className="register-head-actions">
-            {onDownloadReport && <button className="btn small btn-excel" onClick={() => onDownloadReport('xlsx', shown.map(c => c.id))} title="Download currently filtered cases as Excel">⬇ Excel</button>}
-            {onDownloadReport && <button className="btn small btn-pdf" onClick={() => onDownloadReport('pdf', shown.map(c => c.id))}   title="Download currently filtered cases as PDF">⬇ PDF</button>}
+            {onDownloadReport && <button className="btn small btn-html" onClick={() => onDownloadReport('html', sorted.map(c => c.id))} title="Open a viewable, interactive register page (full text, sortable, searchable)">👁 View</button>}
+            {onDownloadReport && <button className="btn small btn-excel" onClick={() => onDownloadReport('xlsx', sorted.map(c => c.id))} title="Download all matching cases (every page) as Excel">⬇ Excel</button>}
+            {onDownloadReport && <button className="btn small btn-pdf" onClick={() => onDownloadReport('pdf', sorted.map(c => c.id))}   title="Download all matching cases (every page) as PDF (dense — use View for readable full text)">⬇ PDF</button>}
             {onOpenRegister && <button className="btn small register-head-add" onClick={onOpenRegister}>+ Register New</button>}
           </div>
         </div>

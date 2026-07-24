@@ -15,7 +15,7 @@ interface Props {
   onOpenRegister: () => void;
   onChangeStatus: (c: CaseRow) => void;
   active?: boolean;
-  onDownloadReport: (format: 'xlsx' | 'pdf') => void;
+  onDownloadReport: (format: 'xlsx' | 'pdf' | 'html') => void;
 }
 
 export function CaseProperty({

@@ -297,9 +297,14 @@ export default function App() {
       excludeDisposed,
     };
   }
-  function onDownloadReport(format: 'xlsx' | 'pdf', ids?: string[]) {
+  function onDownloadReport(format: 'xlsx' | 'pdf' | 'html', ids?: string[]) {
     const url = api.casePropertyReportUrl(buildReportFilters(ids), format);
-    window.location.href = url;
+    if (format === 'html') {
+      // Viewable / interactive page — open in a new tab, don't navigate away.
+      window.open(url, '_blank', 'noopener');
+    } else {
+      window.location.href = url;
+    }
   }
   function onGenerateRegister(format: 'pdf' | 'print') {
     if (format === 'pdf') {

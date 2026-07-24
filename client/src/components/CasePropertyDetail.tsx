@@ -207,17 +207,22 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     api.sections('all').then(s => setSections(s.map(x => ({ letter: x.letter, name: x.name })))).catch(() => setSections([]));
   }, []);
 
-  // Fit the whole detail view (sheet + footer) to exactly one screen, no page scroll.
-  // transform:scale shrinks visually; we also set the wrapper height to the scaled
-  // size so the document flow collapses and the page no longer scrolls.
+  // Fit the whole detail view to exactly one screen, no page scroll.
+  // We scale the .main column itself (the flex child that otherwise stretches
+  // to full sidebar height) so its layout box collapses to the scaled size and
+  // the page no longer scrolls.
   useEffect(() => {
     const fit = () => {
-      const wrap = document.querySelector('.case-detail') as HTMLElement | null;
+      const main = document.querySelector('.main') as HTMLElement | null;
+      if (!main) return;
+      const wrap = main.querySelector('.case-detail') as HTMLElement | null;
       if (!wrap) return;
       const sheet = wrap.querySelector('.case-a4-sheet') as HTMLElement | null;
       if (sheet) sheet.style.transform = 'none';
       wrap.style.transform = 'none';
       wrap.style.height = 'auto';
+      main.style.transform = 'none';
+      main.style.height = 'auto';
       const natural = wrap.getBoundingClientRect().height;
       const topChrome = wrap.getBoundingClientRect().top; // header + nav above
       const avail = window.innerHeight - topChrome - 8; // 8px breathing room
@@ -225,6 +230,10 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       wrap.style.transformOrigin = 'top center';
       wrap.style.transform = `scale(${scale})`;
       wrap.style.height = `${natural * scale}px`;
+      main.style.transformOrigin = 'top center';
+      main.style.transform = `scale(${scale})`;
+      main.style.height = `${natural * scale}px`;
+      main.style.overflow = 'hidden';
     };
     fit();
     window.addEventListener('resize', fit);

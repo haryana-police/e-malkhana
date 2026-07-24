@@ -18,7 +18,7 @@ interface Props {
   onOpenScan: () => void;
   onOpenRegister: () => void;
   onChangeStatus: (c: CaseRow) => void;
-  onDownloadReport: (format: 'xlsx' | 'pdf') => void;
+  onDownloadReport: (format: 'xlsx' | 'pdf' | 'html') => void;
 }
 
 type TileId = 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection';
