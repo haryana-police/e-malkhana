@@ -207,53 +207,22 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   }, []);
 
   // Fit the whole detail view to exactly one screen, no page scroll.
-  // We scale the .main column itself (the flex child that otherwise stretches
-  // to full sidebar height) so its layout box collapses to the scaled size and
-  // the page no longer scrolls.
-  // Fit the whole detail view to exactly one screen, no page scroll.
-  // We scale ONLY the .case-detail sheet (a single scale factor). The
-  // previous version also transformed .main, which compounds to scale²
-  // (e.g. 0.75 -> 0.56) and shrank everything to a near-blank sliver.
-  // Now we scale the sheet once and shrink .main's reserved height so the
-  // page never scrolls — no compounding. Styles are reset on cleanup so
-  // the shared .main isn't left clipped on other routes.
+  // Render the detail sheet at full size and full column width so it
+  // fills the available space (no empty side margins). We no longer apply
+  // a uniform scale-to-fit-everything-on-one-screen transform: that shrank
+  // the sheet's WIDTH too and recreated the blank side gaps on wide
+  // screens. The page scrolls vertically if a short viewport can't fit it
+  // all at once — the canonical A4 proportions are preserved in the
+  // separate "Print full detail" window.
   useEffect(() => {
-    const fit = () => {
-      const main = document.querySelector('.main') as HTMLElement | null;
-      const wrap = document.querySelector('.case-detail') as HTMLElement | null;
-      if (!main || !wrap) return;
-      const cs = getComputedStyle(main);
-      const padTop = parseFloat(cs.paddingTop) || 0;
-      const padBottom = parseFloat(cs.paddingBottom) || 0;
-      // Reset to measure the natural (un-scaled) geometry.
-      wrap.style.transform = 'none';
-      wrap.style.height = 'auto';
-      main.style.height = 'auto';
-      const natural = wrap.getBoundingClientRect().height;
-      if (!natural) return;
-      const top = wrap.getBoundingClientRect().top; // sheet top in viewport (chrome above)
-      const avail = window.innerHeight - top - padBottom - 8; // 8px breathing room
-      const scale = Math.min(1, avail / natural);
-      // Single scale applied to the sheet only.
-      wrap.style.transformOrigin = 'top center';
-      wrap.style.transform = `scale(${scale})`;
-      // Shrink the parent's reserved height (border-box) so the page
-      // never scrolls. Content area = scaled sheet height; overflow clipped.
-      main.style.boxSizing = 'border-box';
-      main.style.height = `${padTop + natural * scale + padBottom}px`;
-      main.style.overflow = 'hidden';
-    };
-    fit();
-    window.addEventListener('resize', fit);
-    const t = setTimeout(fit, 350); // re-fit after fonts/images settle
-    return () => {
-      window.removeEventListener('resize', fit);
-      clearTimeout(t);
+    const reset = () => {
       const main = document.querySelector('.main') as HTMLElement | null;
       const wrap = document.querySelector('.case-detail') as HTMLElement | null;
       if (main) { main.style.height = ''; main.style.overflow = ''; main.style.boxSizing = ''; }
-      if (wrap) { wrap.style.transform = ''; wrap.style.height = ''; }
+      if (wrap) { wrap.style.transform = ''; wrap.style.transformOrigin = ''; wrap.style.height = ''; }
     };
+    reset();
+    return () => { reset(); };
   }, [caseRow, movements]);
 
   useEffect(() => {

@@ -38,7 +38,7 @@ body{
 /* On the Case Detail route, don't let the main column stretch to the
    sidebar's full height — so the scaled-to-fit A4 sheet is the only height. */
 .app:has(.case-detail){ align-items: flex-start; }
-.app:has(.case-detail) .main{ min-height: 0; height: auto; }
+.app:has(.case-detail) .main{ min-height: 0; height: auto; max-width: none; }
 
 /* ============ HEADER / LETTERHEAD ============ */
 .letterhead{
@@ -3660,9 +3660,11 @@ input, select, textarea{
    ============================================================ */
 
 .case-a4-sheet {
-  /* Mirror of the printable sheet, scaled to viewport. A4 = 210mm. */
-  width: min(100%, 210mm);
-  max-width: 210mm;
+  /* On the detail route the sheet fills the available column width so
+     there are no empty side margins (the A4 proportions live in the
+     separate print window, which uses its own .sheet class). */
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
   background: #FAF7EE;
   color: #14243D;
