@@ -3392,9 +3392,12 @@ input, select, textarea{
   /* Tables: already horizontally scrollable (panel overflow-x:auto).
      Drop the min-width a touch so 375px shows ~4 cols before scrolling,
      and show the scroll hint. */
-  .panel table{ min-width: 600px; }
-  .panel .scroll-hint{ display: block; }
-  .panel{ -webkit-overflow-scrolling: touch; }
+  .panel{ overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .panel.is-mobile{ overflow-x: auto; }
+  /* On mobile the register is now rendered as a real (horizontally
+     scrollable) table instead of stacked cards, so guarantee a sensible
+     min-width and keep the column-filter popover from clipping. */
+  .panel.is-mobile table.register-table{ min-width: 720px; }
   /* Sticky header inside a scroll container is fine; keep it. */
   .register-table thead th{ font-size: 9.5px; padding: 9px 10px; }
   .register-table tbody td{ padding: 9px 10px; font-size: 12px; }
