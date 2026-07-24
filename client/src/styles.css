@@ -3405,8 +3405,12 @@ input, select, textarea{
   }
   .panel.is-mobile .register-table tbody td{ white-space: normal; word-break: break-word; }
   /* Location column a touch wider so the rack name (Narcotics Rack,
-     Documents & Cash) stays on fewer wrapped lines. */
-  .panel.is-mobile .register-table .col-location{ width: 15%; min-width: 130px; }
+     Documents & Cash) stays on fewer wrapped lines. Don't break the
+     rack name mid-word — only wrap between words ("Narcotics" / "Rack"),
+     never "Narco" / "tics". */
+  .panel.is-mobile .register-table .col-location{ width: 18%; min-width: 140px; word-break: normal; overflow-wrap: normal; }
+  .panel.is-mobile .register-table .col-location .section-tag{ display: inline-flex; flex-wrap: wrap; gap: 6px; }
+  .panel.is-mobile .register-table .col-location .section-tag > span{ white-space: nowrap; }
   /* Status column: stop the rotated stamp from breaking into stacked
      letters — give it room and un-rotate on small screens. */
   .panel.is-mobile .register-table .col-status{ width: 9%; min-width: 96px; }
