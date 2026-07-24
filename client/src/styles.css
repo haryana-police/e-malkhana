@@ -320,29 +320,25 @@ body{
 .btn-pdf{ background:#c0392b; border:1px solid #c0392b; color:#fff; }
 .btn-pdf:hover{ opacity:0.9; }
 
-/* Register Action cell: 3 compact icon-only buttons in a single row.
-   On desktop, hovering the row opens a small labelled action strip without
-   changing the row height. */
+/* Register Action cell: 3 stacked labelled buttons (QR code · Movement log
+   · Change status) that are ALWAYS visible — matching the mobile/screenshot
+   layout. No hover-to-reveal: labels show on every viewport (laptop, tablet,
+   phone) so each row is self-explanatory without needing a hover. */
 .register-table tbody td.actions-cell{ overflow:visible; }
-.register-table .row-actions-hover{ display:flex; flex-direction:row; gap:3px; align-items:center; justify-content:flex-start; flex-wrap:nowrap; }
+.register-table .row-actions-hover{ display:flex; flex-direction:column; gap:6px; align-items:stretch; justify-content:flex-start; flex-wrap:nowrap; }
 .act-btn{
-  display:inline-flex; align-items:center; justify-content:center; gap:3px;
-  font-family:'IBM Plex Sans', sans-serif; font-size:10px; font-weight:600;
-  padding:1px 5px; border-radius:3px; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:flex-start; gap:8px;
+  font-family:'IBM Plex Sans', sans-serif; font-size:12px; font-weight:600;
+  padding:8px 10px; border-radius:5px; cursor:pointer;
   border:1px solid var(--line); background:var(--white-paper); color:var(--ink-navy);
-  white-space:nowrap; line-height:1.2;
+  white-space:nowrap; line-height:1.2; min-height:38px;
 }
 .act-btn:hover{ opacity:0.9; }
-.act-ico{ font-size:12px; line-height:1; }
+.act-ico{ font-size:13px; line-height:1; }
 .act-tag{ border-color:rgba(31,122,61,0.5); color:#1f7a3d; }
 .act-log{ border-color:rgba(140,122,84,0.5); color:var(--ink-navy); }
 .act-status{ border-color:rgba(192,57,43,0.5); color:#c0392b; }
-.act-lbl{ display:none; letter-spacing:0.01em; }
-/* Reveal only the label of the SPECIFIC button the cursor is on, not all 3
-   when any row cell (e.g. FIR detail) is hovered. */
-.act-btn:hover .act-lbl,
-.act-btn:focus .act-lbl,
-.act-btn:focus-visible .act-lbl{ display:inline; }
+.act-lbl{ display:inline; letter-spacing:0.01em; }
 
 /* register + movement pagers */
 .rt-pager{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:12px 4px 2px; justify-content:flex-end; }
@@ -488,7 +484,7 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 .register-table .col-received{   width:12%;  }
 .register-table .col-lastmove{   width:9%;   }
 .register-table .col-status{     width:8%;   }
-.register-table .col-actions{    width:11%;  }
+.register-table .col-actions{    width:15%; min-width:150px; }
 .register-table .sno{ text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }
 .panel table .col-sno{ width:44px; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }
 .register-table .col-quant{ width:56px; text-align:center; }
@@ -3188,32 +3184,12 @@ html, body{ overflow-x: hidden; max-width: 100vw; }
 .sections-action{ width: 44px; height: 44px; padding: 0; }
 /* Register Action buttons: compact on desktop. The labels are hidden in the
    resting state and revealed together while the action cell/row is hovered. */
+/* Desktop (≥769px): action labels are always visible (vertical stacked),
+   identical to the mobile/screenshot layout — the old hover-to-reveal
+   overlay has been removed. Keep the action cell above its siblings so the
+   three stacked buttons never clip. */
 @media (min-width: 769px){
-  .register-table .row-actions-hover{ gap:3px; }
-  .register-table .row-actions-hover .act-btn{
-    min-height:0; min-width:0; height:auto;
-    padding:1px 5px;
-    font-size:10px; line-height:1.15;
-  }
-  .register-table .row-actions-hover .act-ico{ font-size:12px; }
   .register-table .actions-cell{ position:relative; overflow:visible; z-index:2; }
-  /* Expand above the row instead of pushing the table row taller or clipping
-     the labels inside the fixed-width Action column. */
-  .register-table tbody tr:hover .row-actions-hover,
-  .register-table .row-actions-hover:focus-within{
-    position:absolute; right:4px; top:50%; transform:translateY(-50%);
-    z-index:5; padding:3px; gap:4px;
-    background:var(--white-paper); border:1px solid var(--line);
-    border-radius:4px; box-shadow:0 3px 10px rgba(20,36,61,0.16);
-    white-space:nowrap;
-  }
-  /* Only the hovered/focused button shows its label — keeps hover state
-     scoped to the actual button, not the entire row. */
-  .register-table tbody tr:hover .row-actions-hover .act-btn:hover .act-lbl,
-  .register-table tbody tr:hover .row-actions-hover .act-btn:focus .act-lbl,
-  .register-table .row-actions-hover:focus-within .act-btn:hover .act-lbl,
-  .register-table .row-actions-hover:focus-within .act-btn:focus .act-lbl{ display:inline; }
-
 }
 .sections-action-bar{ gap: 8px; }
 .itemtype-row-actions{ gap: 8px; }
