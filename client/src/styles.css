@@ -3691,7 +3691,7 @@ input, select, textarea{
 }
 .case-a4-title {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 22px;
+  font-size: 26px;
   margin: 3px 0;
   color: #14243D;
   font-weight: 700;
@@ -3725,7 +3725,7 @@ input, select, textarea{
 }
 .case-a4-card h3 {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 11.5px;
+  font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #14243D;
@@ -3792,13 +3792,13 @@ input, select, textarea{
 }
 .case-a4-qr-mask {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 8px;
+  font-size: 9.5px;
   color: #8C7A54;
   word-break: break-all;
   margin-bottom: 2px;
 }
 .case-a4-qr-cap {
-  font-size: 8px;
+  font-size: 9.5px;
   color: #4F6079;
   margin-top: 2px;
   max-width: 100px;
@@ -3812,7 +3812,7 @@ input, select, textarea{
 }
 .case-a4-grid .full { grid-column: 1 / -1; }
 .case-a4-grid .k {
-  font-size: 9px;
+  font-size: 11px;
   text-transform: uppercase;
   color: #8C7A54;
   display: block;
@@ -3820,7 +3820,7 @@ input, select, textarea{
   margin-bottom: 1px;
 }
 .case-a4-grid .v {
-  font-size: 11.5px;
+  font-size: 14px;
   color: #14243D;
   font-weight: 500;
   word-break: break-word;
@@ -3828,7 +3828,7 @@ input, select, textarea{
 }
 .case-a4-grid .v.mono {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 /* Bottom row: Movement LEFT + Photo RIGHT, side-by-side */
@@ -3858,7 +3858,7 @@ input, select, textarea{
 }
 .case-a4-timeline li:last-child { margin-bottom: 0; border-left-color: transparent; }
 .case-a4-timeline .t-route {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: #14243D;
   word-break: break-word;
@@ -3870,7 +3870,7 @@ input, select, textarea{
   margin: 0 4px;
 }
 .case-a4-timeline .t-meta {
-  font-size: 9.5px;
+  font-size: 11.5px;
   color: #4F6079;
   margin-top: 1px;
   word-break: break-word;
@@ -3894,7 +3894,7 @@ input, select, textarea{
 }
 .case-a4-photo-cap {
   display: block;
-  font-size: 10px;
+  font-size: 11.5px;
   color: #4F6079;
   margin-top: 4px;
 }
@@ -3902,7 +3902,7 @@ input, select, textarea{
 /* Empty / placeholder states */
 .case-a4-empty {
   color: #4F6079;
-  font-size: 10.5px;
+  font-size: 13px;
   font-style: italic;
   padding: 8px 10px;
 }
@@ -3920,12 +3920,12 @@ input, select, textarea{
   align-items: center;
   padding-top: 6px;
   border-top: 1px solid #D9D2C2;
-  font-size: 9.5px;
+  font-size: 11.5px;
   color: #4F6079;
 }
 .case-a4-footer-right { display: inline-flex; align-items: center; gap: 10px; }
-.case-a4-footer-ts { font-size: 9px; color: #8C7A54; }
-.case-a4-footer .btn.ghost.small { font-size: 9px; padding: 2px 8px; }
+.case-a4-footer-ts { font-size: 11px; color: #8C7A54; }
+.case-a4-footer .btn.ghost.small { font-size: 11px; padding: 3px 10px; }
 
 /* On narrower screens, stack Movement above Photo */
 @media (max-width: 880px) {

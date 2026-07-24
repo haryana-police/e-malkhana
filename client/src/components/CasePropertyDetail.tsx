@@ -198,7 +198,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [editCamOpen, setEditCamOpen] = useState(false);
 
   const [showDelete, setShowDelete] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
@@ -211,34 +210,50 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   // We scale the .main column itself (the flex child that otherwise stretches
   // to full sidebar height) so its layout box collapses to the scaled size and
   // the page no longer scrolls.
+  // Fit the whole detail view to exactly one screen, no page scroll.
+  // We scale ONLY the .case-detail sheet (a single scale factor). The
+  // previous version also transformed .main, which compounds to scale²
+  // (e.g. 0.75 -> 0.56) and shrank everything to a near-blank sliver.
+  // Now we scale the sheet once and shrink .main's reserved height so the
+  // page never scrolls — no compounding. Styles are reset on cleanup so
+  // the shared .main isn't left clipped on other routes.
   useEffect(() => {
     const fit = () => {
       const main = document.querySelector('.main') as HTMLElement | null;
-      if (!main) return;
-      const wrap = main.querySelector('.case-detail') as HTMLElement | null;
-      if (!wrap) return;
-      const sheet = wrap.querySelector('.case-a4-sheet') as HTMLElement | null;
-      if (sheet) sheet.style.transform = 'none';
+      const wrap = document.querySelector('.case-detail') as HTMLElement | null;
+      if (!main || !wrap) return;
+      const cs = getComputedStyle(main);
+      const padTop = parseFloat(cs.paddingTop) || 0;
+      const padBottom = parseFloat(cs.paddingBottom) || 0;
+      // Reset to measure the natural (un-scaled) geometry.
       wrap.style.transform = 'none';
       wrap.style.height = 'auto';
-      main.style.transform = 'none';
       main.style.height = 'auto';
       const natural = wrap.getBoundingClientRect().height;
-      const topChrome = wrap.getBoundingClientRect().top; // header + nav above
-      const avail = window.innerHeight - topChrome - 8; // 8px breathing room
+      if (!natural) return;
+      const top = wrap.getBoundingClientRect().top; // sheet top in viewport (chrome above)
+      const avail = window.innerHeight - top - padBottom - 8; // 8px breathing room
       const scale = Math.min(1, avail / natural);
+      // Single scale applied to the sheet only.
       wrap.style.transformOrigin = 'top center';
       wrap.style.transform = `scale(${scale})`;
-      wrap.style.height = `${natural * scale}px`;
-      main.style.transformOrigin = 'top center';
-      main.style.transform = `scale(${scale})`;
-      main.style.height = `${natural * scale}px`;
+      // Shrink the parent's reserved height (border-box) so the page
+      // never scrolls. Content area = scaled sheet height; overflow clipped.
+      main.style.boxSizing = 'border-box';
+      main.style.height = `${padTop + natural * scale + padBottom}px`;
       main.style.overflow = 'hidden';
     };
     fit();
     window.addEventListener('resize', fit);
     const t = setTimeout(fit, 350); // re-fit after fonts/images settle
-    return () => { window.removeEventListener('resize', fit); clearTimeout(t); };
+    return () => {
+      window.removeEventListener('resize', fit);
+      clearTimeout(t);
+      const main = document.querySelector('.main') as HTMLElement | null;
+      const wrap = document.querySelector('.case-detail') as HTMLElement | null;
+      if (main) { main.style.height = ''; main.style.overflow = ''; main.style.boxSizing = ''; }
+      if (wrap) { wrap.style.transform = ''; wrap.style.height = ''; }
+    };
   }, [caseRow, movements]);
 
   useEffect(() => {
@@ -445,7 +460,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     if (!caseRow) return;
     setDeleteBusy(true); setDeleteErr(null);
     try {
-      const result = await api.deleteCase(caseRow.id, deleteConfirm);
+      const result = await api.deleteCase(caseRow.id, caseRow.itemId);
       // After delete, navigate back to the register with a flash.
       window.history.back();
       setTimeout(() => { window.location.href = '/caseproperty'; }, 100);
@@ -669,7 +684,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           <button
             className="btn ghost danger"
             type="button"
-            onClick={() => { setDeleteConfirm(''); setDeleteErr(null); setShowDelete(true); }}
+            onClick={() => { setDeleteErr(null); setShowDelete(true); }}
           >
             🗑 Delete
           </button>
@@ -982,14 +997,11 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           <div className="form-card">
             <button type="button" className="tag-close" onClick={() => setShowDelete(false)} aria-label="Close">✕</button>
             <h3>Delete Case Property</h3>
-            <p className="sub">This permanently deletes the registration record and its movement history. Type the Malkhana No. <strong>{c.itemId}</strong> to confirm.</p>
-            <label>Confirm Malkhana No.
-              <input autoFocus value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} placeholder={c.itemId} />
-            </label>
+            <p className="sub">Are you sure you want to delete <strong>{c.itemId}</strong>? This permanently removes the registration record and its movement history. This action cannot be undone.</p>
             {deleteErr && <div className="form-msg show error" style={{ marginTop: 8 }}>{deleteErr}</div>}
             <div className="form-actions">
               <button type="button" className="btn ghost" onClick={() => setShowDelete(false)} disabled={deleteBusy}>Cancel</button>
-              <button type="button" className="btn danger" onClick={deleteCase} disabled={deleteBusy || deleteConfirm.trim().toLowerCase() !== c.itemId.trim().toLowerCase()}>{deleteBusy ? 'Deleting…' : 'Delete permanently'}</button>
+              <button type="button" className="btn danger" onClick={deleteCase} disabled={deleteBusy}>{deleteBusy ? 'Deleting…' : 'Confirm'}</button>
             </div>
           </div>
         </div>
