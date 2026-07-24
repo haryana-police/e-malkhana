@@ -546,66 +546,82 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     const html = `<!doctype html><html><head><title>Case Detail · ${escapeHtml(c.id)}</title>
       <style>
         @page { size: A4; margin: 14mm; }
+        html, body { height: 100%; }
         body  { font-family: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif; color: #14243D; margin: 0; background: #FAF7EE; }
+        .sheet { min-height: 269mm; display: flex; flex-direction: column; box-sizing: border-box; }
         h1, h2, h3 { font-family: 'Rajdhani', sans-serif; color: #14243D; margin: 0; }
-        .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #8C7A54; padding-bottom: 8px; margin-bottom: 14px; }
-        .id   { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8C7A54; }
-        .title{ font-size: 22px; margin: 4px 0; }
-        .sub  { color: #4F6079; font-size: 12px; }
-        .stamp{ display: inline-block; padding: 4px 10px; border-radius: 3px; background: #E6ECF2; color: #14243D; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .dept { background: #14243D; color: #fff; border-radius: 4px; padding: 12px 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .dept .org { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
+        .dept .sys { font-size: 22px; font-weight: 700; margin-top: 2px; }
+        .dept .r { text-align: right; }
+        .stamp{ display: inline-block; padding: 5px 12px; border-radius: 3px; background: #E6ECF2; color: #14243D; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid rgba(255,255,255,0.35); }
         .stamp.tone-warn { background: #FFEED1; color: #8A4B00; }
         .stamp.tone-good { background: #D6F0DC; color: #1A5A33; }
-        .card { border: 1px solid #D9D2C2; border-radius: 4px; padding: 12px 14px; margin-bottom: 14px; background: #fff; }
-        .card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #14243D; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #D9D2C2; }
-        .ctx { display: flex; gap: 18px; padding: 8px 10px; background: #F2EDDB; border: 1px solid #A99968; border-radius: 4px; margin-bottom: 12px; font-size: 11.5px; align-items: center; }
-        .ctx b { color: #8C7A54; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.06em; margin-right: 4px; }
-        .step1-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #8C7A54; padding-bottom: 8px; margin-bottom: 10px; }
+        .id   { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #8C7A54; }
+        .title{ font-size: 30px; margin: 4px 0; }
+        .sub  { color: #4F6079; font-size: 13px; }
+        .card { border: 1px solid #D9D2C2; border-radius: 5px; padding: 14px 16px; margin-bottom: 12px; background: #fff; }
+        .card h3 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: #14243D; margin: 0 0 10px; padding-bottom: 7px; border-bottom: 1px solid #D9D2C2; }
+        .ctx { display: flex; flex-wrap: wrap; gap: 18px; padding: 10px 12px; background: #F2EDDB; border: 1px solid #A99968; border-radius: 4px; margin-bottom: 12px; font-size: 13px; align-items: center; }
+        .ctx b { color: #8C7A54; text-transform: uppercase; font-size: 11px; letter-spacing: 0.06em; margin-right: 5px; }
+        .step1-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
         .step1-head .left { flex: 1; min-width: 0; }
-        .step1-qr { flex: 0 0 auto; text-align: center; padding: 4px 6px; border: 1px solid #D9D2C2; border-radius: 3px; background: #fff; }
-        .step1-qr img { width: 110px; height: 110px; display: block; border: 2px solid #14243D; }
-        .step1-qr-cap { font-size: 8.5px; color: #4F6079; margin-top: 3px; max-width: 110px; }
-        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 16px; }
-        .k { font-size: 9.5px; text-transform: uppercase; color: #8C7A54; display: block; letter-spacing: 0.06em; }
-        .v { font-size: 12px; color: #14243D; font-weight: 500; word-break: break-word; }
-        .v.mono { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; }
+        .step1-qr { flex: 0 0 auto; text-align: center; padding: 8px 10px; border: 1px solid #D9D2C2; border-radius: 4px; background: #fff; }
+        .step1-qr img { width: 150px; height: 150px; display: block; border: 3px solid #14243D; }
+        .step1-qr-cap { font-size: 10px; color: #4F6079; margin-top: 4px; max-width: 150px; }
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 20px; }
+        .k { font-size: 11px; text-transform: uppercase; color: #8C7A54; display: block; letter-spacing: 0.06em; margin-bottom: 2px; }
+        .v { font-size: 14px; color: #14243D; font-weight: 500; word-break: break-word; }
+        .v.mono { font-family: 'IBM Plex Mono', monospace; font-size: 13.5px; }
         .full { grid-column: 1 / -1; }
-        .qr   { width: 180px; height: 180px; display: block; margin: 0 auto; border: 4px solid #14243D; border-radius: 3px; }
-        .qr-cap { font-size: 10px; color: #4F6079; text-align: center; margin-top: 4px; }
-        .row  { display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
-        .bottom-row { display: flex; gap: 14px; margin-bottom: 14px; align-items: stretch; }
-        .bottom-row .movement-card { flex: 1.15 1 0; }
-        .bottom-row .evidence-card { flex: 1 1 0; }
-        .bottom-row .evidence-card .evidence-body { display: flex; align-items: center; justify-content: center; min-height: 180px; }
-        .bottom-row .evidence-card .evidence-body.empty { background: #FAF7EE; color: #4F6079; font-style: italic; font-size: 12px; border: 1px dashed #D9D2C2; }
-        .empty-photo { opacity: 0.85; }
-        .photo{ max-width: 100%; max-height: 360px; display: block; margin: 0 auto; border: 1px solid #D9D2C2; border-radius: 3px; }
+        .bottom-row { display: flex; gap: 14px; margin-bottom: 12px; align-items: stretch; flex: 1; min-height: 230px; }
+        .bottom-row .movement-card { flex: 1.15 1 0; display: flex; flex-direction: column; }
+        .bottom-row .evidence-card { flex: 1 1 0; display: flex; flex-direction: column; }
+        .movement-card .timeline-wrap { flex: 1; }
+        .movement-card .empty { min-height: 200px; display: flex; align-items: center; }
         .evidence-card { border: 2px solid #14243D; padding: 14px 16px; }
-        .evidence-card h3 { font-size: 13px; color: #14243D; border-bottom: 2px solid #14243D; padding-bottom: 8px; }
-        .evidence-body { padding: 10px 0 4px; text-align: center; background: #FAF7EE; border-radius: 4px; }
-        .photo-lg { max-width: 100%; max-height: 360px; display: inline-block; margin: 0 auto; border: 2px solid #14243D; border-radius: 4px; box-shadow: 0 2px 8px rgba(20,36,61,0.12); }
+        .evidence-card h3 { font-size: 15px; color: #14243D; border-bottom: 2px solid #14243D; padding-bottom: 8px; }
+        .evidence-card .evidence-body { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 200px; padding: 10px; background: #FAF7EE; border-radius: 4px; text-align: center; }
+        .evidence-card .evidence-body.empty { color: #4F6079; font-style: italic; font-size: 13px; border: 1px dashed #D9D2C2; }
+        .photo-lg { max-width: 100%; max-height: 420px; display: inline-block; border: 2px solid #14243D; border-radius: 4px; box-shadow: 0 2px 8px rgba(20,36,61,0.12); }
         .movement-card { border: 2px solid #14243D; padding: 14px 16px; }
-        .movement-card h3 { font-size: 13px; color: #14243D; border-bottom: 2px solid #14243D; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
-        .movement-card h3 .muted { font-size: 10.5px; font-weight: 400; color: #4F6079; text-transform: none; letter-spacing: 0; }
+        .movement-card h3 { font-size: 15px; color: #14243D; border-bottom: 2px solid #14243D; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
+        .movement-card h3 .muted { font-size: 12px; font-weight: 400; color: #4F6079; text-transform: none; letter-spacing: 0; }
         .timeline { list-style: none; padding: 0; margin: 6px 0 0; }
-        .timeline li { position: relative; padding: 4px 10px 4px 14px; border-left: 2px solid #14243D; margin-left: 5px; margin-bottom: 4px; background: #F2EDDB; border-radius: 0 4px 4px 0; }
+        .timeline li { position: relative; padding: 5px 10px 5px 14px; border-left: 2px solid #14243D; margin-left: 5px; margin-bottom: 5px; background: #F2EDDB; border-radius: 0 4px 4px 0; }
         .timeline li:last-child { margin-bottom: 0; border-left-color: transparent; }
-        .t-route { font-size: 12px; font-weight: 600; color: #14243D; }
+        .t-route { font-size: 13px; font-weight: 600; color: #14243D; word-break: break-word; }
         .t-arrow { color: #8C7A54; font-weight: 700; margin: 0 6px; }
-        .t-meta  { font-size: 10px; color: #4F6079; margin-top: 2px; }
-        .empty   { color: #4F6079; font-size: 11px; font-style: italic; }
-        .footer  { margin-top: 14px; padding-top: 8px; border-top: 1px solid #D9D2C2; font-size: 10px; color: #4F6079; display: flex; justify-content: space-between; }
+        .t-meta  { font-size: 11px; color: #4F6079; margin-top: 2px; }
+        .empty   { color: #4F6079; font-size: 12px; font-style: italic; }
+        .sign { display: flex; gap: 24px; margin-top: auto; padding-top: 14px; border-top: 1px solid #D9D2C2; }
+        .sign .col { flex: 1; }
+        .sign .line { border-top: 1px solid #14243D; margin-top: 36px; padding-top: 5px; font-size: 11px; color: #4F6079; text-transform: uppercase; letter-spacing: 0.04em; }
+        .footer  { display: flex; justify-content: space-between; font-size: 10.5px; color: #4F6079; margin-top: 10px; }
         .noprint { display: block; text-align: right; margin: 12px 0; }
-        .noprint button { padding: 6px 14px; border: 1px solid #14243D; background: #14243D; color: #fff; border-radius: 3px; cursor: pointer; }
+        .noprint button { padding: 7px 16px; border: 1px solid #14243D; background: #14243D; color: #fff; border-radius: 3px; cursor: pointer; }
         @media print { .noprint { display: none; } }
-      </style></head><body>
+      <style></style></head><body>
         <div class="noprint"><button onclick="window.print()">🖨 Print this page</button></div>
+        <div class="sheet">
+        <div class="dept">
+          <div>
+            <div class="org">Haryana Police · Digital Records</div>
+            <div class="sys">e-Malkhana</div>
+          </div>
+          <div class="r"><span class="stamp ${STATUS_TONE[c.status] || ''}">${escapeHtml(c.status)}</span></div>
+        </div>
         <div class="head">
           <div>
             <h1 class="title">${escapeHtml(c.itemType)}</h1>
             ${c.itemSub ? `<div class="sub">${escapeHtml(c.itemSub)}</div>` : ''}
           </div>
-          <span class="stamp ${STATUS_TONE[c.status] || ''}">${escapeHtml(c.status)}</span>
+          <div style="text-align:right">
+            <div class="id">${escapeHtml(c.id)}</div>
+          </div>
         </div>
+        ${contextBar}
         <div class="card">
           <h3>Step 1 of 2 — ${escapeHtml(isDD ? 'DD' : 'FIR')} &amp; Receipt</h3>
           <div class="step1-head">
@@ -626,7 +642,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         <div class="bottom-row">
           <div class="card movement-card">
             <h3>Movement Chain <span class="muted">(${movements.length} ${movements.length === 1 ? 'entry' : 'entries'})</span></h3>
-            ${movementHtml}
+            <div class="timeline-wrap">${movementHtml}</div>
           </div>
           ${photoUrl ? `
           <div class="card evidence-card">
@@ -635,10 +651,26 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
               <img class="photo-lg" src="${escapeHtml(photoUrl)}" alt="${escapeHtml(c.itemType)}" />
             </div>
           </div>` : `<div class="card evidence-card empty-photo"><h3>Photo of Seized Object</h3><div class="evidence-body empty">No photo was uploaded at registration.</div></div>`}
-        </div>` : ''}
+        </div>` : `
+        <div class="bottom-row">
+          <div class="card movement-card">
+            <h3>Movement Chain <span class="muted">(${movements.length} ${movements.length === 1 ? 'entry' : 'entries'})</span></h3>
+            <div class="timeline-wrap empty">No movements recorded yet.</div>
+          </div>
+          <div class="card evidence-card empty-photo">
+            <h3>Photo of Seized Object</h3>
+            <div class="evidence-body empty">No photo was uploaded at registration.</div>
+          </div>
+        </div>`}
+        <div class="sign">
+          <div class="col"><div class="line">Signature of Malkhana Moharrir</div></div>
+          <div class="col"><div class="line">Signature of Seizing Officer</div></div>
+          <div class="col"><div class="line">Verified by (SHO / In-charge)</div></div>
+        </div>
         <div class="footer">
           <span>e-Malkhana · Case Detail</span>
           <span>Printed: ${escapeHtml(new Date().toLocaleString('en-IN'))}</span>
+        </div>
         </div>
       </body></html>`;
     const w = window.open('', '_blank', 'width=900,height=1100');
