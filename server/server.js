@@ -622,10 +622,11 @@ app.post('/api/cases', async (req, res, next) => {
 // Malkhana Sr. No. (sequence) per item; returns the new case row + metadata
 // the caller needs to write the per-item case_property row.
 async function createOneCase(req, body) {
-  const required = ['firOrDd', 'itemType', 'section', 'seizingOfficer']; // photo is OPTIONAL
+  const required = ['firOrDd', 'seizingOfficer']; // itemType, section, photo are OPTIONAL
   for (const k of required) if (!body[k]) { const e = new Error(`missing field: ${k}`); e.status = 400; throw e; }
 
-  const section = db_sectionByLetter(body.section);
+  const secLetter = String(body.section || '').trim().replace(/^PART\s+/i, '').toUpperCase();
+  const section = secLetter ? db_sectionByLetter(secLetter) : null;
   const firOrDd = body.firOrDd.trim();
   // Unique Malkhana Sr. No. for THIS item (sequence -> no collisions even
   // when several items share one FIR/DD number).
@@ -723,9 +724,9 @@ async function createOneCase(req, body) {
   const newCase = {
     id,
     firNo: body.firNo || id,                 // FIR number for register grouping (defaults to id)
-    itemType:   itemTypeName || body.itemType,
+    itemType:   itemTypeName || body.itemType || '',
     itemSub:    body.itemSub || '',
-    section:    `PART ${section.letter}`,
+    section:    section ? `PART ${section.letter}` : '',
     status:     body.status || 'Seized',
     seizingOfficer: body.seizingOfficer,
     itemId,
@@ -743,7 +744,7 @@ async function createOneCase(req, body) {
     createdAt,
   };
   await mutate(d => { d.cases.push(newCase); rebuildSectionCountsIn(d); });
-  await auditMm(req, 'case.create', id, `Registered item: ${body.itemType} (Part ${section.letter} — ${section.name}) — seized by ${body.seizingOfficer}${legalSection ? ` — ${(legalSectionsActs[0] || 'BNS')} ${legalSection} (${legalSectionTitle})` : ''} — Sr. No. ${itemId}`);
+  await auditMm(req, 'case.create', id, `Registered item: ${newCase.itemType || 'Uncategorized'} (${section ? `Part ${section.letter} — ${section.name}` : 'No Location'}) — seized by ${body.seizingOfficer}${legalSection ? ` — ${(legalSectionsActs[0] || 'BNS')} ${legalSection} (${legalSectionTitle})` : ''} — Sr. No. ${itemId}`);
   return { newCase, itemId, legalSection, legalSectionTitle };
 }
 
