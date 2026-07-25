@@ -285,7 +285,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
   function addItem() {
     setItems(prev => [...prev, {
       localId: newLocalId(),
-      categoryId: '', subType: '', sectionLetter: racks[0]?.letter ?? 'A',
+      categoryId: '', subType: '', sectionLetter: '',
       catValues: {}, seizingOfficer: defaultIo(user),
       quantity: '1', placeOfSeizure: '', physicalStorage: '', remarks: '',
       photo: null, sealSealed: 'Yes', sealNo: '', sealBy: '', ndpsOverride: undefined,
@@ -770,6 +770,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                         </label>
                         <label>Location
                           <select value={it.sectionLetter} onChange={e => patchItem(it.localId, { sectionLetter: e.target.value })}>
+                            <option value="">— select location —</option>
                             {racks.map(r => <option key={r.letter} value={r.letter}>Part {r.letter} — {r.name}</option>)}
                           </select>
                         </label>

@@ -219,21 +219,25 @@ export function RegisterTable({
     },
     category: {
       key: 'category', label: 'Category of Item', className: 'col-category',
-      render: (c) => <td className="type">{c.itemType}</td>,
+      render: (c) => <td className="type">{c.itemType ? c.itemType : <span style={{ color: 'var(--text-muted, #999)', fontStyle: 'italic' }}>Not Selected</span>}</td>,
     },
     location: {
       key: 'location', label: 'Location',
       render: (c) => (
         <td>
-          <span
-            className="section-tag"
-            style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            onClick={(e) => { e.stopPropagation(); if (onClearSection) onClearSection(); }}
-            title={`Part ${c.section?.replace('PART ', '') || '?'} — click rack name in sidebar to filter`}
-          >
-            <small style={{ opacity: 0.7, fontWeight: 500 }}>{c.section?.replace('PART ', '')}</small>
-            <span>{c.sectionName}</span>
-          </span>
+          {c.section && c.sectionName ? (
+            <span
+              className="section-tag"
+              style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              onClick={(e) => { e.stopPropagation(); if (onClearSection) onClearSection(); }}
+              title={`Part ${c.section?.replace('PART ', '') || '?'} — click rack name in sidebar to filter`}
+            >
+              <small style={{ opacity: 0.7, fontWeight: 500 }}>{c.section?.replace('PART ', '')}</small>
+              <span>{c.sectionName}</span>
+            </span>
+          ) : (
+            <span style={{ color: 'var(--text-muted, #999)', fontStyle: 'italic' }}>Not Selected</span>
+          )}
         </td>
       ),
     },
@@ -335,9 +339,8 @@ export function RegisterTable({
           </div>
           <div className="register-head-actions">
             {filterButton}
-            {onDownloadReport && <button className="btn small btn-html" onClick={() => onDownloadReport('html', sorted.map(c => c.id))} title="Open a viewable, interactive register page (full text, sortable, searchable)">👁 View</button>}
             {onDownloadReport && <button className="btn small btn-excel" onClick={() => onDownloadReport('xlsx', sorted.map(c => c.id))} title="Download all matching cases (every page) as Excel">⬇ Excel</button>}
-            {onDownloadReport && <button className="btn small btn-pdf" onClick={() => onDownloadReport('pdf', sorted.map(c => c.id))}   title="Download all matching cases (every page) as PDF (dense — use View for readable full text)">⬇ PDF</button>}
+            {onDownloadReport && <button className="btn small btn-pdf" onClick={() => onDownloadReport('pdf', sorted.map(c => c.id))}   title="Download all matching cases (every page) as PDF (dense, full text)">⬇ PDF</button>}
             {onOpenRegister && <button className="btn small register-head-add" onClick={onOpenRegister}>+ Register New</button>}
           </div>
         </div>
