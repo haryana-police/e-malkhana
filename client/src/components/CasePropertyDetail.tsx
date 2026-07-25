@@ -311,7 +311,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     const isDD = recordTypeOf(caseRow, firMaster) === 'DD';
     const fm = firMaster;
     setEdRecordType(isDD ? 'DD' : 'FIR');
-    setEdFirNo(caseRow.id || '');
+    setEdFirNo(caseRow.firNo || '');
     setEdFirDate(caseRow.firDate || '');
     setEdReceivedBy(caseRow.receivedBy || caseProperty?.receivedBy || '');
     setEdSeizedTime(caseProperty?.seizedTime || '10:00');
@@ -402,6 +402,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         seizingOfficer: edSeizingOfficer.trim(),
         receivedBy:     edReceivedBy.trim() || null,
         firDate:        edFirDate.trim() || null,
+        firNo:          edFirNo.trim() || null,
         description:    edRemarks.trim() || null,
         imageUrl:       imageUrlOverride,
         legalSections:  usArr,
@@ -872,7 +873,12 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                 </div>
 
                 <label>FIR / DD No.
-                  <input value={edFirNo} readOnly className="ro-val mono" title="Case id cannot be changed" />
+                  <input
+                    value={edFirNo}
+                    onChange={e => setEdFirNo(e.target.value)}
+                    placeholder="Leave blank if not yet known"
+                    className="ro-val mono"
+                  />
                 </label>
                 <label>{edRecordType === 'DD' ? 'DD Date' : 'FIR Date'}
                   <input type="date" value={edFirDate} onChange={e => setEdFirDate(e.target.value)} max={today} />

@@ -156,7 +156,7 @@ export function RegisterTable({
 
   function cellText(c: CaseRow, key: ColKey): string {
     switch (key) {
-      case 'id': return c.id;
+      case 'id': return c.firNo || c.id;   // search matches the visible FIR/DD, not the hidden Sr. No.
       case 'firDate': return c.firDate || '';
       case 'usSection': return usSectionText(c);
       case 'category': return c.itemType || '';

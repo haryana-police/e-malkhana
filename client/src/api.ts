@@ -247,7 +247,7 @@ export const api = {
     seizingOfficer: string; itemId: string;
     legalSection: string | null; legalSections?: string[];
     description?: string | null; itemTypeId?: number | null;
-    receivedBy?: string | null; firDate?: string | null;
+    receivedBy?: string | null; firDate?: string | null; firNo?: string | null;
     imageUrl?: string | null; status?: string;
     // case_property payload — only the slim set the modal exposes.
     caseProperty?: Partial<{

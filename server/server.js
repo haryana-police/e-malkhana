@@ -977,7 +977,7 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     const shortVal = (s) => (s == null ? '—' : String(s).length > 30 ? String(s).slice(0, 27) + '…' : String(s));
     const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'itemId', 'legalSection',
                       'legalSections', 'itemTypeId', 'description',
-                      'receivedBy', 'firDate', 'imageUrl', 'status',
+                      'receivedBy', 'firDate', 'firNo', 'imageUrl', 'status',
                       'caseProperty'];
     const patch = {};
     for (const k of ALLOWED) {
@@ -1171,6 +1171,18 @@ app.patch('/api/cases/:id', async (req, res, next) => {
           // Newly-uploaded photo is user-provided; protect it from the
           // auto-generated SVG fallback that runs for cases without a photo.
           c.skipAutoImage = !!c.imageUrl;
+        }
+      }
+      // firNo (the visible FIR/DD number) — editable so a blank FIR entered at
+      // registration can be filled in later via Edit Property Details.  Blank
+      // is allowed (clears the visible number; the hidden Sr. No. is untouched
+      // and continues to route the row).
+      if ('firNo' in patch) {
+        const raw = patch.firNo == null ? '' : String(patch.firNo).trim();
+        const v = (raw && raw !== 'FIR' && raw !== 'DD') ? raw : '';
+        if (c.firNo !== v) {
+          changes.push(`FIR/DD: ${c.firNo || '—'} → ${v || '—'}`);
+          c.firNo = v || undefined;
         }
       }
       // receivedBy / firDate / imageUrl touch sibling tables — handle
