@@ -4030,3 +4030,509 @@ input, select, textarea{
   .filter-pop{ padding:14px; }
 }
 
+/* ============================================================
+   REGISTER CASE MODAL — Enhanced Visual Styling
+   Matches the e-Malkhana ledger theme (ink-navy / khaki / paper)
+   All overrides are scoped to the .form-card.rc context so
+   they won't break other modals.
+   ============================================================ */
+
+/* ---- Form Card ---- */
+.form-card.rc,
+.form-card.rc-page {
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(140,122,84,0.07), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(20,36,61,0.05), transparent 50%),
+    var(--white-paper);
+  border-top: 4px solid var(--khaki);
+  box-shadow:
+    0 2px 4px rgba(20,36,61,0.04),
+    0 12px 32px rgba(20,36,61,0.16),
+    0 32px 60px rgba(20,36,61,0.08);
+}
+
+/* ---- Modal Title Block ---- */
+.rc-head h3 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink-navy);
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rc-head h3::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 22px;
+  background: linear-gradient(180deg, var(--khaki-light), var(--khaki));
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.rc-sub {
+  font-size: 11px;
+  color: var(--khaki);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 4px;
+  padding-left: 12px;
+}
+
+/* ---- Stepper (enhanced) ---- */
+.form-card.rc .stepper,
+.form-card.rc-page .stepper {
+  padding: 10px 24px 4px;
+  gap: 0;
+  align-items: center;
+  margin: 8px 0 0;
+}
+.form-card.rc .step,
+.form-card.rc-page .step {
+  flex: 0 0 auto;
+  border-radius: 20px;
+  font-size: 12.5px;
+  padding: 8px 16px;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, box-shadow 0.18s;
+}
+.form-card.rc .step.active,
+.form-card.rc-page .step.active {
+  background: var(--ink-navy);
+  color: var(--white-paper);
+  border-color: var(--ink-navy);
+  box-shadow: 0 2px 10px rgba(20,36,61,0.28), 0 1px 3px rgba(20,36,61,0.15);
+}
+.form-card.rc .step.active .step-no,
+.form-card.rc-page .step.active .step-no {
+  background: var(--khaki-light);
+  color: var(--ink-navy);
+}
+.form-card.rc .step.done,
+.form-card.rc-page .step.done {
+  background: var(--olive-bg);
+  border-color: var(--olive);
+  color: var(--olive);
+}
+.form-card.rc .step.done .step-no,
+.form-card.rc-page .step.done .step-no {
+  background: var(--olive);
+  color: #fff;
+}
+.form-card.rc .step-sep,
+.form-card.rc-page .step-sep {
+  flex: 1;
+  height: 3px;
+  background: var(--line);
+  border-radius: 0;
+  margin: 0 -4px;
+  z-index: 0;
+}
+
+/* ---- Station Badge ---- */
+.form-card.rc .station-badge,
+.form-card.rc-page .station-badge {
+  background: linear-gradient(135deg, rgba(140,122,84,0.09), rgba(20,36,61,0.04));
+  border: 1px solid rgba(140,122,84,0.38);
+  border-left: 4px solid var(--khaki);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin: 8px 24px 0;
+  font-size: 12.5px;
+  color: var(--slate);
+  letter-spacing: 0.01em;
+  box-shadow: 0 1px 4px rgba(140,122,84,0.10);
+}
+
+/* ---- Section Groups ---- */
+.form-card.rc .rc-group,
+.form-card.rc-page .rc-group {
+  border: 1.5px solid rgba(201,191,160,0.60);
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+  background: linear-gradient(135deg, rgba(250,247,238,0.95), rgba(244,240,229,0.60));
+  box-shadow: 0 1px 4px rgba(20,36,61,0.05);
+  transition: box-shadow 0.2s, border-color 0.2s;
+  margin: 12px 0;
+}
+.form-card.rc .rc-group:hover,
+.form-card.rc-page .rc-group:hover {
+  box-shadow: 0 3px 12px rgba(20,36,61,0.08);
+  border-color: rgba(140,122,84,0.48);
+}
+.form-card.rc .rc-group-title,
+.form-card.rc-page .rc-group-title {
+  color: var(--ink-navy);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  margin-bottom: 12px;
+}
+.form-card.rc .rc-group-title::after,
+.form-card.rc-page .rc-group-title::after {
+  background: linear-gradient(90deg, var(--khaki), transparent);
+}
+
+/* ---- Grid Labels ---- */
+.form-card.rc .rc-grid > label,
+.form-card.rc-page .rc-grid > label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--khaki);
+  letter-spacing: 0.10em;
+}
+
+/* ---- Input Fields (Enhanced) ---- */
+.form-card.rc .rc-grid input,
+.form-card.rc .rc-grid select,
+.form-card.rc .rc-grid textarea,
+.form-card.rc-page .rc-grid input,
+.form-card.rc-page .rc-grid select,
+.form-card.rc-page .rc-grid textarea {
+  background: var(--white-paper);
+  border: 1.5px solid var(--line);
+  border-radius: 7px;
+  padding: 9px 11px;
+  font-size: 13px;
+  color: var(--slate);
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+}
+.form-card.rc .rc-grid input::placeholder,
+.form-card.rc .rc-grid textarea::placeholder,
+.form-card.rc-page .rc-grid input::placeholder,
+.form-card.rc-page .rc-grid textarea::placeholder {
+  color: rgba(92,90,78,0.45);
+  font-style: italic;
+}
+.form-card.rc .rc-grid input:focus,
+.form-card.rc .rc-grid select:focus,
+.form-card.rc .rc-grid textarea:focus,
+.form-card.rc-page .rc-grid input:focus,
+.form-card.rc-page .rc-grid select:focus,
+.form-card.rc-page .rc-grid textarea:focus {
+  border-color: var(--khaki);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(140,122,84,0.15), 0 1px 4px rgba(140,122,84,0.10);
+  outline: none;
+}
+.form-card.rc .rc-grid input:hover:not(:focus),
+.form-card.rc .rc-grid select:hover:not(:focus),
+.form-card.rc .rc-grid textarea:hover:not(:focus),
+.form-card.rc-page .rc-grid input:hover:not(:focus),
+.form-card.rc-page .rc-grid select:hover:not(:focus),
+.form-card.rc-page .rc-grid textarea:hover:not(:focus) {
+  border-color: var(--khaki-light);
+}
+
+/* ---- Radio Buttons (Record Type) ---- */
+.form-card.rc .rc-radio,
+.form-card.rc-page .rc-radio {
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 16px 9px 36px;
+  background: var(--white-paper);
+  transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+}
+.form-card.rc .rc-radio:hover,
+.form-card.rc-page .rc-radio:hover {
+  border-color: var(--khaki);
+  background: rgba(140,122,84,0.04);
+}
+.form-card.rc .rc-radio:has(input:checked),
+.form-card.rc-page .rc-radio:has(input:checked) {
+  border-color: var(--ink-navy);
+  background: linear-gradient(135deg, rgba(20,36,61,0.06), rgba(140,122,84,0.04));
+  box-shadow: 0 0 0 2px rgba(20,36,61,0.12), 0 2px 6px rgba(20,36,61,0.08);
+}
+
+/* ---- Item Cards (Step 2) ---- */
+.form-card.rc .item-card,
+.form-card.rc-page .item-card {
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--white-paper);
+  box-shadow: 0 2px 8px rgba(20,36,61,0.07), 0 1px 2px rgba(20,36,61,0.04);
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s;
+}
+.form-card.rc .item-card:hover,
+.form-card.rc-page .item-card:hover {
+  box-shadow: 0 6px 20px rgba(20,36,61,0.11), 0 2px 5px rgba(20,36,61,0.06);
+  border-color: rgba(140,122,84,0.50);
+}
+.form-card.rc .item-card-head,
+.form-card.rc-page .item-card-head {
+  background: linear-gradient(135deg, var(--ink-navy), var(--ink-navy-light));
+  border-bottom: none;
+  margin-bottom: 0;
+  padding: 10px 14px;
+}
+.form-card.rc .item-no,
+.form-card.rc-page .item-no {
+  color: var(--white-paper);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.form-card.rc .item-card .sr-hint,
+.form-card.rc-page .item-card .sr-hint {
+  color: rgba(169,153,104,0.90);
+  font-size: 11px;
+}
+.form-card.rc .item-remove,
+.form-card.rc-page .item-remove {
+  background: rgba(255,255,255,0.09);
+  border: 1px solid rgba(255,255,255,0.20);
+  color: rgba(240,235,221,0.75);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.form-card.rc .item-remove:hover,
+.form-card.rc-page .item-remove:hover {
+  background: rgba(162,62,44,0.70);
+  color: #fff;
+  border-color: var(--seal-red);
+}
+/* Body padding for item cards */
+.form-card.rc .item-card > .rc-grid,
+.form-card.rc-page .item-card > .rc-grid {
+  padding: 14px 14px 16px;
+}
+
+/* ---- File Upload / Photo Zone ---- */
+.form-card.rc .file-field,
+.form-card.rc-page .file-field {
+  background: linear-gradient(135deg, var(--paper), rgba(250,247,238,0.85));
+  border: 2px dashed rgba(140,122,84,0.45);
+  border-radius: 8px;
+  padding: 12px 14px;
+  gap: 12px;
+  transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+}
+.form-card.rc .file-field:hover,
+.form-card.rc-page .file-field:hover {
+  border-color: var(--khaki);
+  background: rgba(140,122,84,0.05);
+  box-shadow: 0 0 0 3px rgba(140,122,84,0.08);
+}
+.form-card.rc .file-field .file-thumb,
+.form-card.rc-page .file-field .file-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  border: 2px solid var(--khaki);
+  box-shadow: 0 2px 6px rgba(20,36,61,0.12);
+  object-fit: cover;
+}
+.form-card.rc .file-remove,
+.form-card.rc-page .file-remove {
+  background: rgba(162,62,44,0.06);
+  border: 1px solid rgba(162,62,44,0.28);
+  color: var(--seal-red);
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.form-card.rc .file-remove:hover,
+.form-card.rc-page .file-remove:hover {
+  background: rgba(162,62,44,0.14);
+  box-shadow: 0 1px 4px rgba(162,62,44,0.15);
+}
+
+/* ---- Camera Button ---- */
+.form-card.rc .camera-btn,
+.form-card.rc-page .camera-btn {
+  background: linear-gradient(135deg, var(--ink-navy), var(--ink-navy-light));
+  border: none;
+  color: var(--white-paper);
+  border-radius: 7px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(20,36,61,0.22);
+  transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.form-card.rc .camera-btn:hover,
+.form-card.rc-page .camera-btn:hover {
+  opacity: 0.90;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(20,36,61,0.28);
+}
+.form-card.rc .camera-btn:active,
+.form-card.rc-page .camera-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(20,36,61,0.15);
+}
+
+/* ---- Add Item Button ---- */
+.form-card.rc .add-item-btn,
+.form-card.rc-page .add-item-btn {
+  background: linear-gradient(135deg, var(--ink-navy), var(--ink-navy-light));
+  border-color: var(--ink-navy);
+  box-shadow: 0 2px 8px rgba(20,36,61,0.22);
+  transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.form-card.rc .add-item-btn:hover,
+.form-card.rc-page .add-item-btn:hover {
+  opacity: 0.90;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(20,36,61,0.30);
+}
+
+/* ---- Items count badge ---- */
+.form-card.rc .rc-items-count b,
+.form-card.rc-page .rc-items-count b {
+  color: var(--ink-navy);
+  background: rgba(20,36,61,0.08);
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+/* ---- Sticky Footer Actions ---- */
+.form-card.rc .rc-actions,
+.form-card.rc-page .rc-actions {
+  background: linear-gradient(0deg, var(--paper-dark), var(--white-paper));
+  border-top: 2px solid var(--line);
+  padding: 14px 24px;
+  gap: 10px;
+}
+.form-card.rc .rc-actions .btn,
+.form-card.rc-page .rc-actions .btn {
+  min-width: 130px;
+  justify-content: center;
+  padding: 11px 20px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+  border-radius: 8px;
+}
+.form-card.rc .rc-actions .btn:not(.ghost):not(:disabled),
+.form-card.rc-page .rc-actions .btn:not(.ghost):not(:disabled) {
+  background: linear-gradient(135deg, var(--ink-navy), var(--ink-navy-light));
+  box-shadow: 0 2px 8px rgba(20,36,61,0.24);
+}
+.form-card.rc .rc-actions .btn:not(.ghost):not(:disabled):hover,
+.form-card.rc-page .rc-actions .btn:not(.ghost):not(:disabled):hover {
+  opacity: 0.90;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(20,36,61,0.32);
+}
+.form-card.rc .rc-actions .btn:not(.ghost):not(:disabled):active,
+.form-card.rc-page .rc-actions .btn:not(.ghost):not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(20,36,61,0.15);
+}
+.form-card.rc .rc-actions .btn.ghost,
+.form-card.rc-page .rc-actions .btn.ghost {
+  border: 1.5px solid var(--line);
+  color: var(--slate-soft);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.form-card.rc .rc-actions .btn.ghost:hover,
+.form-card.rc-page .rc-actions .btn.ghost:hover {
+  border-color: var(--khaki);
+  color: var(--ink-navy);
+  background: rgba(140,122,84,0.06);
+}
+
+/* ---- Close button enhanced ---- */
+.form-card.rc .tag-close,
+.form-card.rc-page .tag-close {
+  background: rgba(20,36,61,0.07);
+  border: 1px solid rgba(20,36,61,0.12);
+  color: var(--slate-soft);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+}
+.form-card.rc .tag-close:hover,
+.form-card.rc-page .tag-close:hover {
+  background: rgba(162,62,44,0.10);
+  color: var(--seal-red);
+  border-color: rgba(162,62,44,0.28);
+  transform: rotate(90deg) scale(1.1);
+}
+
+/* ---- Form message ---- */
+.form-card.rc .form-msg,
+.form-card.rc-page .form-msg {
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+.form-card.rc .form-msg.ok,
+.form-card.rc-page .form-msg.ok {
+  background: var(--olive-bg);
+  color: var(--olive);
+  border-color: rgba(75,93,58,0.35);
+}
+.form-card.rc .form-msg.error,
+.form-card.rc-page .form-msg.error {
+  background: var(--seal-red-bg);
+  color: var(--seal-red);
+  border-color: rgba(162,62,44,0.35);
+}
+
+/* ---- Lookup pills ---- */
+.form-card.rc .lookup-pill,
+.form-card.rc-page .lookup-pill {
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+}
+.form-card.rc .lookup-pill.ok,
+.form-card.rc-page .lookup-pill.ok {
+  background: var(--olive-bg);
+  color: var(--olive);
+  border-color: rgba(75,93,58,0.28);
+}
+.form-card.rc .lookup-pill.neu,
+.form-card.rc-page .lookup-pill.neu {
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-color: rgba(147,100,30,0.28);
+}
+.form-card.rc .lookup-pill.checking,
+.form-card.rc-page .lookup-pill.checking {
+  background: var(--paper-dark);
+  color: var(--slate-soft);
+  border-color: var(--line);
+}
+
+/* ---- NDPS Classification Badge ---- */
+.form-card.rc .ndps-class-badge,
+.form-card.rc-page .ndps-class-badge {
+  background: linear-gradient(135deg, var(--paper), var(--white-paper));
+  border-radius: 10px;
+  border: 1.5px solid var(--line);
+  padding: 10px 14px;
+  box-shadow: 0 1px 4px rgba(20,36,61,0.05);
+}
+.ndps-small { box-shadow: 0 0 0 2px rgba(28,122,67,0.12); }
+.ndps-inter { box-shadow: 0 0 0 2px rgba(169,106,0,0.12); }
+.ndps-comm  { box-shadow: 0 0 0 2px rgba(179,38,38,0.12); }
+
+/* ---- Empty items state ---- */
+.form-card.rc .rc-empty,
+.form-card.rc-page .rc-empty {
+  background: linear-gradient(135deg, var(--paper), var(--white-paper));
+  border: 2px dashed rgba(140,122,84,0.35);
+  border-radius: 12px;
+  padding: 40px 24px;
+}
+
+/* ============================================================
+   END — Register Case Modal Enhanced Styles
+   ============================================================ */

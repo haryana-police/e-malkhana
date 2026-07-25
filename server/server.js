@@ -626,10 +626,17 @@ async function createOneCase(req, body) {
   for (const k of required) if (!body[k]) { const e = new Error(`missing field: ${k}`); e.status = 400; throw e; }
 
   const section = db_sectionByLetter(body.section);
-  const id = body.firOrDd.trim();
+  const firOrDd = body.firOrDd.trim();
   // Unique Malkhana Sr. No. for THIS item (sequence -> no collisions even
   // when several items share one FIR/DD number).
   const itemId = body.itemId || await nextMalkhanaSrNo();
+  // Row identity = the unique Malkhana Sr. No. (NOT the FIR/DD number).
+  // This lets the MM register MULTIPLE items under one FIR — and MULTIPLE
+  // blank/placeholder entries (FIR number not yet known) — without a
+  // primary-key collision on the FIR/DD string.  The FIR/DD reference is
+  // stored separately in `firNo` (blank/duplicate allowed) and shown in the
+  // register's "FIR / DD No." column.
+  const id = itemId;
   const createdAt = nowISO();
 
   // Item Type: optional controlled-vocabulary link.  The MM picks
