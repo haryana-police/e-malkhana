@@ -405,8 +405,8 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
         io: defaultIo(user),               // auto from signed-in MM
         ddDate: recordType === 'DD' ? ddDate : null,
         natureOfDd: recordType === 'DD' ? natureOfDd : null,
-        nameOfDeceased: recordType === 'DD' && natureOfDd === 'UD Case (Unnatural Death)' ? nameOfDeceased : null,
-        reportingPerson: recordType === 'DD' && (natureOfDd === 'Lost Property Report' || natureOfDd === 'Other Miscellaneous Entry') ? reportingPerson : null,
+        nameOfDeceased: recordType === 'DD' && natureOfDd === 'Unnatural Death' ? nameOfDeceased : null,
+        reportingPerson: recordType === 'DD' && (natureOfDd === 'Lost Property' || natureOfDd === 'Other') ? reportingPerson : null,
         actualSeizureDdNo: actualSeizureDdNo.trim() || null,
         actualSeizureDate: actualSeizureDate.trim() || null,
         common: {
@@ -598,17 +598,17 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                       <label>Nature of DD
                         <select value={natureOfDd} onChange={e => setNatureOfDd(e.target.value)}>
                           <option value="">— select —</option>
-                          <option value="UD Case (Unnatural Death)">UD Case (Unnatural Death)</option>
-                          <option value="Lost Property Report">Lost Property Report</option>
-                          <option value="Other Miscellaneous Entry">Other Miscellaneous Entry</option>
+                          <option value="Unnatural Death">Unnatural Death</option>
+                          <option value="Lost Property">Lost Property</option>
+                          <option value="Other">Other</option>
                         </select>
                       </label>
-                      {natureOfDd === 'UD Case (Unnatural Death)' && (
+                      {natureOfDd === 'Unnatural Death' && (
                         <label className="full">Name of Deceased
                           <input value={nameOfDeceased} onChange={e => setNameOfDeceased(e.target.value)} placeholder="Name of deceased" />
                         </label>
                       )}
-                      {(natureOfDd === 'Lost Property Report' || natureOfDd === 'Other Miscellaneous Entry') && (
+                      {(natureOfDd === 'Lost Property' || natureOfDd === 'Other') && (
                         <label className="full">Reporting Person Name &amp; Address
                           <input value={reportingPerson} onChange={e => setReportingPerson(e.target.value)} placeholder="Name & address of reporter" />
                         </label>

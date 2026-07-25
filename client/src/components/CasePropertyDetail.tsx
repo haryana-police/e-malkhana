@@ -477,8 +477,8 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         recordType: edRecordType,
         ddDate: edRecordType === 'DD' ? (edDdDate.trim() || null) : null,
         natureOfDd: edRecordType === 'DD' ? (edNatureOfDd.trim() || null) : null,
-        nameOfDeceased: (edRecordType === 'DD' && edNatureOfDd === 'UD Case (Unnatural Death)') ? (edNameOfDeceased.trim() || null) : null,
-        reportingPerson: (edRecordType === 'DD' && (edNatureOfDd === 'Lost Property Report' || edNatureOfDd === 'Other Miscellaneous Entry')) ? (edReportingPerson.trim() || null) : null,
+        nameOfDeceased: (edRecordType === 'DD' && edNatureOfDd === 'Unnatural Death') ? (edNameOfDeceased.trim() || null) : null,
+        reportingPerson: (edRecordType === 'DD' && (edNatureOfDd === 'Lost Property' || edNatureOfDd === 'Other')) ? (edReportingPerson.trim() || null) : null,
         actualSeizureDdNo: edActualSeizureDdNo.trim() || null,
         actualSeizureDate: edActualSeizureDate.trim() || null,
       };
@@ -992,17 +992,17 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                     <label>Nature of DD
                       <select value={edNatureOfDd} onChange={e => setEdNatureOfDd(e.target.value)}>
                         <option value="">— select —</option>
-                        <option value="UD Case (Unnatural Death)">UD Case (Unnatural Death)</option>
-                        <option value="Lost Property Report">Lost Property Report</option>
-                        <option value="Other Miscellaneous Entry">Other Miscellaneous Entry</option>
+                        <option value="Unnatural Death">Unnatural Death</option>
+                        <option value="Lost Property">Lost Property</option>
+                        <option value="Other">Other</option>
                       </select>
                     </label>
-                    {edNatureOfDd === 'UD Case (Unnatural Death)' && (
+                    {edNatureOfDd === 'Unnatural Death' && (
                       <label>Name of Deceased
                         <input value={edNameOfDeceased} onChange={e => setEdNameOfDeceased(e.target.value)} placeholder="Name of deceased" />
                       </label>
                     )}
-                    {(edNatureOfDd === 'Lost Property Report' || edNatureOfDd === 'Other Miscellaneous Entry') && (
+                    {(edNatureOfDd === 'Lost Property' || edNatureOfDd === 'Other') && (
                       <label className="full">Reporting Person Name &amp; Address
                         <input value={edReportingPerson} onChange={e => setEdReportingPerson(e.target.value)} placeholder="Name & address of reporter" />
                       </label>
