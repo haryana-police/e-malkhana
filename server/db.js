@@ -1263,6 +1263,7 @@ export async function getCaseProperty(itemId) {
 // malkhana_location) and the per-item seal block (seal_sealed / seal_no /
 // seal_by).
 export async function upsertCaseProperty(itemId, common, fields) {
+  const fieldsArr = Array.isArray(fields) ? fields : [];
   const place = common.placeOfSeizure ?? common.storageLocation ?? null;
   await pool.query(
     `INSERT INTO case_property (item_id, fir_no, seized_time, witness1, witness2, quantity, storage_location, place_of_seizure, physical_storage, photo_url, remarks, status,
@@ -1282,7 +1283,7 @@ export async function upsertCaseProperty(itemId, common, fields) {
      common.dateOfReceipt || null, common.receivedBy || null, common.malkhanaLocation || null,
      common.sealSealed || null, common.sealNo || null, common.sealBy || null]
   );
-  for (const f of fields) {
+  for (const f of fieldsArr) {
     if (f.key == null || f.key === '') continue;
     await pool.query(
       `INSERT INTO case_property_fields (item_id, field_key, field_value)

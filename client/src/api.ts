@@ -252,7 +252,15 @@ export const api = {
     // case_property payload — only the slim set the modal exposes.
     caseProperty?: Partial<{
       seizedTime: string; receivedBy: string; quantity: string; remarks: string;
+      placeOfSeizure: string; sealSealed: string; sealNo: string; sealBy: string;
     }>;
+    // fir_master payload — DD-extras + actual seizure columns (mirrors
+    // RegisterCaseModal's Step 1, persisted via the PATCH /api/cases/:id handler).
+    firMaster?: {
+      firNo: string; recordType: 'FIR' | 'DD';
+      ddDate?: string | null; natureOfDd?: string | null; nameOfDeceased?: string | null;
+      reportingPerson?: string | null; actualSeizureDdNo?: string | null; actualSeizureDate?: string | null;
+    };
   }>) => send<CaseRow>('PATCH', `/cases/${encodeURIComponent(id)}`, patch),
 
   // Permanently delete a case (and its movements + case_property row).

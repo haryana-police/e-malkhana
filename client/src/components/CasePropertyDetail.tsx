@@ -200,6 +200,15 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [edReceivedBy, setEdReceivedBy] = useState('');
   const [edSeizingOfficer, setEdSeizingOfficer] = useState('');
   const [edSeizedTime, setEdSeizedTime] = useState('');
+  // DD-extras — mirror RegisterCaseModal's Step 1 exactly so the Edit form
+  // exposes EVERY column that existed at registration (superset match).
+  const [edDdDate, setEdDdDate] = useState('');
+  const [edNatureOfDd, setEdNatureOfDd] = useState('');
+  const [edNameOfDeceased, setEdNameOfDeceased] = useState('');
+  const [edReportingPerson, setEdReportingPerson] = useState('');
+  // Actual Seizure group (the DD under which the property was ACTUALLY seized).
+  const [edActualSeizureDdNo, setEdActualSeizureDdNo] = useState('');
+  const [edActualSeizureDate, setEdActualSeizureDate] = useState('');
 
   // ---- Step 2 (Seized Item Details) — Edit state ----
   // Mirrors RegisterCaseModal: we track the chosen category by ID, the inner
@@ -212,6 +221,14 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [edSection, setEdSection] = useState('');
   const [edStatus, setEdStatus] = useState<CaseStatus>('Seized');
   const [edRemarks, setEdRemarks] = useState('');
+  // Common seal block — editable in Edit (mirrors RegisterCaseModal's Step 2
+  // for the generic categories). Initialised from caseProperty.
+  const [edPlaceOfSeizure, setEdPlaceOfSeizure] = useState('');
+  const [edSealSealed, setEdSealSealed] = useState('Yes');
+  const [edSealNo, setEdSealNo] = useState('');
+  const [edSealBy, setEdSealBy] = useState('');
+  // Common Quantity (visible for the same categories registration shows it).
+  const [edQuantity, setEdQuantity] = useState('');
 
   // ---- Photo edit state ----
   // `null` = server had no photo and user hasn't picked one yet,
@@ -335,6 +352,13 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEdReceivedBy(caseRow.receivedBy || caseProperty?.receivedBy || '');
     setEdSeizingOfficer(caseRow.seizingOfficer || '');
     setEdSeizedTime(caseProperty?.seizedTime || '');
+    // DD-extras — pull from the FIR master row (registration stored them there).
+    setEdDdDate(firMaster?.ddDate || '');
+    setEdNatureOfDd(firMaster?.natureOfDd || '');
+    setEdNameOfDeceased(firMaster?.nameOfDeceased || '');
+    setEdReportingPerson(firMaster?.reportingPerson || '');
+    setEdActualSeizureDdNo(firMaster?.actualSeizureDdNo || '');
+    setEdActualSeizureDate(firMaster?.actualSeizureDate || '');
     if (caseRow.legalSections && caseRow.legalSections.length) setEdUs(caseRow.legalSections.join(', '));
     else if (caseRow.legalSection) setEdUs(caseRow.legalSection);
     else setEdUs('');
@@ -356,6 +380,12 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEdSection(caseRow.section?.replace('PART ', '') || '');
     setEdStatus(caseRow.status || 'Seized');
     setEdRemarks(caseProperty?.remarks || caseRow.description || '');
+    // Common seal block + quantity — hydrate from the case_property row.
+    setEdPlaceOfSeizure(caseProperty?.placeOfSeizure || '');
+    setEdSealSealed(caseProperty?.sealSealed || 'Yes');
+    setEdSealNo(caseProperty?.sealNo || '');
+    setEdSealBy(caseProperty?.sealBy || '');
+    setEdQuantity(caseProperty?.quantity || '');
 
     // ---- Photo ----
     const initialPhoto = caseRow.imageUrl || caseProperty?.photoUrl || null;
@@ -417,13 +447,40 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       }> = {
         receivedBy: edReceivedBy.trim() || undefined,
         seizedTime: edSeizedTime.trim() || undefined,
-        quantity:   undefined,   // quantity lives in per-category fields
+        // Common Quantity — kept in the case_property.quantity column so it
+        // round-trips exactly like at registration (where it was sent via
+        // the batch endpoint). Undefined when the category doesn't expose it.
+        quantity: edQuantity.trim() || undefined,
         remarks:    edRemarks.trim() || undefined,
-        // Preserve any previously-saved seal block / place of seizure by
-        // NOT sending them when the category doesn't expose those columns
-        // (registration shows them only for a few generic categories).  The
-        // server keeps the existing values when a key is omitted.
+        // Seal block is now editable (mirrors registration for the generic
+        // categories). Send the captured values; the server persists them.
+        placeOfSeizure: edPlaceOfSeizure.trim() || undefined,
+        sealSealed: edSealSealed || undefined,
+        sealNo: edSealNo.trim() || undefined,
+        sealBy: edSealBy.trim() || undefined,
         fields: ppFields,
+      };
+
+      // DD-extras — persist the same Step 1 columns registration wrote to the
+      // fir_master row. Sent as a `firMaster` sub-payload the server upserts.
+      const firMasterPatch: {
+        firNo: string;
+        recordType: 'FIR' | 'DD';
+        ddDate?: string | null;
+        natureOfDd?: string | null;
+        nameOfDeceased?: string | null;
+        reportingPerson?: string | null;
+        actualSeizureDdNo?: string | null;
+        actualSeizureDate?: string | null;
+      } = {
+        firNo: caseRow.firNo || caseRow.id,
+        recordType: edRecordType,
+        ddDate: edRecordType === 'DD' ? (edDdDate.trim() || null) : null,
+        natureOfDd: edRecordType === 'DD' ? (edNatureOfDd.trim() || null) : null,
+        nameOfDeceased: (edRecordType === 'DD' && edNatureOfDd === 'UD Case (Unnatural Death)') ? (edNameOfDeceased.trim() || null) : null,
+        reportingPerson: (edRecordType === 'DD' && (edNatureOfDd === 'Lost Property Report' || edNatureOfDd === 'Other Miscellaneous Entry')) ? (edReportingPerson.trim() || null) : null,
+        actualSeizureDdNo: edActualSeizureDdNo.trim() || null,
+        actualSeizureDate: edActualSeizureDate.trim() || null,
       };
 
       const imageUrlOverride: string | null | undefined =
@@ -443,6 +500,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         imageUrl:       imageUrlOverride,
         legalSections:  usArr,
         caseProperty:   cpPatch,
+        firMaster:      firMasterPatch,
       });
       setCaseRow(updated);
       // Re-fetch so the on-screen detail cards reflect the edits.
@@ -927,6 +985,49 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                     placeholder="e.g. 244, 245 or BNS 101"
                   />
                 </label>
+                {/* DD-extras block — same columns as RegisterCaseModal Step 1,
+                    shown only when Record Type is DD (mirrors registration). */}
+                {edRecordType === 'DD' && (
+                  <>
+                    <label>Nature of DD
+                      <select value={edNatureOfDd} onChange={e => setEdNatureOfDd(e.target.value)}>
+                        <option value="">— select —</option>
+                        <option value="UD Case (Unnatural Death)">UD Case (Unnatural Death)</option>
+                        <option value="Lost Property Report">Lost Property Report</option>
+                        <option value="Other Miscellaneous Entry">Other Miscellaneous Entry</option>
+                      </select>
+                    </label>
+                    {edNatureOfDd === 'UD Case (Unnatural Death)' && (
+                      <label>Name of Deceased
+                        <input value={edNameOfDeceased} onChange={e => setEdNameOfDeceased(e.target.value)} placeholder="Name of deceased" />
+                      </label>
+                    )}
+                    {(edNatureOfDd === 'Lost Property Report' || edNatureOfDd === 'Other Miscellaneous Entry') && (
+                      <label className="full">Reporting Person Name &amp; Address
+                        <input value={edReportingPerson} onChange={e => setEdReportingPerson(e.target.value)} placeholder="Name & address of reporter" />
+                      </label>
+                    )}
+                  </>
+                )}
+
+                {/* Actual Seizure group — the DD under which the property was
+                    ACTUALLY seized. Same columns as RegisterCaseModal Step 1. */}
+                <section className="rc-group">
+                  <div className="rc-grid">
+                    <label>DD No. (Seizure)
+                      <input
+                        value={edActualSeizureDdNo}
+                        onChange={e => setEdActualSeizureDdNo(e.target.value)}
+                        placeholder="e.g. DD 12/2026"
+                        className="mono"
+                      />
+                    </label>
+                    <label>Date
+                      <input type="date" value={edActualSeizureDate} onChange={e => setEdActualSeizureDate(e.target.value)} max={today} />
+                    </label>
+                  </div>
+                </section>
+
                 <label>Received By (Malkhana Moharrir)
                   <input value={edReceivedBy} onChange={e => setEdReceivedBy(e.target.value)} placeholder="Officer name" />
                 </label>
@@ -1057,20 +1158,32 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                         </label>
                       ))}
 
+                      {/* Common Quantity — same categories as RegisterCaseModal
+                          Step 2 (hidden for Narcotics / Arms / Cash / Gold /
+                          Vehicle / Liquor and the minimal categories). */}
+                      {!noCat && !isMinimal && cat?.id !== 'narcotics' && cat?.id !== 'arms' && cat?.id !== 'cash' && cat?.id !== 'gold' && cat?.id !== 'vehicle' && cat?.id !== 'liquor' && (
+                        <label>Quantity
+                          <input value={edQuantity} onChange={e => setEdQuantity(e.target.value)} placeholder="e.g. 1 or 2 kg" />
+                        </label>
+                      )}
+
                       {/* Common seal block — same categories as registration. */}
                       {showSealBlock && (
                         <>
                           <label>Place of Seizure
-                            <input value={(caseProperty?.placeOfSeizure) || ''} readOnly placeholder="(captured at registration)" />
+                            <input value={edPlaceOfSeizure} onChange={e => setEdPlaceOfSeizure(e.target.value)} placeholder="e.g. Near bus stand" />
                           </label>
                           <label>Sealed / Unsealed
-                            <select disabled><option>Sealed</option><option>Unsealed</option></select>
+                            <select value={edSealSealed} onChange={e => setEdSealSealed(e.target.value)}>
+                              <option value="Yes">Sealed</option>
+                              <option value="No">Unsealed</option>
+                            </select>
                           </label>
                           <label>Seal No. / Mark
-                            <input readOnly placeholder="(captured at registration)" />
+                            <input value={edSealNo} onChange={e => setEdSealNo(e.target.value)} placeholder="Seal no. / mark" />
                           </label>
                           <label>Sealed By (Officer)
-                            <input readOnly placeholder="(captured at registration)" />
+                            <input value={edSealBy} onChange={e => setEdSealBy(e.target.value)} placeholder="Officer name" />
                           </label>
                         </>
                       )}

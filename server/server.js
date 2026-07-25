@@ -921,7 +921,7 @@ async function dbSaveCaseProperty(cp) {
   if (!cp || !cp.itemId) return;
   const { upsertCaseProperty } = await import('./db.js').catch(() => ({}));
   if (typeof upsertCaseProperty === 'function') {
-    await upsertCaseProperty(cp.itemId, cp, Array.isArray(cp._fields) ? cp._fields : null);
+    await upsertCaseProperty(cp.itemId, cp, Array.isArray(cp._fields) ? cp._fields : []);
   }
 }
 
@@ -981,9 +981,11 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     const body = req.body || {};
 
     // Allow-list of editable keys.  Anything outside this list is silently
-    // dropped.  Aligned with the slim Edit Case Property modal — no DD
-    // extras, no seal block, no per-category popup fields.  See
-    // client/src/components/CasePropertyDetail.tsx for the matching form.
+    // dropped.  Mirrors the Edit Case Property modal, which exposes EVERY
+    // column RegisterCaseModal captures (superset match): the case-level
+    // fields, the case_property payload (incl. seal block + quantity), and
+    // the firMaster payload (DD-extras + actual seizure columns).
+    // See client/src/components/CasePropertyDetail.tsx for the matching form.
     //
     // shortVal: trim noisy strings for the audit log diff so a 200-char
     // remarks change doesn't balloon the entry to multiple lines.
@@ -991,7 +993,7 @@ app.patch('/api/cases/:id', async (req, res, next) => {
     const ALLOWED = ['itemType', 'itemSub', 'section', 'seizingOfficer', 'itemId', 'legalSection',
                       'legalSections', 'itemTypeId', 'description',
                       'receivedBy', 'firDate', 'firNo', 'imageUrl', 'status',
-                      'caseProperty'];
+                      'caseProperty', 'firMaster'];
     const patch = {};
     for (const k of ALLOWED) {
       if (Object.prototype.hasOwnProperty.call(body, k)) patch[k] = body[k];
@@ -1276,10 +1278,48 @@ app.patch('/api/cases/:id', async (req, res, next) => {
         if (cpChanged) await dbSaveCaseProperty(cp);
       }
 
-      // No DD-extras or fir_master merging here — the slim PATCH payload
-      // (see ALLOWED above) no longer carries recordType / DD fields.
-      // fir_master is still touched when `firDate` changes (see the
-      // upsertFirMasterPartial call earlier in this handler).
+      // ---- fir_master DD-extras + actual seizure columns ----
+      // Registration stored these on the fir_master row (see
+      // RegisterCaseModal -> createCaseBatch -> firMaster upsert).  The Edit
+      // modal now sends them as a `firMaster` sub-payload so the same Step 1
+      // columns can be corrected post-registration.  We upsert the row with
+      // only the provided keys (preserving anything the client didn't send).
+      if (patch.firMaster && typeof patch.firMaster === 'object') {
+        const fm = patch.firMaster || {};
+        const fmKey = String(fm.firNo || c.firNo || c.id || '').trim();
+        if (fmKey) {
+          const existing = (getDb().firMaster || []).find(f => f.firNo && f.firNo.toLowerCase() === fmKey.toLowerCase());
+          const nextFm = {
+            firNo: fmKey,
+            recordType: fm.recordType || existing?.recordType || c.firNo?.toUpperCase().startsWith('DD ') ? 'DD' : 'FIR',
+            policeStation: existing?.policeStation || '',
+            firDate: existing?.firDate || c.firDate || null,
+            usSections: existing?.usSections || null,
+            io: existing?.io || null,
+            ddDate: fm.ddDate !== undefined ? fm.ddDate : existing?.ddDate || null,
+            natureOfDd: fm.natureOfDd !== undefined ? fm.natureOfDd : existing?.natureOfDd || null,
+            nameOfDeceased: fm.nameOfDeceased !== undefined ? fm.nameOfDeceased : existing?.nameOfDeceased || null,
+            reportingPerson: fm.reportingPerson !== undefined ? fm.reportingPerson : existing?.reportingPerson || null,
+            actualSeizureDdNo: fm.actualSeizureDdNo !== undefined ? fm.actualSeizureDdNo : existing?.actualSeizureDdNo || null,
+            actualSeizureDate: fm.actualSeizureDate !== undefined ? fm.actualSeizureDate : existing?.actualSeizureDate || null,
+          };
+          // Diff for the audit log (only the keys the client actually sent).
+          const fmChanges = [];
+          for (const key of ['recordType', 'ddDate', 'natureOfDd', 'nameOfDeceased', 'reportingPerson', 'actualSeizureDdNo', 'actualSeizureDate']) {
+            if (fm[key] === undefined) continue;
+            const nv = fm[key] == null ? null : String(fm[key]);
+            const ov = existing && existing[key] != null ? String(existing[key]) : '';
+            if (nv !== ov) fmChanges.push(`${key}: ${shortVal(ov)} → ${shortVal(nv)}`);
+          }
+          try {
+            const { upsertFirMaster } = await import('./db.js');
+            if (typeof upsertFirMaster === 'function') {
+              await upsertFirMaster(nextFm);
+              if (fmChanges.length) changes.push(`firMaster[${fmKey}]: ${fmChanges.join('; ')}`);
+            }
+          } catch { /* best-effort: continue even if db upsert helper differs */ }
+        }
+      }
 
       // section counts are derived from the cases table; recompute so the
       // sidebar/dashboard counters stay accurate after a move.
