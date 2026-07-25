@@ -231,7 +231,7 @@ export function RegisterTable({
       render: (c) => <td className="type">{c.itemType ? c.itemType : <span style={{ color: 'var(--text-muted, #999)', fontStyle: 'italic' }}>Not Selected</span>}</td>,
     },
     location: {
-      key: 'location', label: 'Location',
+      key: 'location', label: 'Location', className: 'col-location',
       render: (c) => (
         <td>
           {c.section && c.sectionName ? (

@@ -1464,6 +1464,10 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
   .panel table{ min-width: 640px; font-size: 12px; }
   thead th, tbody td{ padding: 10px 12px; }
 
+  /* Mobile: give LOCATION the same width as CATEGORY OF ITEM so the
+     section/rack name has room to breathe instead of being squeezed. */
+  .register-table .col-location{ width: 16%; min-width: 170px; }
+
   /* Section banners stack the close button below */
   .section-banner{ flex-wrap: wrap; }
   .section-banner-clear{ margin-left: 0; }
