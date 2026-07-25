@@ -3452,7 +3452,10 @@ input, select, textarea{
      never "Narco" / "tics". */
   .panel.is-mobile .register-table .col-location{ width: 18%; min-width: 140px; word-break: normal; overflow-wrap: normal; }
   .panel.is-mobile .register-table .col-location .section-tag{ display: inline-flex; flex-wrap: wrap; gap: 6px; }
-  .panel.is-mobile .register-table .col-location .section-tag > span{ white-space: nowrap; }
+  .panel.is-mobile .register-table .col-location .section-tag > span{ white-space: normal; overflow-wrap: anywhere; }
+  /* Never clip the rack name — let a long one (e.g. "Documents & Cash")
+     wrap to a second line instead of being cut off at the column edge. */
+  .panel.is-mobile .register-table .col-location{ overflow: visible; }
   /* Status column: stop the rotated stamp from breaking into stacked
      letters — give it room and un-rotate on small screens. */
   .panel.is-mobile .register-table .col-status{ width: 9%; min-width: 96px; }
