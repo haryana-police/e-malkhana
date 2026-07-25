@@ -162,7 +162,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
 
   // ---- Action modal state ----
   const [showLog, setShowLog] = useState(false);
-  const [fromLocation, setFromLocation] = useState('—');
   const [logErr, setLogErr] = useState<string | null>(null);
   const [logBusy, setLogBusy] = useState(false);
 
@@ -171,19 +170,23 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [editErr, setEditErr] = useState<string | null>(null);
   // ---- Step 1 (FIR / DD & Receipt) — Edit state ----
   const [edRecordType, setEdRecordType] = useState<'FIR' | 'DD'>('FIR');
-  const [edFirNo, setEdFirNo] = useState('');              // FIR/DD No. (read-only on detail, but carried for save)
+  const [edFirNo, setEdFirNo] = useState('');              // FIR/DD No. (editable for future entry)
   const [edFirDate, setEdFirDate] = useState('');
   // Common block
   const [edUs, setEdUs] = useState('');
   const [edReceivedBy, setEdReceivedBy] = useState('');
-  const [edSeizedTime, setEdSeizedTime] = useState('');
   const [edSeizingOfficer, setEdSeizingOfficer] = useState('');
+  const [edSeizedTime, setEdSeizedTime] = useState('');
 
   // ---- Step 2 (Seized Item Details) — Edit state ----
   const [edItemType, setEdItemType] = useState('');
   const [edSection, setEdSection] = useState('');
   const [edStatus, setEdStatus] = useState<CaseStatus>('Seized');
   const [edQuantity, setEdQuantity] = useState('');
+  const [edPlaceOfSeizure, setEdPlaceOfSeizure] = useState('');
+  const [edSealSealed, setEdSealSealed] = useState('Yes');
+  const [edSealNo, setEdSealNo] = useState('');
+  const [edSealBy, setEdSealBy] = useState('');
   const [edRemarks, setEdRemarks] = useState('');
 
   // ---- Photo edit state ----
@@ -249,7 +252,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         // item-types for the case's section (drives the Edit Category dropdown)
         const secLetter = (c.section || '').replace('PART ', '').trim();
         if (secLetter) {
-          api.itemTypes(secLetter).then(t => setItemTypes(t.map(x => ({ id: x.id, name: x.name })))).catch(() => setItemTypes([]));
+          api.itemTypes(secLetter).then(setItemTypes).catch(() => setItemTypes([]));
         }
       } catch (e) {
         setErr((e as Error).message);
@@ -267,12 +270,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     if (!caseRow) return;
     setShowLog(true);
     setLogErr(null);
-    let from = '—';
-    try {
-      const mv = await api.movements(caseRow.id);
-      if (Array.isArray(mv) && mv.length) from = mv[mv.length - 1].toLocation || '—';
-    } catch { /* leave '—' */ }
-    setFromLocation(from);
+    // Use helper/logic for existing log form state
   }
 
   async function submitLog(data: MovementFormData) {
@@ -309,13 +307,12 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
 
     // ---- Step 1: FIR/DD & Receipt ----
     const isDD = recordTypeOf(caseRow, firMaster) === 'DD';
-    const fm = firMaster;
     setEdRecordType(isDD ? 'DD' : 'FIR');
-    setEdFirNo(caseRow.firNo || '');
+    setEdFirNo(caseRow.firNo && !caseRow.firNo.startsWith('MK-') ? caseRow.firNo : '');
     setEdFirDate(caseRow.firDate || '');
     setEdReceivedBy(caseRow.receivedBy || caseProperty?.receivedBy || '');
-    setEdSeizedTime(caseProperty?.seizedTime || '10:00');
     setEdSeizingOfficer(caseRow.seizingOfficer || '');
+    setEdSeizedTime(caseProperty?.seizedTime || '');
     if (caseRow.legalSections && caseRow.legalSections.length) setEdUs(caseRow.legalSections.join(', '));
     else if (caseRow.legalSection) setEdUs(caseRow.legalSection);
     else setEdUs('');
@@ -325,10 +322,13 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEdSection(caseRow.section?.replace('PART ', '') || '');
     setEdStatus(caseRow.status || 'Seized');
     setEdQuantity(caseProperty?.quantity || caseRow.quantity || caseRow.itemSub || '');
+    setEdPlaceOfSeizure(caseProperty?.placeOfSeizure || (caseRow as any).placeOfSeizure || '');
+    setEdSealSealed(caseProperty?.sealSealed || (caseRow as any).sealSealed || 'Yes');
+    setEdSealNo(caseProperty?.sealNo || (caseRow as any).sealNo || '');
+    setEdSealBy(caseProperty?.sealBy || (caseRow as any).sealBy || '');
     setEdRemarks(caseProperty?.remarks || caseRow.description || '');
 
-    // ---- Photo: prefill from current photoUrl (data-URL we can't reopen),
-    //       so the user can either KEEP / REPLACE with a new file.
+    // ---- Photo ----
     const initialPhoto = caseRow.imageUrl || caseProperty?.photoUrl || null;
     setEdPhotoOriginalUrl(initialPhoto);
     setEdPhotoDataUrl(null);     // null = "no change to what the server has"
@@ -365,36 +365,26 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEditBusy(true); setEditErr(null);
     try {
       const usArr = (edUs || '').split(',').map(s => s.replace(/^BNS\s+/i, '').trim()).filter(Boolean);
-      if (!edItemType.trim()) throw new Error('Category of Item cannot be empty');
-      if (!edSection) throw new Error('Pick a location');
-      if (!edSeizingOfficer.trim()) throw new Error('Seizing Officer cannot be empty');
 
-      // Slim case_property patch — only the fields the Edit modal renders
-      // (seized time, moharrir, quantity, description).  No seal block,
-      // no per-category popup fields, no sub-type — the modal doesn't
-      // expose them so sending nothing preserves any existing value.
       const cpPatch: Partial<{
-        seizedTime: string; receivedBy: string; quantity: string;
-        remarks: string;
+        receivedBy: string; quantity: string; remarks: string; seizedTime: string;
+        placeOfSeizure: string; sealSealed: string; sealNo: string; sealBy: string;
       }> = {
-        seizedTime: edSeizedTime.trim() || undefined,
         receivedBy: edReceivedBy.trim() || undefined,
+        seizedTime: edSeizedTime.trim() || undefined,
         quantity:   edQuantity.trim() || undefined,
         remarks:    edRemarks.trim() || undefined,
+        placeOfSeizure: edPlaceOfSeizure.trim() || undefined,
+        sealSealed: edSealSealed,
+        sealNo: edSealNo.trim() || undefined,
+        sealBy: edSealBy.trim() || undefined,
       };
 
-      // Photo: explicit user action always wins.
-      //   - data-URL set: user picked/captured a new photo → upload data-URL.
-      //   - '' (empty string): user clicked Remove → clear the photo.
-      //   - null: user did nothing with the photo → leave server value as-is.
       const imageUrlOverride: string | null | undefined =
         edPhotoDataUrl === null
           ? undefined
           : (edPhotoDataUrl === '' ? null : edPhotoDataUrl);
 
-      // Slim updateCase payload — 13 fields exactly.  No DD-extras, no
-      // caseProperty seal/per-cat block, no recordType flip (case id
-      // immutable — see server.js).
       const updated = await api.updateCase(caseRow.id, {
         itemType:       edItemType.trim(),
         section:        edSection,
@@ -822,7 +812,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             <div className="sub">{c.itemType} · Current: {c.sectionName}</div>
             <MovementForm
               caseRow={c}
-              fromLocation={fromLocation}
+              fromLocation={c.sectionName || '—'}
               busy={logBusy}
               submitLabel="Record movement"
               onSubmit={submitLog}

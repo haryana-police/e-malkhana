@@ -1225,6 +1225,10 @@ app.patch('/api/cases/:id', async (req, res, next) => {
           ['receivedBy', cpPatch.receivedBy],
           ['quantity',   cpPatch.quantity],
           ['remarks',    cpPatch.remarks],
+          ['placeOfSeizure', cpPatch.placeOfSeizure],
+          ['sealSealed', cpPatch.sealSealed],
+          ['sealNo',     cpPatch.sealNo],
+          ['sealBy',     cpPatch.sealBy],
         ];
         for (const [k, v] of fields) {
           if (v === undefined) continue;

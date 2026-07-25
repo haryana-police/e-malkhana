@@ -432,7 +432,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
             if (cls !== 'Unknown') itemFields.push({ key: 'quantity_class', value: cls });
           }
           return {
-            itemType: (cat?.subTypes && it.subType) ? `${cat.label} — ${it.subType}` : (cat?.label || 'Article'),
+            itemType: (cat?.subTypes && it.subType) ? `${cat.label} — ${it.subType}` : (cat?.label || ''),
             sectionLetter: it.sectionLetter,
             category: it.categoryId,
             subType: it.subType,
