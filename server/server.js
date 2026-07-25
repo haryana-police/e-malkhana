@@ -622,21 +622,14 @@ app.post('/api/cases', async (req, res, next) => {
 // Malkhana Sr. No. (sequence) per item; returns the new case row + metadata
 // the caller needs to write the per-item case_property row.
 async function createOneCase(req, body) {
-  const required = ['firOrDd', 'seizingOfficer']; // itemType, section, photo are OPTIONAL
+  const required = ['seizingOfficer']; // firOrDd, itemType, section, photo are OPTIONAL
   for (const k of required) if (!body[k]) { const e = new Error(`missing field: ${k}`); e.status = 400; throw e; }
 
   const secLetter = String(body.section || '').trim().replace(/^PART\s+/i, '').toUpperCase();
   const section = secLetter ? db_sectionByLetter(secLetter) : null;
-  const firOrDd = body.firOrDd.trim();
-  // Unique Malkhana Sr. No. for THIS item (sequence -> no collisions even
-  // when several items share one FIR/DD number).
+  const rawFir = String(body.firOrDd || body.firNo || '').trim();
+  const cleanFir = (rawFir && rawFir !== 'FIR' && rawFir !== 'DD' && rawFir !== 'FIR ' && rawFir !== 'DD ') ? rawFir : '';
   const itemId = body.itemId || await nextMalkhanaSrNo();
-  // Row identity = the unique Malkhana Sr. No. (NOT the FIR/DD number).
-  // This lets the MM register MULTIPLE items under one FIR — and MULTIPLE
-  // blank/placeholder entries (FIR number not yet known) — without a
-  // primary-key collision on the FIR/DD string.  The FIR/DD reference is
-  // stored separately in `firNo` (blank/duplicate allowed) and shown in the
-  // register's "FIR / DD No." column.
   const id = itemId;
   const createdAt = nowISO();
 
@@ -723,7 +716,7 @@ async function createOneCase(req, body) {
   }
   const newCase = {
     id,
-    firNo: body.firNo || id,                 // FIR number for register grouping (defaults to id)
+    firNo: cleanFir,
     itemType:   itemTypeName || body.itemType || '',
     itemSub:    body.itemSub || '',
     section:    section ? `PART ${section.letter}` : '',
@@ -763,13 +756,13 @@ async function createOneCase(req, body) {
 app.post('/api/cases/batch', async (req, res, next) => {
   try {
     const body = req.body || {};
-    const firNo = String(body.firOrDd || body.firNo || '').trim();
-    if (!firNo) { const e = new Error('firOrDd is required'); e.status = 400; throw e; }
+    const rawFir = String(body.firOrDd || body.firNo || '').trim();
+    const firNo = (rawFir && rawFir !== 'FIR' && rawFir !== 'DD' && rawFir !== 'FIR ' && rawFir !== 'DD ') ? rawFir : '';
     if (!Array.isArray(body.items) || !body.items.length) {
       const e = new Error('items[] is required (at least one)'); e.status = 400; throw e;
     }
-    // 1) Upsert FIR/DD master once.
-    if (body.policeStation !== undefined || body.recordType || body.ddDate || body.natureOfDd) {
+    // 1) Upsert FIR/DD master once if firNo is present.
+    if (firNo && (body.policeStation !== undefined || body.recordType || body.ddDate || body.natureOfDd)) {
       await upsertFirMaster({
         firNo, recordType: body.recordType || 'FIR',
         policeStation: body.policeStation || '', firDate: body.firDate || null,

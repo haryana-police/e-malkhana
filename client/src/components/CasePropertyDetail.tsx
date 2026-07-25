@@ -706,7 +706,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             {/* Title + status stamp (same as print head) */}
             <div className="case-a4-head">
               <div>
-                <div className="case-a4-id">{c.id}</div>
+                <div className="case-a4-id">{c.firNo && c.firNo !== 'FIR' && c.firNo !== 'DD' && !c.firNo.startsWith('MK-') ? c.firNo : (c.itemId || c.id)}</div>
                 <h1 className="case-a4-title">{c.itemType}</h1>
                 {c.itemSub && <div className="case-a4-sub">{c.itemSub}</div>}
               </div>
@@ -726,7 +726,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
               </div>
               <div className="case-a4-grid">
                 <div><span className="k">Record Type</span><span className="v">{isDD ? 'DD (Daily Diary)' : 'FIR'}</span></div>
-                <div><span className="k">FIR / DD No.</span><span className="v mono">{c.id}</span></div>
+                <div><span className="k">FIR / DD No.</span><span className="v mono">{c.firNo && c.firNo !== 'FIR' && c.firNo !== 'DD' && !c.firNo.startsWith('MK-') ? c.firNo : '—'}</span></div>
                 <div><span className="k">{isDD ? 'DD Date' : 'FIR Date'}</span><span className="v mono">{fmtDate(c.firDate)}</span></div>
                 <div className="full"><span className="k">Section (U/S Legal Section)</span><span className="v mono">{detailUsText(c)}</span></div>
                 <div><span className="k">Received By (Malkhana Moharrir)</span><span className="v">{cp?.receivedBy || c.receivedBy || '—'}</span></div>

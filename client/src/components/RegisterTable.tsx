@@ -195,16 +195,25 @@ export function RegisterTable({
     },
     id: {
       key: 'id', label: 'FIR / DD No.',
-      render: (c) => (
-        <td className="fir">
-          <Link
-            to={`/case-property/${encodeURIComponent(c.id)}`}
-            className="case-link"
-            onClick={(e) => e.stopPropagation()}
-            title={`Open ${c.id} detail page`}
-          >{c.id}</Link>
-        </td>
-      ),
+      render: (c) => {
+        const hasFir = Boolean(c.firNo && c.firNo !== 'FIR' && c.firNo !== 'DD' && !c.firNo.startsWith('MK-'));
+        return (
+          <td className="fir">
+            <Link
+              to={`/case-property/${encodeURIComponent(c.id)}`}
+              className="case-link"
+              onClick={(e) => e.stopPropagation()}
+              title={`Open detail page for ${c.itemId || c.id}`}
+            >
+              {hasFir ? (
+                c.firNo
+              ) : (
+                <span style={{ color: 'var(--text-muted, #999)', fontStyle: 'italic' }}>—</span>
+              )}
+            </Link>
+          </td>
+        );
+      },
     },
     firDate: {
       key: 'firDate', label: 'FIR Date', className: 'col-firdate',
