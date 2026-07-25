@@ -3938,3 +3938,95 @@ input, select, textarea{
   .case-a4-qr-placeholder { width: 80px; height: 80px; }
 }
 
+/* ============================================================
+   DASHBOARD FILTERS — date-wise · section-wise · status-wise
+   Pill button (funnel + count badge) mirrors the active-filter
+   indicator from the UI; popover + chips follow the paper/khaki
+   design system.
+   ============================================================ */
+.dash-head-actions{ display:flex; align-items:center; gap:9px; }
+
+.filter-btn{
+  display:inline-flex; align-items:center; gap:7px;
+  font-family:'IBM Plex Sans', sans-serif; font-size:12.5px; font-weight:600;
+  padding:8px 14px; border-radius:999px;
+  border:1px solid var(--line);
+  background: var(--white-paper); color: var(--ink-navy);
+  cursor:pointer; position:relative; transition: all .15s;
+}
+.filter-btn:hover{ border-color: var(--khaki); }
+.filter-btn.active{
+  border-color: var(--khaki);
+  background: rgba(140,122,84,0.12);
+  color: var(--ink-navy);
+}
+.filter-btn .fb-ico{ display:block; }
+.filter-badge{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:18px; height:18px; padding:0 5px;
+  border-radius:999px; background: var(--seal-red); color:#fff;
+  font-size:11px; font-weight:700; line-height:1;
+}
+
+.filter-pop{
+  background: var(--white-paper);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:16px 18px;
+  margin-bottom:18px;
+  box-shadow: 0 6px 18px rgba(20,36,61,0.08);
+}
+.filter-grid{
+  display:grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap:22px;
+}
+.filter-col h4{
+  font-family:'Rajdhani', sans-serif;
+  font-size:13px; font-weight:700; letter-spacing:.04em;
+  text-transform:uppercase; color: var(--khaki);
+  margin-bottom:10px;
+}
+.date-range{ display:flex; align-items:center; gap:8px; }
+.date-field{ position:relative; display:flex; align-items:center; flex:1 1 auto; }
+.date-input{
+  width:100%; padding:8px 30px 8px 10px;
+  border:1px solid var(--khaki); border-radius:7px;
+  font-size:12.5px; font-family:'IBM Plex Mono', monospace;
+  background:#fff; color: var(--slate); outline:none; box-sizing:border-box;
+}
+.date-input:focus{ border-color: var(--slate); }
+.date-input.invalid{ border-color: var(--seal-red); background: var(--seal-red-bg); }
+.date-cal{
+  position:absolute; right:5px; top:50%; transform:translateY(-50%);
+  border:0; background:transparent; cursor:pointer; color: var(--slate-soft);
+  display:inline-flex; padding:2px; border-radius:4px;
+}
+.date-cal:hover{ color: var(--ink-navy); }
+.date-hidden{ position:absolute; width:0; height:0; opacity:0; pointer-events:none; border:0; padding:0; }
+.date-dash{ color: var(--slate-soft); font-weight:700; }
+.f-range-text{ margin-top:7px; font-size:11.5px; color: var(--slate-soft); }
+
+.f-chips{ display:flex; flex-wrap:wrap; gap:6px; align-content:flex-start; }
+.f-chip{
+  font-size:12px; padding:5px 11px; border-radius:999px;
+  border:1px solid var(--line); background: var(--paper); color: var(--slate);
+  cursor:pointer; transition: all .12s ease; white-space:nowrap;
+}
+.f-chip:hover{ border-color: var(--ocean, #2b5d8c); color: var(--ink-navy); }
+.f-chip.on{ background: var(--ink-navy); border-color: var(--ink-navy); color:#fff; }
+.f-empty{ font-size:12px; color: var(--slate-soft); }
+
+.filter-actions{
+  display:flex; justify-content:flex-end; gap:8px;
+  margin-top:14px; padding-top:12px; border-top:1px solid var(--paper-darker);
+}
+
+@media (max-width: 860px){
+  .filter-grid{ grid-template-columns: 1fr; gap:16px; }
+}
+@media (max-width: 560px){
+  .dash-head-actions{ flex-wrap:wrap; }
+  .filter-pop{ padding:14px; }
+}
+
