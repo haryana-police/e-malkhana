@@ -116,6 +116,7 @@ export function FilterPanel({
   dateFrom, setDateFrom, dateTo, setDateTo,
   sectionOptions, selSections, toggleSection,
   selStatuses, toggleStatus, onClearAll,
+  onClose,
 }: {
   dateFrom: string; setDateFrom: (v: string) => void;
   dateTo: string; setDateTo: (v: string) => void;
@@ -123,6 +124,7 @@ export function FilterPanel({
   selSections: string[]; toggleSection: (letter: string) => void;
   selStatuses: CaseStatus[]; toggleStatus: (s: CaseStatus) => void;
   onClearAll: () => void;
+  onClose?: () => void;   // "Done" must only close the panel, NOT wipe filters
 }) {
   const dateText =
     dateFrom && dateTo ? `${dateFrom} → ${dateTo}`
@@ -180,7 +182,7 @@ export function FilterPanel({
 
       <div className="filter-actions">
         <button type="button" className="btn small ghost" onClick={onClearAll}>Clear all</button>
-        <button type="button" className="btn small" onClick={onClearAll}>Done</button>
+        <button type="button" className="btn small" onClick={() => (onClose ? onClose() : onClearAll())}>Done</button>
       </div>
     </div>
   );

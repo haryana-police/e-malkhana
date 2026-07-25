@@ -147,6 +147,7 @@ export function Dashboard({
       selSections={selSections} toggleSection={toggleSection}
       selStatuses={selStatuses} toggleStatus={toggleStatus}
       onClearAll={clearAll}
+      onClose={() => setShowFilters(false)}
     />
   );
 

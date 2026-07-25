@@ -92,6 +92,7 @@ export function CaseProperty({
         selStatuses={activeStatus ? [activeStatus] : []}
         toggleStatus={toggleStatus}
         onClearAll={clearAll}
+        onClose={() => setShowFilters(false)}
       />
     </div>
   );
