@@ -108,6 +108,30 @@ function recordTypeOf(c: CaseRow, fm: FirMaster | null): 'FIR' | 'DD' {
   return head === 'DD' ? 'DD' : 'FIR';
 }
 
+// Category lookup helpers — mirror those used by RegisterCaseModal so the
+// Edit form can resolve the same CategoryOfItem master row by id or by the
+// composed `itemType` label.
+function findCatById(list: CategoryOfItem[] | null, id: string | null | undefined): CategoryOfItem | undefined {
+  if (!list || !id) return undefined;
+  return list.find(c => c.id === id);
+}
+function findCatByLabel(list: CategoryOfItem[] | null, itemType: string | null | undefined): CategoryOfItem | undefined {
+  if (!list || !itemType) return undefined;
+  return list.find(c => itemType === c.label || itemType.startsWith(c.label + ' — '));
+}
+// Display label for the category column — blank means "Not Selected"
+// (a row registered without a category), never the literal word "Article".
+function itemTypeLabel(c: CaseRow): string {
+  return c.itemType?.trim() || 'Not Selected';
+}
+// Compose the display `itemType` exactly like RegisterCaseModal does at
+// registration: "<Category> — <sub-type>" when a sub-type is chosen, else
+// just the category label.  Empty when no category is selected.
+function composeItemType(cat: CategoryOfItem | undefined, subType: string): string {
+  if (!cat) return '';
+  return (cat.subTypes && subType) ? `${cat.label} — ${subType}` : cat.label;
+}
+
 // Format a yyyy-mm-dd (or ISO) as a readable DD MMM YYYY for display.
 function fmtDate(iso?: string | null): string {
   if (!iso) return '—';
@@ -158,7 +182,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
 
   // ---- Edit modal dropdown options ----
   const [sections, setSections] = useState<{ letter: string; name: string }[]>([]);
-  const [itemTypes, setItemTypes] = useState<{ id: number; name: string }[]>([]);
 
   // ---- Action modal state ----
   const [showLog, setShowLog] = useState(false);
@@ -179,14 +202,15 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [edSeizedTime, setEdSeizedTime] = useState('');
 
   // ---- Step 2 (Seized Item Details) — Edit state ----
-  const [edItemType, setEdItemType] = useState('');
+  // Mirrors RegisterCaseModal: we track the chosen category by ID, the inner
+  // sub-type, and a bag of per-category field values, then compose
+  // `itemType` exactly like registration does on save.  This keeps the Edit
+  // form showing the SAME columns that existed at registration time.
+  const [edCatId, setEdCatId] = useState('');
+  const [edSubType, setEdSubType] = useState('');
+  const [edCatValues, setEdCatValues] = useState<Record<string, string>>({});
   const [edSection, setEdSection] = useState('');
   const [edStatus, setEdStatus] = useState<CaseStatus>('Seized');
-  const [edQuantity, setEdQuantity] = useState('');
-  const [edPlaceOfSeizure, setEdPlaceOfSeizure] = useState('');
-  const [edSealSealed, setEdSealSealed] = useState('Yes');
-  const [edSealNo, setEdSealNo] = useState('');
-  const [edSealBy, setEdSealBy] = useState('');
   const [edRemarks, setEdRemarks] = useState('');
 
   // ---- Photo edit state ----
@@ -249,11 +273,9 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         setCaseProperty(cp);
         setCategories(catList);
         setMovements(Array.isArray(mv) ? mv : []);
-        // item-types for the case's section (drives the Edit Category dropdown)
-        const secLetter = (c.section || '').replace('PART ', '').trim();
-        if (secLetter) {
-          api.itemTypes(secLetter).then(setItemTypes).catch(() => setItemTypes([]));
-        }
+        // The Edit Category dropdown is driven by the item-categories master
+        // (already loaded in `categories`), so no separate item-types fetch
+        // is needed here.
       } catch (e) {
         setErr((e as Error).message);
       } finally {
@@ -318,14 +340,21 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     else setEdUs('');
 
     // ---- Step 2: Seized Item ----
-    setEdItemType(caseRow.itemType || '');
+    // Resolve the category the same way registration would: prefer the
+    // category id stored in the per-item fields, then fall back to matching
+    // the composed `itemType` label.  Re-hydrate sub-type + per-category
+    // field values from the saved fields so the Edit form opens with the
+    // exact columns that existed at registration.
+    const cpFields = (caseProperty?.fields || []).map(f => ({ key: f.key, value: f.value }));
+    const fMap = new Map(cpFields.map(f => [f.key, f.value]));
+    const cat = findCatById(categories, fMap.get('category')) || findCatByLabel(categories, caseRow.itemType);
+    setEdCatId(cat?.id || '');
+    setEdSubType(fMap.get('sub_type') || '');
+    const cv: Record<string, string> = {};
+    for (const f of cat?.fields || []) cv[f.key] = fMap.get(f.key) || '';
+    setEdCatValues(cv);
     setEdSection(caseRow.section?.replace('PART ', '') || '');
     setEdStatus(caseRow.status || 'Seized');
-    setEdQuantity(caseProperty?.quantity || caseRow.quantity || caseRow.itemSub || '');
-    setEdPlaceOfSeizure(caseProperty?.placeOfSeizure || (caseRow as any).placeOfSeizure || '');
-    setEdSealSealed(caseProperty?.sealSealed || (caseRow as any).sealSealed || 'Yes');
-    setEdSealNo(caseProperty?.sealNo || (caseRow as any).sealNo || '');
-    setEdSealBy(caseProperty?.sealBy || (caseRow as any).sealBy || '');
     setEdRemarks(caseProperty?.remarks || caseRow.description || '');
 
     // ---- Photo ----
@@ -366,18 +395,35 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     try {
       const usArr = (edUs || '').split(',').map(s => s.replace(/^BNS\s+/i, '').trim()).filter(Boolean);
 
+      // Compose the display `itemType` exactly like RegisterCaseModal does
+      // at registration, and build the per-item popup `fields` array (sub_type
+      // + every per-category value + the chosen category id + malkhana
+      // section).  This is what makes the Edit form mirror registration.
+      const cat = findCatById(categories, edCatId);
+      const itemType = composeItemType(cat, edSubType);
+      const ppFields: { key: string; value: string }[] = [];
+      if (edSubType) ppFields.push({ key: 'sub_type', value: edSubType });
+      for (const f of cat?.fields || []) {
+        const v = (edCatValues[f.key] ?? '').trim();
+        if (v !== '') ppFields.push({ key: f.key, value: v });
+      }
+      if (edCatId) ppFields.push({ key: 'category', value: edCatId });
+      if (edSection) ppFields.push({ key: 'malkhana_section', value: edSection });
+
       const cpPatch: Partial<{
         receivedBy: string; quantity: string; remarks: string; seizedTime: string;
         placeOfSeizure: string; sealSealed: string; sealNo: string; sealBy: string;
+        fields: { key: string; value: string }[];
       }> = {
         receivedBy: edReceivedBy.trim() || undefined,
         seizedTime: edSeizedTime.trim() || undefined,
-        quantity:   edQuantity.trim() || undefined,
+        quantity:   undefined,   // quantity lives in per-category fields
         remarks:    edRemarks.trim() || undefined,
-        placeOfSeizure: edPlaceOfSeizure.trim() || undefined,
-        sealSealed: edSealSealed,
-        sealNo: edSealNo.trim() || undefined,
-        sealBy: edSealBy.trim() || undefined,
+        // Preserve any previously-saved seal block / place of seizure by
+        // NOT sending them when the category doesn't expose those columns
+        // (registration shows them only for a few generic categories).  The
+        // server keeps the existing values when a key is omitted.
+        fields: ppFields,
       };
 
       const imageUrlOverride: string | null | undefined =
@@ -386,7 +432,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           : (edPhotoDataUrl === '' ? null : edPhotoDataUrl);
 
       const updated = await api.updateCase(caseRow.id, {
-        itemType:       edItemType.trim(),
+        itemType:       itemType,
         section:        edSection,
         status:         edStatus,
         seizingOfficer: edSeizingOfficer.trim(),
@@ -894,57 +940,158 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             </fieldset>
 
             {/* ============= Step 2 of 2 — Seized Item Details ============= */}
+            {/* Mirrors RegisterCaseModal's Step 2 exactly: the same columns
+                that existed at registration time render here (sub-type,
+                per-category fields, seal block for the few generic
+                categories, description, photo). */}
             <fieldset className="edit-step">
               <legend>Step 2 of 2 — Seized Item Details</legend>
               <div className="form-grid rc-grid item-grid">
+                {(() => {
+                  const cat = findCatById(categories, edCatId);
+                  const noCat = !edCatId;
+                  // "Minimal" categories keep ONLY Category, Section, Description,
+                  // Photo — the same rule as registration.
+                  const isMinimal = cat?.id === 'lost_items' || cat?.id === 'viscera' || cat?.id === 'other';
+                  // Cash & Valuables and Liquor / Excise force-suppress the inner
+                  // Type dropdown (mirrors registration).
+                  const cashNoType = cat?.id === 'cash';
+                  const liquorNoType = cat?.id === 'liquor';
+                  // Common seizure block (Place of Seizure / Sealed / Seal No. /
+                  // Sealed By) shows for the same categories registration shows it
+                  // for — i.e. NOT the special-handled or minimal categories.
+                  const showSealBlock = !noCat && !isMinimal
+                    && cat?.id !== 'narcotics' && cat?.id !== 'arms'
+                    && cat?.id !== 'cash' && cat?.id !== 'gold'
+                    && cat?.id !== 'vehicle' && cat?.id !== 'liquor';
+                  const setCatVal = (key: string, val: string) =>
+                    setEdCatValues(prev => ({ ...prev, [key]: val }));
+                  return (
+                    <>
+                      <label>Category of Item
+                        <select
+                          value={edCatId}
+                          onChange={e => {
+                            const id = e.target.value;
+                            setEdCatId(id);
+                            setEdSubType('');
+                            setEdCatValues({});
+                            const c = findCatById(categories, id);
+                            if (c?.sectionLetter) setEdSection(c.sectionLetter);
+                          }}
+                        >
+                          <option value="">— select category —</option>
+                          {(categories || []).filter(c => c.active).map(c => (
+                            <option key={c.id} value={c.id}>{c.label}</option>
+                          ))}
+                        </select>
+                      </label>
 
-                <label>Category of Item
-                  <select
-                    value={edItemType}
-                    onChange={e => setEdItemType(e.target.value)}
-                  >
-                    <option value="">— pick a category —</option>
-                    {(categories || []).filter(c => c.active).map(cat => (
-                      <option key={cat.id} value={cat.label}>{cat.label}</option>
-                    ))}
-                  </select>
-                </label>
+                      <label>Location
+                        <select value={edSection} onChange={e => setEdSection(e.target.value)} required>
+                          <option value="">— pick a section —</option>
+                          {sections.map(s => (
+                            <option key={s.letter} value={s.letter}>{s.letter} — {s.name}</option>
+                          ))}
+                        </select>
+                      </label>
 
-                <label>Location
-                  <select value={edSection} onChange={e => setEdSection(e.target.value)} required>
-                    <option value="">— pick a section —</option>
-                    {sections.map(s => (
-                      <option key={s.letter} value={s.letter}>{s.letter} — {s.name}</option>
-                    ))}
-                  </select>
-                </label>
+                      <label>Status
+                        <select value={edStatus} onChange={e => setEdStatus(e.target.value as CaseStatus)}>
+                          {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </label>
 
-                <label>Status
-                  <select value={edStatus} onChange={e => setEdStatus(e.target.value as CaseStatus)}>
-                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </label>
+                      {/* Sub-type (Type) — for categories that have one.
+                          Arms & Ammunition uses radio buttons; others a select.
+                          Cash & Liquor force-suppress it. */}
+                      {!noCat && cat?.subTypes && !cashNoType && !liquorNoType && (
+                        cat.subTypeControl === 'radio' ? (
+                          <div className={`rc-radio req full${cat.id === 'arms' ? ' inline' : ''}`}>
+                            <span className="rc-field-label">{cat.subTypeLabel || 'Type'}</span>
+                            <div className="rc-radio-row">
+                              {cat.subTypes.map(t => (
+                                <label key={t} className={`rc-radio-opt ${edSubType === t ? 'on' : ''}`}>
+                                  <input
+                                    type="radio"
+                                    name="ed-subtype"
+                                    value={t}
+                                    checked={edSubType === t}
+                                    onChange={() => setEdSubType(t)}
+                                  />
+                                  <span>{t}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <label>{cat.subTypeLabel || 'Type'}
+                            <select value={edSubType} onChange={e => setEdSubType(e.target.value)}>
+                              <option value="">— select —</option>
+                              {cat.subTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </label>
+                        )
+                      )}
 
-                <label>Quantity
-                  <input value={edQuantity} onChange={e => setEdQuantity(e.target.value)} placeholder="e.g. 1 or 2 kg" />
-                </label>
+                      {/* Per-category fields (e.g. Quantity Seized for Narcotics,
+                          Total Amount for Cash, Weight for Jewellery).  These are
+                          the column(s) registration captured for this category. */}
+                      {cat?.fields.map(f => (
+                        <label key={f.key}>
+                          {f.label}{f.unit ? ` (${f.unit})` : ''}
+                          {f.type === 'select' ? (
+                            <select value={edCatValues[f.key] || ''} onChange={e => setCatVal(f.key, e.target.value)}>
+                              <option value="">— select —</option>
+                              {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          ) : f.type === 'number' ? (
+                            <input type="number" value={edCatValues[f.key] || ''} placeholder={f.placeholder} onChange={e => setCatVal(f.key, e.target.value)} />
+                          ) : f.type === 'date' ? (
+                            <input type="date" value={edCatValues[f.key] || ''} onChange={e => setCatVal(f.key, e.target.value)} />
+                          ) : f.type === 'time' ? (
+                            <input type="time" value={edCatValues[f.key] || ''} onChange={e => setCatVal(f.key, e.target.value)} />
+                          ) : (
+                            <input type="text" value={edCatValues[f.key] || ''} placeholder={f.placeholder} onChange={e => setCatVal(f.key, e.target.value)} />
+                          )}
+                        </label>
+                      ))}
 
-                <label className="full">Item Description (detailed — brand, colour, size, marks)
-                  <textarea
-                    value={edRemarks}
-                    onChange={e => setEdRemarks(e.target.value)}
-                    placeholder="Detailed description"
-                    rows={3}
-                  />
-                </label>
+                      {/* Common seal block — same categories as registration. */}
+                      {showSealBlock && (
+                        <>
+                          <label>Place of Seizure
+                            <input value={(caseProperty?.placeOfSeizure) || ''} readOnly placeholder="(captured at registration)" />
+                          </label>
+                          <label>Sealed / Unsealed
+                            <select disabled><option>Sealed</option><option>Unsealed</option></select>
+                          </label>
+                          <label>Seal No. / Mark
+                            <input readOnly placeholder="(captured at registration)" />
+                          </label>
+                          <label>Sealed By (Officer)
+                            <input readOnly placeholder="(captured at registration)" />
+                          </label>
+                        </>
+                      )}
+
+                      <label className="full">Item Description (detailed — brand, colour, size, marks)
+                        <textarea
+                          value={edRemarks}
+                          onChange={e => setEdRemarks(e.target.value)}
+                          placeholder="Detailed description"
+                          rows={3}
+                        />
+                      </label>
+                    </>
+                  );
+                })()}
               </div>
-
-              {/* Photo of the seized object — replace / remove / keep */}
               <label className="full rc-photo-label">Photo of the seized object
                 <div className="edit-photo-zone">
                   {previewPhoto ? (
                     <div className="edit-photo-preview">
-                      <img src={previewPhoto} alt={`Seized ${edItemType || ''}`} />
+                      <img src={previewPhoto} alt={`Seized ${composeItemType(findCatById(categories, edCatId), edSubType) || ''}`} />
                       <span className="edit-photo-meta">
                         {edPhotoDataUrl && edPhotoDataUrl !== ''
                           ? 'New photo selected — click Save to upload.'
@@ -972,7 +1119,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             <div className="form-actions">
               <button type="button" className="btn ghost" onClick={() => setShowEdit(false)} disabled={editBusy}>Cancel</button>
               <button type="submit" className="btn"
-                      disabled={editBusy || !edItemType.trim() || !edSection || !edSeizingOfficer.trim()}>
+                      disabled={editBusy || !edSection || !edSeizingOfficer.trim()}>
                 {editBusy ? 'Saving…' : 'Save all changes'}
               </button>
             </div>

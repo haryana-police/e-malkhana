@@ -318,6 +318,16 @@ function decorateCaseRow(c, db) {
   }
   c.quantity = quantity;
 
+  // Normalize a stale legacy default.  Rows registered before the
+  // "Article" default was removed (see client RegisterCaseModal) may still
+  // carry itemType === 'Article' (the old fallback literal).  Treat that as
+  // "Not Selected" so the register table / detail page render the same
+  // "Not Selected" italic tag as a genuinely blank category, instead of the
+  // misleading word "Article".
+  if (!c.itemType || String(c.itemType).trim().toLowerCase() === 'article') {
+    c.itemType = '';
+  }
+
   // FIR Date — joined from the FIR/DD master (fir_master.fir_date, falling
   // back to dd_date for DD records).  This is the date the FIR/DD was
   // registered, shown in the register's "FIR Date" column.  Empty when no
@@ -905,10 +915,13 @@ function ensureCasePropertyFor(c) {
 async function dbSaveCaseProperty(cp) {
   // Mirror upsertCaseProperty in db.js — but keeps the in-memory copy the
   // source of truth so subsequent reads see the new value immediately.
+  // Signature is upsertCaseProperty(itemId, common, fields); the in-memory
+  // `cp` row has the exact `common` shape (firNo, seizedTime, …), so pass it
+  // as the middle arg and stash any per-item popup fields on cp._fields.
   if (!cp || !cp.itemId) return;
   const { upsertCaseProperty } = await import('./db.js').catch(() => ({}));
   if (typeof upsertCaseProperty === 'function') {
-    await upsertCaseProperty(cp);
+    await upsertCaseProperty(cp.itemId, cp, Array.isArray(cp._fields) ? cp._fields : null);
   }
 }
 
@@ -1210,17 +1223,16 @@ app.patch('/api/cases/:id', async (req, res, next) => {
         }
       }
 
-      // ---- case_property STEP-2 slim payload (only the 4 fields the
-      //      Edit modal actually sends).  Goes through the helper that
-      //      mirrors to Postgres + keeps the in-memory mirror in sync. ----
+      // ---- case_property STEP-2 payload.  Persists the common receipt
+      //      block (seized time, moharrir, quantity, remarks, place of
+      //      seizure, seal block) AND the per-category popup fields (e.g.
+      //      sub_type, quantity_seized, total_amount, weight …) that the
+      //      Edit modal now exposes so it mirrors the registration form. ----
       if (patch.caseProperty && typeof patch.caseProperty === 'object') {
         const cpPatch = patch.caseProperty || {};
         const cp = ensureCasePropertyFor(c);
         let cpChanged = false;
-        // Only the 4 fields the modal exposes — seized time, moharrir,
-        // quantity, remarks.  Seal / place-of-seizure / per-category popup
-        // fields are not in the modal (they live on the registration form).
-        const fields = [
+        const scalars = [
           ['seizedTime', cpPatch.seizedTime],
           ['receivedBy', cpPatch.receivedBy],
           ['quantity',   cpPatch.quantity],
@@ -1230,13 +1242,34 @@ app.patch('/api/cases/:id', async (req, res, next) => {
           ['sealNo',     cpPatch.sealNo],
           ['sealBy',     cpPatch.sealBy],
         ];
-        for (const [k, v] of fields) {
+        for (const [k, v] of scalars) {
           if (v === undefined) continue;
           const next = v == null ? (k === 'receivedBy' ? null : '') : String(v);
           const old = cp[k] == null ? (k === 'receivedBy' ? '' : '') : String(cp[k]);
           if (next !== old) {
             changes.push(`${k}: ${shortVal(cp[k])} → ${shortVal(next)}`);
             cp[k] = next || null;
+            cpChanged = true;
+          }
+        }
+        // Per-category popup fields + sub_type.  Written to the sibling
+        // case_property_fields table so they round-trip exactly like at
+        // registration.  `fields` is an array of {key, value}.
+        if (Array.isArray(cpPatch.fields)) {
+          const want = cpPatch.fields
+            .map(f => ({ key: String(f.key), value: f.value == null ? null : String(f.value) }))
+            .filter(f => f.key && f.key !== '');
+          // Read the currently-stored fields for this item so we can diff.
+          const curFields = (await getCaseProperty(c.itemId))?.fields || [];
+          const curMap = new Map(curFields.map(f => [f.key, f.value]));
+          const wantMap = new Map(want.map(f => [f.key, f.value == null ? null : String(f.value)]));
+          let fieldsChanged = curFields.length !== want.length;
+          if (!fieldsChanged) {
+            for (const [k, v] of wantMap) if (curMap.get(k) !== v) { fieldsChanged = true; break; }
+          }
+          if (fieldsChanged) {
+            cp._fields = want;
+            changes.push(`fields: ${curFields.length} → ${want.length} key(s)`);
             cpChanged = true;
           }
         }
