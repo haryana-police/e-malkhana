@@ -405,7 +405,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
         io: defaultIo(user),               // auto from signed-in MM
         ddDate: recordType === 'DD' ? ddDate : null,
         natureOfDd: recordType === 'DD' ? natureOfDd : null,
-        nameOfDeceased: recordType === 'DD' && natureOfDd === 'UD Case (UnnaturalDeath)' ? nameOfDeceased : null,
+        nameOfDeceased: recordType === 'DD' && natureOfDd === 'UD Case (Unnatural Death)' ? nameOfDeceased : null,
         reportingPerson: recordType === 'DD' && (natureOfDd === 'Lost Property Report' || natureOfDd === 'Other Miscellaneous Entry') ? reportingPerson : null,
         actualSeizureDdNo: actualSeizureDdNo.trim() || null,
         actualSeizureDate: actualSeizureDate.trim() || null,
@@ -603,7 +603,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                           <option value="Other Miscellaneous Entry">Other Miscellaneous Entry</option>
                         </select>
                       </label>
-                      {natureOfDd === 'UD Case (UnnaturalDeath)' && (
+                      {natureOfDd === 'UD Case (Unnatural Death)' && (
                         <label className="full">Name of Deceased
                           <input value={nameOfDeceased} onChange={e => setNameOfDeceased(e.target.value)} placeholder="Name of deceased" />
                         </label>

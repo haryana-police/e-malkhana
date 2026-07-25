@@ -40,15 +40,31 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     subTypeLabel: 'Narcotic Type',
     // Sub-types mirror the official NDPS Quantity Classification Table exactly
     // (so the Small / Intermediate / Commercial thresholds map 1:1 to a substance).
+    // Sub-types mirror the official NDPS Quantity Classification Table (20
+    // substances) exactly, so the Small / Intermediate / Commercial thresholds
+    // map 1:1 to a substance. Names here MUST match NDPS_THRESHOLDS and
+    // NDPS_TABLE (used by the classifier + help legend).
     subTypes: [
-      'Heroin (Diacetylmorphine)',
-      'Ganja (Cannabis)',
-      'Charas / Hashish',
-      'Opium',
-      'Poppy Straw',
-      'Cocaine',
       'Alprazolam',
-      'Codeine (Cough Syrups)',
+      'Amphetamine',
+      'Buprenorphine',
+      'Charas / Hashish',
+      'Cocaine',
+      'Codeine',
+      'Diazepam',
+      'Ganja',
+      'Heroin',
+      'Ketamine',
+      'Lysergide (LSD)',
+      'MDMA / Ecstasy',
+      'Methamphetamine',
+      'Methadone',
+      'Methaqualone',
+      'Morphine',
+      'Opium',
+      'Opium Derivatives',
+      'Poppy Straw',
+      'Tramadol',
     ],
     // Only the required narcotics columns are kept (Narcotic Type, Quantity Seized,
     // Item Description, Photo) — remaining detailed columns were removed per request.
@@ -183,14 +199,26 @@ export interface NdpsThreshold {
 }
 
 export const NDPS_THRESHOLDS: NdpsThreshold[] = [
-  { subType: 'Heroin (Diacetylmorphine)', small: 5,          commercial: 250 },
-  { subType: 'Ganja (Cannabis)',          small: 1000,       commercial: 20000 },
-  { subType: 'Charas / Hashish',          small: 100,        commercial: 1000 },
-  { subType: 'Opium',                     small: 25,         commercial: 2500 },
-  { subType: 'Poppy Straw',               small: 1000,       commercial: 50000 },
-  { subType: 'Cocaine',                   small: 2,          commercial: 100 },
-  { subType: 'Alprazolam',                small: 5,          commercial: 100 },
-  { subType: 'Codeine (Cough Syrups)',    small: 10,         commercial: 1000 },
+  { subType: 'Alprazolam',          small: 5,      commercial: 100 },
+  { subType: 'Amphetamine',         small: 2,      commercial: 50 },
+  { subType: 'Buprenorphine',       small: 1,      commercial: 20 },
+  { subType: 'Charas / Hashish',    small: 100,    commercial: 1000 },
+  { subType: 'Cocaine',             small: 2,      commercial: 100 },
+  { subType: 'Codeine',             small: 10,     commercial: 1000 },
+  { subType: 'Diazepam',            small: 20,     commercial: 500 },
+  { subType: 'Ganja',               small: 1000,   commercial: 20000 },
+  { subType: 'Heroin',              small: 5,      commercial: 250 },
+  { subType: 'Ketamine',            small: 10,     commercial: 500 },
+  { subType: 'Lysergide (LSD)',     small: 0.002,  commercial: 0.1 },
+  { subType: 'MDMA / Ecstasy',      small: 0.5,    commercial: 10 },
+  { subType: 'Methamphetamine',     small: 2,      commercial: 50 },
+  { subType: 'Methadone',           small: 2,      commercial: 50 },
+  { subType: 'Methaqualone',        small: 20,     commercial: 500 },
+  { subType: 'Morphine',            small: 5,      commercial: 250 },
+  { subType: 'Opium',               small: 25,     commercial: 2500 },
+  { subType: 'Opium Derivatives',   small: 5,      commercial: 250 },
+  { subType: 'Poppy Straw',         small: 1000,   commercial: 50000 },
+  { subType: 'Tramadol',            small: 5,      commercial: 250 },
 ];
 
 // Human-readable threshold table rows (for help/legend UI).
@@ -201,14 +229,26 @@ export interface NdpsTableRow {
   intermediate: string;
 }
 export const NDPS_TABLE: NdpsTableRow[] = [
-  { name: 'Heroin (Diacetylmorphine)', small: 'Up to 5 g',        commercial: 'Above 250 g',         intermediate: '> 5 g but < 250 g' },
-  { name: 'Ganja (Cannabis)',          small: 'Up to 1 kg',       commercial: 'Above 20 kg',          intermediate: '> 1 kg but < 20 kg' },
-  { name: 'Charas / Hashish',          small: 'Up to 100 g',      commercial: 'Above 1 kg',           intermediate: '> 100 g but < 1 kg' },
-  { name: 'Opium',                     small: 'Up to 25 g',       commercial: 'Above 2.5 kg',         intermediate: '> 25 g but < 2.5 kg' },
-  { name: 'Poppy Straw',               small: 'Up to 1 kg',       commercial: 'Above 50 kg',          intermediate: '> 1 kg but < 50 kg' },
-  { name: 'Cocaine',                   small: 'Up to 2 g',        commercial: 'Above 100 g',          intermediate: '> 2 g but < 100 g' },
-  { name: 'Alprazolam',                small: 'Up to 5 g',        commercial: 'Above 100 g',          intermediate: '> 5 g but < 100 g' },
-  { name: 'Codeine (Cough Syrups)',    small: 'Up to 10 g',       commercial: 'Above 1 kg',           intermediate: '> 10 g but < 1 kg' },
+  { name: 'Alprazolam',           small: 'Up to 5 g',            commercial: 'Above 100 g',          intermediate: '> 5 g but < 100 g' },
+  { name: 'Amphetamine',          small: 'Up to 2 g',            commercial: 'Above 50 g',           intermediate: '> 2 g but < 50 g' },
+  { name: 'Buprenorphine',        small: 'Up to 1 g',            commercial: 'Above 20 g',           intermediate: '> 1 g but < 20 g' },
+  { name: 'Charas / Hashish',     small: 'Up to 100 g',          commercial: 'Above 1 kg',           intermediate: '> 100 g but < 1 kg' },
+  { name: 'Cocaine',              small: 'Up to 2 g',            commercial: 'Above 100 g',          intermediate: '> 2 g but < 100 g' },
+  { name: 'Codeine',              small: 'Up to 10 g',           commercial: 'Above 1 kg',           intermediate: '> 10 g but < 1 kg' },
+  { name: 'Diazepam',             small: 'Up to 20 g',           commercial: 'Above 500 g',          intermediate: '> 20 g but < 500 g' },
+  { name: 'Ganja',                small: 'Up to 1 kg',           commercial: 'Above 20 kg',          intermediate: '> 1 kg but < 20 kg' },
+  { name: 'Heroin',               small: 'Up to 5 g',            commercial: 'Above 250 g',          intermediate: '> 5 g but < 250 g' },
+  { name: 'Ketamine',             small: 'Up to 10 g',           commercial: 'Above 500 g',          intermediate: '> 10 g but < 500 g' },
+  { name: 'Lysergide (LSD)',      small: 'Up to 0.002 g',        commercial: 'Above 0.1 g',          intermediate: '> 0.002 g but < 0.1 g' },
+  { name: 'MDMA / Ecstasy',       small: 'Up to 0.5 g',          commercial: 'Above 10 g',           intermediate: '> 0.5 g but < 10 g' },
+  { name: 'Methamphetamine',      small: 'Up to 2 g',            commercial: 'Above 50 g',           intermediate: '> 2 g but < 50 g' },
+  { name: 'Methadone',            small: 'Up to 2 g',            commercial: 'Above 50 g',           intermediate: '> 2 g but < 50 g' },
+  { name: 'Methaqualone',         small: 'Up to 20 g',           commercial: 'Above 500 g',          intermediate: '> 20 g but < 500 g' },
+  { name: 'Morphine',             small: 'Up to 5 g',            commercial: 'Above 250 g',          intermediate: '> 5 g but < 250 g' },
+  { name: 'Opium',                small: 'Up to 25 g',           commercial: 'Above 2.5 kg',         intermediate: '> 25 g but < 2.5 kg' },
+  { name: 'Opium Derivatives',    small: 'Up to 5 g',            commercial: 'Above 250 g',          intermediate: '> 5 g but < 250 g' },
+  { name: 'Poppy Straw',          small: 'Up to 1 kg',           commercial: 'Above 50 kg',          intermediate: '> 1 kg but < 50 kg' },
+  { name: 'Tramadol',             small: 'Up to 5 g',            commercial: 'Above 250 g',          intermediate: '> 5 g but < 250 g' },
 ];
 
 export type NdpsClass = 'Small' | 'Intermediate' | 'Commercial' | 'Unknown';
