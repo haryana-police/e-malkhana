@@ -41,6 +41,11 @@ interface Props {
   onChangeStatus?: (c: CaseRow) => void;
   onDownloadReport?: (format: 'xlsx' | 'pdf' | 'html', ids?: string[]) => void;
   onOpenRegister?: () => void;
+  // Optional shared Filters slot (rendered in the register header + below it).
+  // Used by the Dashboard and Case Property pages for date-wise / section-wise
+  // / status-wise filtering. When omitted, the register renders as before.
+  filterButton?: React.ReactNode;
+  filterPanel?: React.ReactNode;
 };
 
 function statusClass(s: CaseStatus): string {
@@ -121,6 +126,7 @@ export function RegisterTable({
   excludeDisposed, onClearExcludeDisposed,
   onOpenTag, onOpenTimeline, onOpenScan, onChangeStatus,
   onDownloadReport, onOpenRegister,
+  filterButton, filterPanel,
 }: Props) {
   const [textFilter, setTextFilter] = useState('');
   const order: ColKey[] = DEFAULT_ORDER;
@@ -328,6 +334,7 @@ export function RegisterTable({
             <h1>Case Property Register</h1>
           </div>
           <div className="register-head-actions">
+            {filterButton}
             {onDownloadReport && <button className="btn small btn-html" onClick={() => onDownloadReport('html', sorted.map(c => c.id))} title="Open a viewable, interactive register page (full text, sortable, searchable)">👁 View</button>}
             {onDownloadReport && <button className="btn small btn-excel" onClick={() => onDownloadReport('xlsx', sorted.map(c => c.id))} title="Download all matching cases (every page) as Excel">⬇ Excel</button>}
             {onDownloadReport && <button className="btn small btn-pdf" onClick={() => onDownloadReport('pdf', sorted.map(c => c.id))}   title="Download all matching cases (every page) as PDF (dense — use View for readable full text)">⬇ PDF</button>}
@@ -376,6 +383,8 @@ export function RegisterTable({
           )}
         </div>
       )}
+
+      {filterPanel}
 
       <div className="scan-bar">
         <input

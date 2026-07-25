@@ -200,6 +200,16 @@ export const api = {
   users:       () => get<User[]>('/users'),
   qr:          (id: string) => get<{ dataUrl: string; payload: string; encrypted?: boolean; mask?: string }>(`/cases/${encodeURIComponent(id)}/qr`),
   movements:   (id: string) => get<MovementLogRow[]>(`/cases/${encodeURIComponent(id)}/movements`),
+  // Bulk movements for a set of case ids — used by the dashboard to derive
+  // "Recent Movement Activity" from the currently filtered case set (so the
+  // movement list follows the active date/section/status filter).
+  // `limit` caps the joined rows (newest first); omit for all.
+  movementsFor: (ids: string[], limit?: number) => {
+    const p = new URLSearchParams();
+    p.set('ids', ids.join(','));
+    if (limit != null) p.set('limit', String(limit));
+    return get<{ fir: string; item: string; movement: string; by: string; time: string }[]>(`/movements/by-cases?${p.toString()}`);
+  },
   // System Settings manages the persisted movement-log rows directly.
   // The list is sorted newest-first; the same caseId, fromLocation,
   // toLocation, movedBy, purpose, docRef, and timestamp fields apply

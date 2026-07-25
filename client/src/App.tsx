@@ -40,6 +40,27 @@ interface BootData {
 
 const STORAGE_KEY = 'emalkhana_user_v1';
 
+// ---- date helpers (DD-MM-YYYY <-> YYYY-MM-DD), used by the date-wise filter ----
+function parseDMYLocal(s: string): string | null {
+  const m = String(s || '').trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (!m) return null;
+  const d = parseInt(m[1], 10), mo = parseInt(m[2], 10), y = parseInt(m[3], 10);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+function inDateRange(firDate: string | undefined, from: string, to: string): boolean {
+  if (!firDate) return false;
+  const t = Date.parse(firDate + 'T00:00:00');
+  if (isNaN(t)) return false;
+  const f = parseDMYLocal(from);
+  const u = parseDMYLocal(to);
+  if (f && t < Date.parse(f + 'T00:00:00')) return false;
+  if (u && t > Date.parse(u + 'T23:59:59')) return false;
+  return true;
+}
+
 // Map ViewName <-> URL path.  Keeping this in one place means the sidebar
 // and the router can't disagree about what "/alerts" is called.
 function viewToPath(v: ViewName): string {
@@ -122,6 +143,10 @@ export default function App() {
   // "Pending Disposal" tile semantics: show all cases except 'Disposed'.
   // Separate state from activeStatus because that one filters TO a single status.
   const [excludeDisposed, setExcludeDisposed] = useState<boolean>(false);
+  // Shared date range for the Case Property Filters panel (owned here so it
+  // persists across nav + is included in exports as from/to).
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo,   setFilterDateTo]   = useState('');
 
   // Mobile sidebar (drawer) — hidden by default on phones, toggled by hamburger
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -149,6 +174,8 @@ export default function App() {
     setActiveSection(null);
     setActiveStatus(null);
     setExcludeDisposed(false);
+    setFilterDateFrom('');
+    setFilterDateTo('');
     setSidebarOpen(false);  // close drawer on any nav click
     navigate(viewToPath(v));
   }
@@ -188,6 +215,11 @@ export default function App() {
         next.priorityAlerts  = dashOk.priorityAlerts;
       }
       if (casesOk) next.cases = casesOk;
+      // Apply the shared date-range filter (Case Property Filters panel).
+      // Only FIR/DD-dated rows are kept when a from/to is set.
+      if (casesOk && (filterDateFrom || filterDateTo)) {
+        next.cases = casesOk.filter(c => inDateRange(c.firDate, filterDateFrom, filterDateTo));
+      }
       if (alOk) next.alerts = alOk;
       return next as BootData;
     });
@@ -258,6 +290,8 @@ export default function App() {
     setActiveSection(null);
     setActiveStatus(null);
     setExcludeDisposed(false);
+    setFilterDateFrom('');
+    setFilterDateTo('');
     navigate('/');
   }
 
@@ -295,6 +329,9 @@ export default function App() {
       section: activeSection || 'all',
       status: activeStatus || (excludeDisposed ? 'all' : 'all'),
       excludeDisposed,
+      // Date-wise range (FIR/DD date) from the Filters panel.
+      ...(filterDateFrom ? { from: parseDMYLocal(filterDateFrom) || filterDateFrom } : {}),
+      ...(filterDateTo   ? { to:   parseDMYLocal(filterDateTo)   || filterDateTo }   : {}),
     };
   }
   function onDownloadReport(format: 'xlsx' | 'pdf' | 'html', ids?: string[]) {
@@ -421,8 +458,10 @@ export default function App() {
                 cases={data.cases}
                 activeSection={activeSection}
                 onClearSection={() => setActiveSection(null)}
+                setSectionFilter={setActiveSection}
                 activeStatus={activeStatus}
                 onClearStatus={() => setActiveStatus(null)}
+                setStatusFilter={setActiveStatus}
                 excludeDisposed={excludeDisposed}
                 onClearExcludeDisposed={() => setExcludeDisposed(false)}
                 onOpenTag={setTagCase}
@@ -431,6 +470,10 @@ export default function App() {
                 onOpenRegister={() => navigate('/caseproperty/new')}
                 onChangeStatus={setChangeCase}
                 onDownloadReport={onDownloadReport}
+                filterDateFrom={filterDateFrom}
+                setFilterDateFrom={setFilterDateFrom}
+                filterDateTo={filterDateTo}
+                setFilterDateTo={setFilterDateTo}
               />
             } />
             <Route path="/caseproperty/new" element={

@@ -1541,6 +1541,35 @@ app.get('/api/cases/:id/movements', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Movements for a specific set of cases (used by the dashboard so the
+// "Recent Movement Activity" list follows the active date/section/status
+// filter).  Mirrors recentMovements()'s row shape exactly.
+app.get('/api/movements/by-cases', async (req, res, next) => {
+  try {
+    const idsParam = String(req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
+    const limit = req.query.limit != null ? Math.max(1, parseInt(String(req.query.limit), 10) || 50) : undefined;
+    const db = getDb();
+    const caseById = (id) =>
+      (db.cases || []).find(x => x.id === id)
+      || (db.extraCasesForAlerts || []).find(x => x.id === id);
+    let rows = [...(db.movements || [])]
+      .filter(m => idsParam.length === 0 || idsParam.includes(m.caseId))
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    if (limit != null) rows = rows.slice(0, limit);
+    res.json(rows.map(m => {
+      const c = caseById(m.caseId);
+      const from = m.fromLocation === '—' ? 'New' : m.fromLocation;
+      return {
+        fir: m.caseId,
+        item: c?.itemType || '—',
+        movement: `${from} → ${m.toLocation}`,
+        by: m.movedBy,
+        time: humanTime(m.timestamp),
+      };
+    }));
+  } catch (e) { next(e); }
+});
+
 // System Settings CRUD for the actual persisted movement-log rows. The
 // normal case-detail flow continues to use POST /movements; these endpoints
 // are for controlled corrections, manual back-entry, and removal of an

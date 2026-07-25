@@ -6,7 +6,12 @@ import type {
   CaseStatus,
 } from '../types';
 import { RegisterTable } from './RegisterTable';
-import { useState, useMemo, useRef } from 'react';
+import {
+  FilterButton, FilterPanel, parseDMY,
+  type SectionOpt,
+} from './FiltersBar';
+import { api } from '../api';
+import { useState, useMemo, useEffect } from 'react';
 
 interface Props {
   stats: DashboardStats;
@@ -34,89 +39,6 @@ interface TileSpec {
   hint: string;   // visible hint on hover
 }
 
-// ---- date helpers (DD-MM-YYYY <-> YYYY-MM-DD) -------------------------
-function parseDMY(s: string): string | null {
-  const m = String(s || '').trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-  if (!m) return null;
-  const d = parseInt(m[1], 10), mo = parseInt(m[2], 10), y = parseInt(m[3], 10);
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-  const dt = new Date(y, mo - 1, d);
-  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
-  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
-function toDMY(s: string): string {
-  // accepts yyyy-mm-dd (from native date input) -> dd-mm-yyyy
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return '';
-  return `${m[3]}-${m[2]}-${m[1]}`;
-}
-function isValidDMY(s: string): boolean {
-  return s.trim() === '' || parseDMY(s) !== null;
-}
-
-// ---- inline SVGs (outline style matching the design system) ----------
-function FunnelIcon() {
-  return (
-    <svg className="fb-ico" viewBox="0 0 24 24" width="14" height="14" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 4h18l-7 8v6l-4 2v-8z" />
-    </svg>
-  );
-}
-function CalendarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="4.5" width="18" height="16.5" rx="2" />
-      <path d="M3 9h18" />
-      <path d="M8 2.5v4M16 2.5v4" />
-    </svg>
-  );
-}
-
-// ---- a single DD-MM-YYYY date field with a calendar trigger ----------
-function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const dateRef = useRef<HTMLInputElement | null>(null);
-  return (
-    <div className="date-field">
-      <input
-        type="text"
-        className={`date-input${value && !isValidDMY(value) ? ' invalid' : ''}`}
-        placeholder="dd-mm-yyyy"
-        value={value}
-        inputMode="numeric"
-        onChange={e => onChange(e.target.value)}
-        aria-label="Date (dd-mm-yyyy)"
-      />
-      <button
-        type="button"
-        className="date-cal"
-        aria-label="Pick date"
-        onClick={() => {
-          const el = dateRef.current;
-          if (!el) return;
-          if (typeof el.showPicker === 'function') el.showPicker();
-          else el.click();
-        }}
-      >
-        <CalendarIcon />
-      </button>
-      <input
-        ref={dateRef}
-        type="date"
-        className="date-hidden"
-        value={parseDMY(value) ?? ''}
-        onChange={e => onChange(e.target.value ? toDMY(e.target.value) : '')}
-      />
-    </div>
-  );
-}
-
-const ALL_STATUSES: CaseStatus[] = [
-  'Seized', 'Expert Opinion Pending', 'In Malkhana', 'With FSL',
-  'In Court', 'Disposed', 'Transfer',
-];
-
 export function Dashboard({
   stats, movements, alerts, totalCases, cases,
   onStatClick, onOpenTag, onOpenTimeline,
@@ -125,7 +47,7 @@ export function Dashboard({
   const MOVE_PAGE_SIZE = 5;
   const [movePage, setMovePage] = useState(1);
 
-  // ---- filter state ----
+  // ---- filter state (shared with Case Property via FiltersBar) ----
   const [showFilters, setShowFilters] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -133,7 +55,7 @@ export function Dashboard({
   const [selStatuses, setSelStatuses] = useState<CaseStatus[]>([]);
 
   // distinct sections present in the data (Section-wise filter options)
-  const sectionOptions = useMemo(() => {
+  const sectionOptions: SectionOpt[] = useMemo(() => {
     const map = new Map<string, string>();
     for (const c of cases) {
       if (c.section && !map.has(c.section)) map.set(c.section, c.sectionName || c.section);
@@ -164,6 +86,35 @@ export function Dashboard({
     return out;
   }, [cases, selSections, selStatuses, dateFrom, dateTo]);
 
+  // "Recent Movement Activity" should follow the active filter too — fetch
+  // movements for just the filtered case ids whenever the set changes.
+  const [filteredMovements, setFilteredMovements] = useState<MovementRow[]>(movements);
+  useEffect(() => {
+    let alive = true;
+    const ids = filtered.map(c => c.id);
+    // No filter (or no cases): reuse the station-wide recent movements from
+    // the boot payload so we don't double-fetch.
+    if (ids.length === cases.length || ids.length === 0) {
+      setFilteredMovements(movements);
+      return;
+    }
+    api.movementsFor(ids, 50)
+      .then(rows => { if (alive) setFilteredMovements(rows); })
+      .catch(() => { if (alive) setFilteredMovements(movements); });
+    return () => { alive = false; };
+  }, [filtered, cases.length, movements]);
+
+  // Stat tiles recompute from the filtered set so every number on the
+  // dashboard reflects the active date/section/status filter.
+  const num = (s: CaseStatus) => filtered.filter(c => c.status === s).length;
+  const filteredStats = {
+    totalProperty: filtered.length,
+    pendingDisposal: filtered.filter(c => c.status !== 'Disposed').length,
+    expertPending: num('Expert Opinion Pending'),
+    withFSL: num('With FSL'),
+    transfers: num('Transfer'),
+  };
+
   const activeCount =
     ((dateFrom || dateTo) ? 1 : 0) +
     (selSections.length ? 1 : 0) +
@@ -176,6 +127,7 @@ export function Dashboard({
 
   function clearAll() {
     setDateFrom(''); setDateTo(''); setSelSections([]); setSelStatuses([]);
+    setShowFilters(false);
   }
   function toggleSection(letter: string) {
     setSelSections(p => p.includes(letter) ? p.filter(x => x !== letter) : [...p, letter]);
@@ -184,15 +136,29 @@ export function Dashboard({
     setSelStatuses(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s]);
   }
 
-  const moveTotalPages = Math.max(1, Math.ceil(movements.length / MOVE_PAGE_SIZE));
+  const filterButton = (
+    <FilterButton activeCount={activeCount} open={showFilters} onToggle={() => setShowFilters(o => !o)} />
+  );
+  const filterPanel = showFilters && (
+    <FilterPanel
+      dateFrom={dateFrom} setDateFrom={setDateFrom}
+      dateTo={dateTo} setDateTo={setDateTo}
+      sectionOptions={sectionOptions}
+      selSections={selSections} toggleSection={toggleSection}
+      selStatuses={selStatuses} toggleStatus={toggleStatus}
+      onClearAll={clearAll}
+    />
+  );
+
+  const moveTotalPages = Math.max(1, Math.ceil(filteredMovements.length / MOVE_PAGE_SIZE));
   const moveSafePage = Math.min(movePage, moveTotalPages);
-  const moveShown = movements.slice((moveSafePage - 1) * MOVE_PAGE_SIZE, moveSafePage * MOVE_PAGE_SIZE);
+  const moveShown = filteredMovements.slice((moveSafePage - 1) * MOVE_PAGE_SIZE, moveSafePage * MOVE_PAGE_SIZE);
   const tiles: TileSpec[] = [
-    { id: 'all',        label: 'Total Case Property',     value: String(stats.totalProperty), foot: 'Across all sections', hint: 'Open the full Case Property register' },
-    { id: 'pending',    label: 'Pending Disposal',        value: String(stats.pendingDisposal), foot: 'All stages except Disposed', urgent: true, hint: 'Show all cases except those with status "Disposed"' },
-    { id: 'expert',     label: 'Expert Opinion Pending',  value: String(stats.expertPending),   foot: 'Viscera / chemical samples', hint: 'Show only cases with status "Expert Opinion Pending"' },
-    { id: 'fsl',        label: 'With FSL',                value: String(stats.withFSL),         foot: 'Sent, report awaited', hint: 'Show only cases with status "With F. S. L."' },
-    { id: 'transfer',   label: 'Transfer',               value: String(stats.transfers ?? 0),  foot: 'In transit between locations', hint: 'Show only cases currently marked "Transfer"' },
+    { id: 'all',        label: 'Total Case Property',     value: String(filteredStats.totalProperty), foot: 'Across all sections', hint: 'Open the full Case Property register' },
+    { id: 'pending',    label: 'Pending Disposal',        value: String(filteredStats.pendingDisposal), foot: 'All stages except Disposed', urgent: true, hint: 'Show all cases except those with status "Disposed"' },
+    { id: 'expert',     label: 'Expert Opinion Pending',  value: String(filteredStats.expertPending),   foot: 'Viscera / chemical samples', hint: 'Show only cases with status "Expert Opinion Pending"' },
+    { id: 'fsl',        label: 'With FSL',                value: String(filteredStats.withFSL),         foot: 'Sent, report awaited', hint: 'Show only cases with status "With F. S. L."' },
+    { id: 'transfer',   label: 'Transfer',               value: String(filteredStats.transfers ?? 0),  foot: 'In transit between locations', hint: 'Show only cases currently marked "Transfer"' },
     { id: 'inspection', label: 'Inspection Due',          value: stats.inspectionDue,           foot: 'Quarterly malkhana check', urgent: true, hint: 'Open the Alerts page' },
   ];
 
@@ -206,78 +172,11 @@ export function Dashboard({
           </div>
         </div>
         <div className="dash-head-actions">
-          <button
-            type="button"
-            className={`filter-btn${showFilters || activeCount ? ' active' : ''}`}
-            onClick={() => setShowFilters(o => !o)}
-            title="Filter the dashboard (date-wise, section-wise, status-wise)"
-          >
-            <FunnelIcon />
-            <span>Filters</span>
-            {activeCount > 0 && <span className="filter-badge">{activeCount}</span>}
-          </button>
           <button className="btn scan-btn" type="button" onClick={onOpenScan}>
             Scan QR
           </button>
         </div>
       </div>
-
-      {/* ===== Filter panel (date-wise · section-wise · status-wise) ===== */}
-      {showFilters && (
-        <div className="filter-pop">
-          <div className="filter-grid">
-            <div className="filter-col">
-              <h4>Date-wise (FIR/DD date)</h4>
-              <div className="date-range">
-                <DateField value={dateFrom} onChange={setDateFrom} />
-                <span className="date-dash">–</span>
-                <DateField value={dateTo} onChange={setDateTo} />
-              </div>
-              <div className="f-range-text">
-                {dateText ? `Range: ${dateText}` : 'All dates'}
-              </div>
-            </div>
-
-            <div className="filter-col">
-              <h4>Section-wise</h4>
-              <div className="f-chips">
-                {sectionOptions.map(o => (
-                  <button
-                    key={o.letter}
-                    type="button"
-                    className={`f-chip${selSections.includes(o.letter) ? ' on' : ''}`}
-                    onClick={() => toggleSection(o.letter)}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-                {sectionOptions.length === 0 && <span className="f-empty">No sections</span>}
-              </div>
-            </div>
-
-            <div className="filter-col">
-              <h4>Status-wise</h4>
-              <div className="f-chips">
-                {ALL_STATUSES.map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`f-chip${selStatuses.includes(s) ? ' on' : ''}`}
-                    onClick={() => toggleStatus(s)}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="filter-actions">
-            <button type="button" className="btn small ghost" onClick={clearAll}>Clear all</button>
-            <button type="button" className="btn small" onClick={() => setShowFilters(false)}>Done</button>
-          </div>
-        </div>
-      )}
 
       {/* Active-filter summary chips */}
       {activeCount > 0 && (
@@ -329,6 +228,8 @@ export function Dashboard({
       <RegisterTable
         cases={filtered}
         compact
+        filterButton={filterButton}
+        filterPanel={filterPanel}
         onOpenTag={onOpenTag}
         onOpenTimeline={onOpenTimeline}
         onOpenScan={onOpenScan}
@@ -353,7 +254,7 @@ export function Dashboard({
                 </span>
               ))}
             <button className="pg-btn" disabled={moveSafePage === moveTotalPages} onClick={() => setMovePage(p => Math.min(moveTotalPages, p + 1))} title="Next">Next ›</button>
-            <span className="pg-info">Page {moveSafePage} of {moveTotalPages} · {movements.length} entries</span>
+            <span className="pg-info">Page {moveSafePage} of {moveTotalPages} · {filteredMovements.length} entries</span>
           </div>
         )}
         <table>
