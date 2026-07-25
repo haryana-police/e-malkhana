@@ -1091,6 +1091,12 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .ndps-inter{ background: #fff4e0; color: #a96a00; border:1px solid #f3d79a; }
 .ndps-comm{ background: #fde9e9; color: #b32626; border:1px solid #f3bcbc; }
 
+/* Read-only NDPS class pill inside the Case Property Detail view (Step 2).
+   Reuses the same tone colours; laid out as a labelled row so it matches the
+   other read-only detail fields. */
+.ndps-detail{ display:inline-block; margin-top:4px; font-size:13px; }
+.case-a4-grid .ndps-detail{ margin-left:0; }
+
 /* Manual NDPS class override — mirrors the FIR/DD record-type radios */
 .ndps-override{
   display:flex; align-items:center; gap:6px; flex-wrap:wrap;

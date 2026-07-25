@@ -6,6 +6,9 @@ import type {
 } from '../types';
 import { MovementForm, type MovementFormData } from './MovementForm';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import {
+  classifyNdps, type NdpsClass,
+} from '../categories';
 
 // Convert a File picked from <input type="file"> to a data-URL string.
 function fileToDataUrl(f: File): Promise<string> {
@@ -238,6 +241,12 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [edPhotoDataUrl, setEdPhotoDataUrl] = useState<string | null>(null);
   const [edPhotoFile, setEdPhotoFile] = useState<File | null>(null);
   const [edPhotoOriginalUrl, setEdPhotoOriginalUrl] = useState<string | null>(null);
+  // NDPS quantity class (Small / Intermediate / Commercial) for Narcotics
+  // articles. `null` = no manual override (use the auto value derived from
+  // the NDPS table at edit time). When set, it forces the shown/saved class
+  // regardless of the table. We persist whatever the user sees (auto or
+  // override) so the detail view + register match exactly.
+  const [edNdpsOverride, setEdNdpsOverride] = useState<'Small' | 'Intermediate' | 'Commercial' | null>(null);
   // Camera modal
   const [editCamOpen, setEditCamOpen] = useState(false);
 
@@ -387,6 +396,16 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEdSealBy(caseProperty?.sealBy || '');
     setEdQuantity(caseProperty?.quantity || '');
 
+    // NDPS quantity class — for narcotics articles, restore any manual
+    // override saved on the item (mirrors RegisterCaseModal's ndpsOverride).
+    // When none was saved the user sees the live auto value from the table.
+    const savedClass = fMap.get('quantity_class');
+    setEdNdpsOverride(
+      (savedClass === 'Small' || savedClass === 'Intermediate' || savedClass === 'Commercial')
+        ? savedClass
+        : null,
+    );
+
     // ---- Photo ----
     const initialPhoto = caseRow.imageUrl || caseProperty?.photoUrl || null;
     setEdPhotoOriginalUrl(initialPhoto);
@@ -439,6 +458,13 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       }
       if (edCatId) ppFields.push({ key: 'category', value: edCatId });
       if (edSection) ppFields.push({ key: 'malkhana_section', value: edSection });
+      // Auto-classify the NDPS quantity (Small / Intermediate / Commercial)
+      // from the narcotic type + seized weight, using the official table —
+      // mirror RegisterCaseModal. Honour a manual override if set.
+      if (edCatId === 'narcotics' && edSubType) {
+        const cls = edNdpsOverride ?? classifyNdps(edSubType, edCatValues['quantity_seized'] || '');
+        if (cls !== 'Unknown') ppFields.push({ key: 'quantity_class', value: cls });
+      }
 
       const cpPatch: Partial<{
         receivedBy: string; quantity: string; remarks: string; seizedTime: string;
@@ -846,6 +872,25 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                   </span>
                 </div>
                 <div><span className="k">Quantity</span><span className="v">{cp?.quantity || c.quantity || c.itemSub || '—'}</span></div>
+                {/* NDPS Quantity Class — read-only badge for Narcotics articles.
+                    Derived from the saved Narcotic Type + Quantity Seized via the
+                    official NDPS table; falls back to a manual override stored in
+                    the `quantity_class` field. */}
+                {(() => {
+                  const cpFields = (cp?.fields || []).map(f => ({ key: f.key, value: f.value }));
+                  const fMapD = new Map(cpFields.map(f => [f.key, f.value]));
+                  const isNarc = (findCatById(categories, fMapD.get('category')) || findCatByLabel(categories, c.itemType))?.id === 'narcotics';
+                  if (!isNarc) return null;
+                  const cls = classifyNdps(fMapD.get('sub_type') || '', fMapD.get('quantity_seized') || '');
+                  if (cls === 'Unknown') return null;
+                  const tone = cls === 'Small' ? 'small' : cls === 'Intermediate' ? 'inter' : 'comm';
+                  return (
+                    <div className="full">
+                      <span className="k">NDPS Quantity Class</span>
+                      <span className={`ndps-class ndps-${tone} ndps-detail`}>{cls} Quantity</span>
+                    </div>
+                  );
+                })()}
                 <div className="full"><span className="k">Item Description</span><span className="v">{cp?.remarks || c.description || '—'}</span></div>
               </div>
             </div>
@@ -1157,6 +1202,54 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                           )}
                         </label>
                       ))}
+
+                      {/* NDPS Quantity Class badge — live Small / Intermediate /
+                          Commercial classification for Narcotics articles. Shown
+                          when a Narcotic Type + Quantity Seized exist. The user
+                          may override the auto value via the radio buttons (same
+                          as the registration form).  Persisted as the
+                          `quantity_class` per-item field. */}
+                      {cat?.id === 'narcotics' && edSubType && (() => {
+                        const auto = classifyNdps(edSubType, edCatValues['quantity_seized'] || '');
+                        if (auto === 'Unknown') return null;
+                        const effective = edNdpsOverride ?? auto;
+                        const tone = effective === 'Small' ? 'small' : effective === 'Intermediate' ? 'inter' : 'comm';
+                        const overriden = edNdpsOverride != null && edNdpsOverride !== auto;
+                        const NDPS_CLASSES: ('Small' | 'Intermediate' | 'Commercial')[] = ['Small', 'Intermediate', 'Commercial'];
+                        return (
+                          <div className="ndps-class-badge full">
+                            <div className="ndps-class-main">
+                              <span className="ndps-class-label">NDPS Quantity Class</span>
+                              <span className={`ndps-class ndps-${tone}`}>{effective} Quantity</span>
+                              {overriden
+                                ? <span className="ndps-class-hint">auto: {auto}</span>
+                                : <span className="ndps-class-hint">auto from NDPS table</span>}
+                            </div>
+                            <div className="ndps-override" role="radiogroup" aria-label="Override NDPS quantity class">
+                              <span className="ndps-override-cap">Change class:</span>
+                              {NDPS_CLASSES.map(cls => (
+                                <label key={cls} className={`ndps-radio ${edNdpsOverride === cls ? 'sel' : ''}`}>
+                                  <input
+                                    type="radio"
+                                    name="ed-ndps-class"
+                                    value={cls}
+                                    checked={edNdpsOverride === cls}
+                                    onChange={() => setEdNdpsOverride(cls)}
+                                  />
+                                  {cls}
+                                </label>
+                              ))}
+                              <button
+                                type="button"
+                                className="ndps-reset"
+                                disabled={edNdpsOverride == null}
+                                onClick={() => setEdNdpsOverride(null)}
+                                title="Revert to the auto value from the NDPS table"
+                              >Auto</button>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Common Quantity — same categories as RegisterCaseModal
                           Step 2 (hidden for Narcotics / Arms / Cash / Gold /
