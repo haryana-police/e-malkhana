@@ -333,12 +333,13 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     const overriden = it.ndpsOverride != null && it.ndpsOverride !== auto;
     return (
       <div className="ndps-class-badge">
-        <span className="ndps-class-label">NDPS Quantity Class</span>
-        <span className={`ndps-class ndps-${tone}`}>{effective} Quantity</span>
-        {overriden
-          ? <span className="ndps-class-hint">(overridden — auto: {auto})</span>
-          : <span className="ndps-class-hint">(auto from NDPS table)</span>}
-
+        <div className="ndps-class-main">
+          <span className="ndps-class-label">NDPS Quantity Class</span>
+          <span className={`ndps-class ndps-${tone}`}>{effective} Quantity</span>
+          {overriden
+            ? <span className="ndps-class-hint">auto: {auto}</span>
+            : <span className="ndps-class-hint">auto from NDPS table</span>}
+        </div>
         <div className="ndps-override" role="radiogroup" aria-label="Override NDPS quantity class">
           <span className="ndps-override-cap">Change class:</span>
           {NDPS_CLASSES.map(c => (

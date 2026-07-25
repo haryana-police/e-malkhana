@@ -1079,50 +1079,47 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 .rc-empty-ic{ font-size:30px; margin-bottom:8px; }
 .ndps-class-badge{
   grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-  margin: 2px 0 2px; padding:9px 12px; border-radius:8px;
+  margin: 2px 0 2px; padding:7px 12px; border-radius:8px;
   background: var(--paper); border:1px solid var(--line);
 }
-.ndps-class-label{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color: var(--slate-soft); }
-.ndps-class{ font-family:'Rajdhani',sans-serif; font-weight:700; font-size:14px; padding:3px 12px; border-radius:999px; letter-spacing:0.03em; }
-.ndps-class-hint{ font-size:11px; color: var(--muted); font-style:italic; }
+/* left cluster: label + pill + hint sit on one line, wraps as a unit */
+.ndps-class-main{ display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ndps-class-label{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color: var(--slate-soft); }
+.ndps-class{ font-family:'Rajdhani',sans-serif; font-weight:700; font-size:13px; padding:2px 10px; border-radius:999px; letter-spacing:0.03em; white-space:nowrap; }
+.ndps-class-hint{ font-size:10.5px; color: var(--muted); font-style:italic; white-space:nowrap; }
 .ndps-small{ background: #e6f6ec; color: #1c7a43; border:1px solid #b7e3c8; }
 .ndps-inter{ background: #fff4e0; color: #a96a00; border:1px solid #f3d79a; }
 .ndps-comm{ background: #fde9e9; color: #b32626; border:1px solid #f3bcbc; }
 
-/* Manual NDPS class override (radio group under the auto badge) */
+/* Manual NDPS class override — mirrors the FIR/DD record-type radios */
 .ndps-override{
   display:flex; align-items:center; gap:6px; flex-wrap:wrap;
   margin-left:auto; padding-left:12px; border-left:1px solid var(--line);
 }
-.ndps-override-cap{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color: var(--slate-soft); margin-right:2px; }
+.ndps-override-cap{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color: var(--slate-soft); margin-right:1px; }
 .ndps-radio{
   position:relative;
-  display:inline-flex; align-items:center; gap:6px;
-  font-size:11.5px; font-weight:600; color: var(--slate); cursor:pointer;
-  padding:4px 11px 4px 26px; border-radius:999px; border:1px solid var(--line);
-  background:#fff; user-select:none; transition: all .15s ease;
-  box-shadow: 0 1px 2px rgba(20,36,61,0.03);
+  display:inline-flex !important; flex-direction:row !important; align-items:center; gap:6px;
+  margin:0; padding:5px 11px 5px 28px; border:1px solid var(--line); border-radius:9px;
+  background:var(--white-paper); cursor:pointer; font-size:11px !important;
+  text-transform:none !important; letter-spacing:0 !important; font-weight:600 !important;
+  color:var(--slate) !important; transition:border-color .15s, background .15s, box-shadow .15s;
 }
-.ndps-radio:hover{ border-color: var(--ink-navy); color: var(--ink-navy); background: #f8fafc; }
+.ndps-radio:hover{ border-color:var(--ink-navy); color:var(--ink-navy); }
+.ndps-radio:focus-within{ box-shadow:0 0 0 3px rgba(20,36,61,0.18); }
+.ndps-radio:has(input:checked){ border-color:var(--ink-navy); background:rgba(20,36,61,0.06); box-shadow:0 0 0 2px rgba(20,36,61,0.10); }
 .ndps-radio input{ position:absolute; opacity:0; width:0; height:0; margin:0; }
 .ndps-radio::before{
   content:''; position:absolute; left:9px; top:50%; transform:translateY(-50%);
-  width:12px; height:12px; border:1.5px solid #a0aec0; border-radius:50%;
-  background:#fff; box-sizing:border-box; transition: all .15s ease;
+  width:14px; height:14px; border:2px solid #b9c2d0; border-radius:50%;
+  background:var(--white-paper); box-sizing:border-box; transition:border-color .15s, box-shadow .15s;
 }
-.ndps-radio:hover::before{ border-color: var(--ink-navy); }
-.ndps-radio.sel{
-  border-color: var(--ink-navy); background: var(--ink-navy); color: #fff;
-  box-shadow: 0 2px 6px rgba(20,36,61,0.18);
-}
-.ndps-radio.sel::before{
-  border-color: #fff; background: #fff;
-  box-shadow: inset 0 0 0 3px var(--ink-navy);
-}
+.ndps-radio:hover::before{ border-color:var(--ink-navy); }
+.ndps-radio:has(input:checked)::before{ border-color:var(--ink-navy); box-shadow:inset 0 0 0 3.5px var(--ink-navy); }
 .ndps-reset{
-  font-size:11px; font-weight:700; color: var(--ink-navy); cursor:pointer;
-  padding:4px 12px; border-radius:999px; border:1px solid var(--ink-navy);
-  background:transparent; transition: all .15s ease; margin-left:2px;
+  font-size:10.5px; font-weight:700; color: var(--ink-navy); cursor:pointer;
+  padding:5px 11px; border-radius:9px; border:1px solid var(--ink-navy);
+  background:transparent; transition: all .15s ease; margin-left:1px;
 }
 .ndps-reset:hover:not(:disabled){ background: var(--ink-navy); color: #fff; }
 .ndps-reset:disabled{ color: var(--muted); border-color: var(--line); cursor:not-allowed; opacity:.5; }
@@ -2506,6 +2503,9 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
 
 @media (max-width: 900px){
   .tmpl-split{ grid-template-columns: 1fr; }
+  /* Fill details on top, live preview below */
+  .tmpl-fill-panel{ order: 1; }
+  .tmpl-sheet-panel{ order: 2; }
 }
 
 /* The live preview shows the sheet at its TRUE A4 width (210mm) and the JS
@@ -2514,7 +2514,7 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
    instead of oversized "zoomed-in" text filling a narrow column.  The
    wrapper clips the scaled sheet and scrolls if it's ever taller than wide. */
 .tmpl-sheet-scroll{
-  overflow: auto;
+  overflow: hidden;            /* no inner scrollbar on laptop — JS scales sheet to fit */
   padding: 4px 2px 10px;
 }
 .tmpl-sheet-scroll .tmpl-sheet{
@@ -2522,6 +2522,42 @@ body{ display: flex; flex-direction: column; min-height: 100vh; }
   max-width: 210mm;
   margin: 0 auto;
   box-shadow: 0 4px 14px rgba(20,36,61,0.10);
+  transform-origin: top center;
+}
+
+/* ---- Responsive: tablet & phone (fluid sheet, no horizontal scroll) ---- */
+@media (max-width: 768px){
+  .page-head{ flex-direction: column; align-items: stretch; gap: 12px; }
+  .page-head .btn-row{ width: 100%; }
+  .page-head .btn-row .btn{ width: 100%; justify-content: center; }
+
+  .tmpl-preview-bar{ flex-wrap: wrap; gap: 10px; }
+  .tmpl-preview-bar > .btn.ghost{ width: 100%; }
+  .tmpl-preview-bar .btn-row{ width: 100%; }
+  .tmpl-preview-bar .btn-row .btn{ flex: 1; justify-content: center; }
+
+  /* FIR auto-fill bar stacks and uses full width */
+  .tmpl-fillbar{ flex-direction: column; align-items: stretch; gap: 10px; }
+  .tmpl-fir-label{ flex-direction: column; align-items: stretch; gap: 6px; }
+  .tmpl-fir-label select{ width: 100%; min-width: 0; }
+  .tmpl-fir-note{ text-align: left; }
+
+  /* Form fields go single-column for thumbs */
+  .tmpl-vals{ grid-template-columns: 1fr; }
+
+  /* Live preview sheet becomes fluid full-width (no inner scroll) */
+  .tmpl-sheet-scroll{ overflow: hidden; padding: 2px 0 8px; }
+  .tmpl-sheet-scroll .tmpl-sheet{
+    width: 100%;
+    max-width: 100%;
+    padding: 22px 18px;
+  }
+}
+
+@media (max-width: 420px){
+  .tmpl-sheet{ padding: 18px 14px; }
+  .tmpl-preview-bar .btn-row{ flex-direction: column; }
+  .tmpl-preview-bar .btn-row .btn{ width: 100%; }
 }
 
 /* The printable sheet itself.  White "paper" on screen, scoped to print. */
@@ -4530,11 +4566,11 @@ input, select, textarea{
 /* ---- NDPS Classification Badge ---- */
 .form-card.rc .ndps-class-badge,
 .form-card.rc-page .ndps-class-badge {
-  background: linear-gradient(135deg, var(--paper), var(--white-paper));
-  border-radius: 10px;
-  border: 1.5px solid var(--line);
-  padding: 10px 14px;
-  box-shadow: 0 1px 4px rgba(20,36,61,0.05);
+  background: var(--paper);
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  box-shadow: none;
 }
 .ndps-small { box-shadow: 0 0 0 2px rgba(28,122,67,0.12); }
 .ndps-inter { box-shadow: 0 0 0 2px rgba(169,106,0,0.12); }
