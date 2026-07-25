@@ -38,33 +38,38 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
     label: 'Narcotics / NDPS Article',
     sectionLetter: 'A',
     subTypeLabel: 'Narcotic Type',
-    // Sub-types mirror the official NDPS Quantity Classification Table exactly
-    // (so the Small / Intermediate / Commercial thresholds map 1:1 to a substance).
-    // Sub-types mirror the official NDPS Quantity Classification Table (20
-    // substances) exactly, so the Small / Intermediate / Commercial thresholds
-    // map 1:1 to a substance. Names here MUST match NDPS_THRESHOLDS and
-    // NDPS_TABLE (used by the classifier + help legend).
+    // Sub-types are the narcotic drugs / psychotropic substances named in the
+    // NDPS Act 1985 — the Act's Schedule ("List of Psychotropic Substances",
+    // Sl. 1–110ZT) plus the narcotic-drug definitions in s.2 (cannabis/ganja,
+    // charas/hashish, opium, opium derivatives incl. heroin/morphine/codeine).
+    // Verified 1:1 against the NDPS Act 1985 PDF (Sl. Nos noted inline below).
+    // NOTE: the Act itself carries NO Small/Commercial gram numbers — s.2(viia)/
+    // (xxiiia) define those only as "the quantity specified by the Central
+    // Government by notification". The gram thresholds in NDPS_THRESHOLDS /
+    // NDPS_TABLE come from the NDPS Rules, 1985 Schedule (the notified table),
+    // which is the authoritative source for the numbers. Names here MUST match
+    // NDPS_THRESHOLDS and NDPS_TABLE (used by the classifier + help legend).
     subTypes: [
-      'Alprazolam',
-      'Amphetamine',
-      'Buprenorphine',
-      'Charas / Hashish',
-      'Cocaine',
-      'Codeine',
-      'Diazepam',
-      'Ganja',
-      'Heroin',
-      'Ketamine',
-      'Lysergide (LSD)',
-      'MDMA / Ecstasy',
-      'Methamphetamine',
-      'Methadone',
-      'Methaqualone',
-      'Morphine',
-      'Opium',
-      'Opium Derivatives',
-      'Poppy Straw',
-      'Tramadol',
+      'Alprazolam',        // Act Sch. Sl. 30
+      'Amphetamine',       // Act Sch. Sl. 16
+      'Buprenorphine',     // Act Sch. Sl. 92
+      'Charas / Hashish',  // NDPS Act s.2 — cannabis (charas/hashish)
+      'Cocaine',           // NDPS Act s.2 — coca leaf / cocaine
+      'Codeine',           // NDPS Act s.2 — opium derivative
+      'Diazepam',          // Act Sch. Sl. 43
+      'Ganja',             // NDPS Act s.2 — cannabis (ganja)
+      'Heroin',            // NDPS Act s.2 — opium derivative
+      'Ketamine',          // Act Sch. Sl. 110A
+      'Lysergide (LSD)',   // Act Sch. Sl. 4 (LYSERGIDE)
+      'MDMA / Ecstasy',    // Act Sch. Sl. 80 (MDMA)
+      'Methamphetamine',   // Act Sch. Sl. 19
+      'Methadone',         // NDPS Rules list (methadone)
+      'Methaqualone',      // Act Sch. Sl. 20
+      'Morphine',          // NDPS Act s.2 — opium derivative
+      'Opium',             // NDPS Act s.2 — opium
+      'Opium Derivatives',  // NDPS Act s.2 — opium derivatives (incl. the above)
+      'Poppy Straw',       // NDPS Act s.2 — poppy straw
+      'Tramadol',          // Act Sch. Sl. 110Y
     ],
     // Only the required narcotics columns are kept (Narcotic Type, Quantity Seized,
     // Item Description, Photo) — remaining detailed columns were removed per request.
