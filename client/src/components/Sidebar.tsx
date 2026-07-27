@@ -243,10 +243,6 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
             );
           })}
         </div>
-        <div className="rack-hint">
-          Section names are editable per station (via Malkhana Locations in System
-          Setting). Click a row or count to filter the Case Property list to that section.
-        </div>
 
         <div className="system-setting-card">
           <div className="system-setting-head">
