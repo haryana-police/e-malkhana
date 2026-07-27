@@ -140,15 +140,12 @@ export function RegisterTable({
   const [openActionsFor, setOpenActionsFor] = useState<string | null>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
 
-  // Close the per-row "Take Action" menu when clicking anywhere outside it.
+  // Close the "Take Action" popup with the Escape key.
   useEffect(() => {
     if (!openActionsFor) return;
-    const onDocDown = (e: MouseEvent) => {
-      const t = e.target as HTMLElement;
-      if (!t.closest('[data-actmenu]')) setOpenActionsFor(null);
-    };
-    document.addEventListener('mousedown', onDocDown);
-    return () => document.removeEventListener('mousedown', onDocDown);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenActionsFor(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [openActionsFor]);
 
   // Reset the register pager when any search or filter changes.
@@ -282,43 +279,13 @@ export function RegisterTable({
       key: 'actions', label: 'Action', className: 'col-actions', locked: true,
       render: (c) => (
         <td className="actions-cell">
-          <div className="row-actions-hover" data-actmenu>
+          <div className="row-actions-hover">
             <button
               type="button"
               className="act-btn act-take"
               title="Take action (QR code · Movement log · Change status)"
-              aria-haspopup="menu"
-              aria-expanded={openActionsFor === c.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpenActionsFor(prev => (prev === c.id ? null : c.id));
-              }}
-            ><span className="act-ico">⚙</span><span className="act-lbl">Take Action</span><span className="act-caret">{openActionsFor === c.id ? '▴' : '▾'}</span></button>
-            {openActionsFor === c.id && (
-              <div className="act-menu" role="menu">
-                <button
-                  type="button"
-                  className="act-btn act-tag"
-                  role="menuitem"
-                  title="View QR code tag"
-                  onClick={(e) => { e.stopPropagation(); setOpenActionsFor(null); if (onOpenTag) onOpenTag(c); }}
-                ><span className="act-ico">▦</span><span className="act-lbl">QR code</span></button>
-                <button
-                  type="button"
-                  className="act-btn act-log"
-                  role="menuitem"
-                  title="View movement log"
-                  onClick={(e) => { e.stopPropagation(); setOpenActionsFor(null); if (onOpenTimeline) onOpenTimeline(c.id); }}
-                ><span className="act-ico">⏱</span><span className="act-lbl">Movement log</span></button>
-                <button
-                  type="button"
-                  className="act-btn act-status"
-                  role="menuitem"
-                  title="Change status (record a movement)"
-                  onClick={(e) => { e.stopPropagation(); setOpenActionsFor(null); if (onChangeStatus) onChangeStatus(c); }}
-                ><span className="act-ico">↻</span><span className="act-lbl">Change status</span></button>
-              </div>
-            )}
+              onClick={(e) => { e.stopPropagation(); setOpenActionsFor(c.id); }}
+            ><span className="act-ico">⚙</span><span className="act-lbl">Take Action</span></button>
           </div>
         </td>
       ),
@@ -551,6 +518,40 @@ export function RegisterTable({
           </table>
         </div>
       )}
+
+      {openActionsFor && (() => {
+        const c = cases.find(x => x.id === openActionsFor);
+        if (!c) return null;
+        return (
+          <div className="overlay open" onClick={e => { if (e.target === e.currentTarget) setOpenActionsFor(null); }}>
+            <div className="act-popup" role="dialog" aria-modal="true" aria-label="Take action">
+              <button className="tag-close" onClick={() => setOpenActionsFor(null)} aria-label="Close">✕</button>
+              <h3>Take Action</h3>
+              <div className="fir-line">FIR/DD: {c.firNo || c.id} · Status: {c.status}</div>
+              <div className="act-popup-btns">
+                <button
+                  type="button"
+                  className="act-btn act-tag"
+                  title="View QR code tag"
+                  onClick={() => { setOpenActionsFor(null); if (onOpenTag) onOpenTag(c); }}
+                ><span className="act-ico">▦</span><span className="act-lbl">QR code</span></button>
+                <button
+                  type="button"
+                  className="act-btn act-log"
+                  title="View movement log"
+                  onClick={() => { setOpenActionsFor(null); if (onOpenTimeline) onOpenTimeline(c.id); }}
+                ><span className="act-ico">⏱</span><span className="act-lbl">Movement log</span></button>
+                <button
+                  type="button"
+                  className="act-btn act-status"
+                  title="Change status (record a movement)"
+                  onClick={() => { setOpenActionsFor(null); if (onChangeStatus) onChangeStatus(c); }}
+                ><span className="act-ico">↻</span><span className="act-lbl">Change status</span></button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
