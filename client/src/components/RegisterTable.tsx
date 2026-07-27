@@ -137,7 +137,19 @@ export function RegisterTable({
   const [openCol, setOpenCol] = useState<ColKey | null>(null);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, string>>>({});
   const [statusFilter, setStatusFilter] = useState<CaseStatus[]>([]);
+  const [openActionsFor, setOpenActionsFor] = useState<string | null>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
+
+  // Close the per-row "Take Action" menu when clicking anywhere outside it.
+  useEffect(() => {
+    if (!openActionsFor) return;
+    const onDocDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest('[data-actmenu]')) setOpenActionsFor(null);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [openActionsFor]);
 
   // Reset the register pager when any search or filter changes.
   useEffect(() => { setPage(1); }, [textFilter, colFilters, statusFilter, activeSection, activeStatus, excludeDisposed]);
@@ -270,25 +282,43 @@ export function RegisterTable({
       key: 'actions', label: 'Action', className: 'col-actions', locked: true,
       render: (c) => (
         <td className="actions-cell">
-          <div className="row-actions-hover">
+          <div className="row-actions-hover" data-actmenu>
             <button
               type="button"
-              className="act-btn act-tag"
-              title="View QR code tag"
-              onClick={(e) => { e.stopPropagation(); if (onOpenTag) onOpenTag(c); }}
-            ><span className="act-ico">▦</span><span className="act-lbl">QR code</span></button>
-            <button
-              type="button"
-              className="act-btn act-log"
-              title="View movement log"
-              onClick={(e) => { e.stopPropagation(); if (onOpenTimeline) onOpenTimeline(c.id); }}
-            ><span className="act-ico">⏱</span><span className="act-lbl">Movement log</span></button>
-            <button
-              type="button"
-              className="act-btn act-status"
-              title="Change status (record a movement)"
-              onClick={(e) => { e.stopPropagation(); if (onChangeStatus) onChangeStatus(c); }}
-            ><span className="act-ico">↻</span><span className="act-lbl">Change status</span></button>
+              className="act-btn act-take"
+              title="Take action (QR code · Movement log · Change status)"
+              aria-haspopup="menu"
+              aria-expanded={openActionsFor === c.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenActionsFor(prev => (prev === c.id ? null : c.id));
+              }}
+            ><span className="act-ico">⚙</span><span className="act-lbl">Take Action</span><span className="act-caret">{openActionsFor === c.id ? '▴' : '▾'}</span></button>
+            {openActionsFor === c.id && (
+              <div className="act-menu" role="menu">
+                <button
+                  type="button"
+                  className="act-btn act-tag"
+                  role="menuitem"
+                  title="View QR code tag"
+                  onClick={(e) => { e.stopPropagation(); setOpenActionsFor(null); if (onOpenTag) onOpenTag(c); }}
+                ><span className="act-ico">▦</span><span className="act-lbl">QR code</span></button>
+                <button
+                  type="button"
+                  className="act-btn act-log"
+                  role="menuitem"
+                  title="View movement log"
+                  onClick={(e) => { e.stopPropagation(); setOpenActionsFor(null); if (onOpenTimeline) onOpenTimeline(c.id); }}
+                ><span className="act-ico">⏱</span><span className="act-lbl">Movement log</span></button>
+                <button
+                  type="button"
+                  className="act-btn act-status"
+                  role="menuitem"
+                  title="Change status (record a movement)"
+                  onClick={(e) => { e.stopPropagation(); setOpenActionsFor(null); if (onChangeStatus) onChangeStatus(c); }}
+                ><span className="act-ico">↻</span><span className="act-lbl">Change status</span></button>
+              </div>
+            )}
           </div>
         </td>
       ),
