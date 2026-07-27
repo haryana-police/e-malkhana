@@ -20,6 +20,7 @@ import type {
   InspectionMeta,
   CategoryOfItem,
   MovementType,
+  Split,
 } from './types';
 
 const base = '/api';
@@ -215,12 +216,21 @@ export const api = {
   // toLocation, movedBy, purpose, docRef, and timestamp fields apply
   // that the case-detail timeline already shows.
   movementLogs: () => get<MovementLogRow[]>('/movement-logs'),
-  createMovementLog: (row: { caseId: string; fromLocation?: string; toLocation: string; movedBy: string; timestamp?: string; purpose?: string; docRef?: string; status?: string | null }) =>
+  createMovementLog: (row: { caseId: string; fromLocation?: string; toLocation: string; movedBy: string; timestamp?: string; purpose?: string; docRef?: string; status?: string | null; splitId?: number | null }) =>
     send<MovementLogRow>('POST', '/movement-logs', row),
-  updateMovementLog: (id: number, patch: { caseId?: string; fromLocation?: string; toLocation?: string; movedBy?: string; timestamp?: string; purpose?: string; docRef?: string; status?: string | null }) =>
+  updateMovementLog: (id: number, patch: { caseId?: string; fromLocation?: string; toLocation?: string; movedBy?: string; timestamp?: string; purpose?: string; docRef?: string; status?: string | null; splitId?: number | null }) =>
     send<MovementLogRow>('PATCH', `/movement-logs/${id}`, patch),
   deleteMovementLog: (id: number) =>
     send<{ id: number; deleted: boolean }>('DELETE', `/movement-logs/${id}`, {}),
+  // Splits — case-level branches of a single seized item.  Each split has a
+  // title + description; movements are tagged to a split via splitId.
+  splits:       (caseId: string) => get<Split[]>(`/cases/${encodeURIComponent(caseId)}/splits`),
+  createSplits: (caseId: string, splits: { title: string; description?: string }[]) =>
+    send<Split[]>('POST', `/cases/${encodeURIComponent(caseId)}/splits`, splits),
+  updateSplit:  (id: number, patch: { title?: string; description?: string; sortOrder?: number }) =>
+    send<Split>('PATCH', `/splits/${id}`, patch),
+  deleteSplit:  (id: number) =>
+    send<{ id: number; deleted: boolean }>('DELETE', `/splits/${id}`, {}),
   audit:       (params?: { limit?: number; userId?: string; action?: string; target?: string }) => {
     const q = new URLSearchParams();
     if (params?.limit  != null) q.set('limit',  String(params.limit));

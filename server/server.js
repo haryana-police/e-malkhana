@@ -1711,6 +1711,7 @@ app.post('/api/movement-logs', async (req, res, next) => {
       timestamp: normaliseMovementTimestamp(b.timestamp),
       purpose: movementText(b.purpose),
       docRef: movementText(b.docRef),
+      splitId: b.splitId != null ? Number(b.splitId) || null : null,
     };
     await mutate(d => { d.movements.push(movement); });
     await auditMm(req, 'movement.create', c.id,
@@ -1743,6 +1744,7 @@ app.patch('/api/movement-logs/:id', async (req, res, next) => {
       purpose: b.purpose != null ? movementText(b.purpose) : existing.purpose,
       docRef: b.docRef != null ? movementText(b.docRef) : existing.docRef,
       status: b.status != null ? movementText(b.status) : existing.status,
+      splitId: b.splitId != null ? (Number(b.splitId) || null) : existing.splitId,
     };
     await mutate(d => {
       const index = d.movements.findIndex(m => m.id === id);
@@ -1768,6 +1770,94 @@ app.delete('/api/movement-logs/:id', async (req, res, next) => {
     await mutate(d => { d.movements = d.movements.filter(m => m.id !== id); });
     await auditMm(req, 'movement.delete', existing.caseId,
       `Deleted movement #${id}: ${existing.fromLocation} → ${existing.toLocation}`);
+    res.json({ id, deleted: true });
+  } catch (e) { next(e); }
+});
+
+// =================== API: splits (case-level branches) ===================
+// A "split" is a subdivision of a single seized item (the MK-xxxx code stays
+// single — only the movement ledger branches).  Each split has a title +
+// description; movements are tagged to a split via split_id (NULL = main).
+
+function nextSplitId() {
+  const ids = (getDb().splits || []).map(s => Number(s.id) || 0);
+  return ids.length ? Math.max(...ids) + 1 : 1;
+}
+
+// List splits for a case (detail panel + edit selector).
+app.get('/api/cases/:id/splits', async (req, res, next) => {
+  try {
+    const rows = [...(getDb().splits || [])]
+      .filter(s => s.caseId === req.params.id)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.id - b.id);
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// Bulk-create N splits from the Split modal (count -> N title/desc rows).
+app.post('/api/cases/:id/splits', async (req, res, next) => {
+  try {
+    const caseId = movementText(req.params.id);
+    const c = findOrThrow(caseId);
+    const list = Array.isArray(req.body) ? req.body
+      : Array.isArray(req.body?.splits) ? req.body.splits : [];
+    const cleaned = list
+      .map(x => ({ title: movementText(x?.title), description: movementText(x?.description) || '' }))
+      .filter(x => x.title);
+    if (!cleaned.length) { const e = new Error('at least one split with a title is required'); e.status = 400; throw e; }
+    const created = [];
+    await mutate(d => {
+      const base = nextSplitId();
+      cleaned.forEach((x, i) => {
+        const split = {
+          id: base + i,
+          caseId: c.id,
+          title: x.title,
+          description: x.description,
+          sortOrder: i,
+          createdAt: new Date().toISOString(),
+        };
+        d.splits.push(split);
+        created.push(split);
+      });
+    });
+    await auditMm(req, 'split.create', c.id,
+      `Created ${created.length} split(s): ${created.map(s => s.title).join(', ')}`);
+    res.status(201).json(created);
+  } catch (e) { next(e); }
+});
+
+app.patch('/api/splits/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { const e = new Error('invalid split id'); e.status = 400; throw e; }
+    const existing = (getDb().splits || []).find(s => s.id === id);
+    if (!existing) { const e = new Error(`split not found: ${id}`); e.status = 404; throw e; }
+    const b = req.body || {};
+    const updated = {
+      ...existing,
+      title: b.title != null ? movementText(b.title) || existing.title : existing.title,
+      description: b.description != null ? movementText(b.description) : existing.description,
+      sortOrder: b.sortOrder != null ? Number(b.sortOrder) || existing.sortOrder : existing.sortOrder,
+    };
+    if (!updated.title) { const e = new Error('title is required'); e.status = 400; throw e; }
+    await mutate(d => {
+      const i = d.splits.findIndex(s => s.id === id);
+      if (i >= 0) d.splits[i] = updated;
+    });
+    await auditMm(req, 'split.update', existing.caseId, `Updated split #${id}: ${updated.title}`);
+    res.json(updated);
+  } catch (e) { next(e); }
+});
+
+app.delete('/api/splits/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { const e = new Error('invalid split id'); e.status = 400; throw e; }
+    const existing = (getDb().splits || []).find(s => s.id === id);
+    if (!existing) { const e = new Error(`split not found: ${id}`); e.status = 404; throw e; }
+    await mutate(d => { d.splits = d.splits.filter(s => s.id !== id); });
+    await auditMm(req, 'split.delete', existing.caseId, `Deleted split #${id}: ${existing.title}`);
     res.json({ id, deleted: true });
   } catch (e) { next(e); }
 });

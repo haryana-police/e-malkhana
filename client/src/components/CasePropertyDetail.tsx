@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import type {
-  CaseRow, CasePropertyData, FirMaster, CategoryOfItem, CaseStatus, MovementLogRow,
+  CaseRow, CasePropertyData, FirMaster, CategoryOfItem, CaseStatus, MovementLogRow, Split,
 } from '../types';
 import { MovementForm, type MovementFormData } from './MovementForm';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import { SplitModal } from './SplitModal';
 import {
   classifyNdps, type NdpsClass,
 } from '../categories';
@@ -180,6 +181,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrMask, setQrMask] = useState<string | null>(null);
   const [movements, setMovements] = useState<MovementLogRow[]>([]);
+  const [splits, setSplits] = useState<Split[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -194,6 +196,13 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [showEdit, setShowEdit] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
+
+  // ---- Split flow state ----
+  const [showSplit, setShowSplit] = useState(false);
+  const [splitBusy, setSplitBusy] = useState(false);
+  const [splitErr, setSplitErr] = useState<string | null>(null);
+  // Which split the "Log New Movement" form is tagging (null = main branch).
+  const [logSplitId, setLogSplitId] = useState<number | null>(null);
   // ---- Step 1 (FIR / DD & Receipt) — Edit state ----
   const [edRecordType, setEdRecordType] = useState<'FIR' | 'DD'>('FIR');
   const [edFirNo, setEdFirNo] = useState('');              // FIR/DD No. (editable for future entry)

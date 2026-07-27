@@ -375,6 +375,24 @@ CREATE TABLE IF NOT EXISTS movements (
 );
 CREATE INDEX IF NOT EXISTS movements_case_id_idx ON movements (case_id);
 CREATE INDEX IF NOT EXISTS movements_ts_idx      ON movements (ts DESC);
+-- Split branches: when one seized item is divided into several physical
+-- destinations (e.g. narcotics 34kg -> 500g FSL + 500g Malkhana + 33kg
+-- police line), each split is a CASE-LEVEL branch with a title + description.
+-- Movements are then tagged to a split via split_id (NULL = main branch).
+-- Splitting NEVER forks the case item itself — the MK-xxxx code stays single;
+-- only the movement ledger branches. parent/child is expressed at the movement
+-- level through split_id, not through duplicate case rows.
+ALTER TABLE movements ADD COLUMN IF NOT EXISTS split_id BIGINT REFERENCES splits(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS splits (
+  id          BIGSERIAL PRIMARY KEY,
+  case_id     TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS splits_case_id_idx ON splits (case_id);
 -- Optional status set on the case by this movement (e.g. 'In Malkhana').
 -- Lets the Movement Logs editor back-correct a case's status, and keeps
 -- the historical status alongside each movement row.

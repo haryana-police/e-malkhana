@@ -115,6 +115,9 @@ export async function loadMirror() {
                              sort_order, active, is_system
                         FROM movement_types
                        ORDER BY sort_order ASC, id ASC`),
+        // Split branches (case-level subdivisions of a seized item).
+        client.query(`SELECT id, case_id, title, description, sort_order, created_at
+                        FROM splits ORDER BY sort_order, id`),
       ]);
       const kv = Object.fromEntries(kvRes.rows.map(r => [r.key, r.value]));
       _mirror = {
@@ -165,6 +168,16 @@ export async function loadMirror() {
           active:          r.active !== false,
           isSystem:        r.is_system === true,
         })),
+        // Split branches (case-level subdivisions of a seized item).
+        // Each split: { id, caseId, title, description, sortOrder }.
+        // Movements reference a split via split_id (mirror shape: splitId).
+        splits: (splitRes?.rows || []).map(r => ({
+          id:         Number(r.id),
+          caseId:     r.case_id,
+          title:      r.title,
+          description: r.description || '',
+          sortOrder:  Number(r.sort_order) || 0,
+        })),
         cases: casesRes.rows.map(r => ({
           id: r.id,
           firNo: r.fir_no || undefined,
@@ -209,6 +222,7 @@ export async function loadMirror() {
           purpose: r.purpose || '',
           docRef: r.doc_ref || '',
           status: r.status || null,
+          splitId: r.split_id != null ? Number(r.split_id) : null,
           timestamp: new Date(r.ts).toISOString(),
         })),
         alertConfig: kv.alertConfig || { fslDays: 30, expertDays: 15, courtDays: 30, inspectionCycleDays: 90, lastInspection: '2026-04-05' },
@@ -444,6 +458,34 @@ async function persistDiff(client, pre, post) {
     }
   }
 
+  // 3d. Splits (case-level branches).  Diff by id like other collections.
+  {
+    const { inserted, updated, deleted } = diffById(pre.splits || [], post.splits || [], 'id');
+    for (const s of inserted) {
+      await client.query(
+        `INSERT INTO splits (id, case_id, title, description, sort_order, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (id) DO NOTHING`,
+        [s.id, s.caseId, s.title, s.description || '', s.sortOrder || 0,
+         s.createdAt || new Date().toISOString()]
+      );
+      await client.query(
+        "SELECT setval(pg_get_serial_sequence('splits','id'), GREATEST((SELECT COALESCE(MAX(id),0) FROM splits), 1))"
+      );
+    }
+    for (const s of updated) {
+      await client.query(
+        `UPDATE splits SET case_id=$2, title=$3, description=$4, sort_order=$5 WHERE id=$1`,
+        [s.id, s.caseId, s.title, s.description || '', s.sortOrder || 0]
+      );
+    }
+    for (const s of deleted) {
+      // FK ON DELETE SET NULL on movements.split_id reparents its movements
+      // to the main branch automatically — nothing is lost.
+      await client.query('DELETE FROM splits WHERE id=$1', [s.id]);
+    }
+  }
+
   // 4. Cases
   {
     const { inserted, updated, deleted } = diffById(pre.cases, post.cases);
@@ -498,20 +540,22 @@ async function persistDiff(client, pre, post) {
       // otherwise let the BIGSERIAL pick the next value.
       if (m.id != null) {
         await client.query(
-          `INSERT INTO movements (id, case_id, from_location, to_location, moved_by, purpose, doc_ref, status, ts)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          `INSERT INTO movements (id, case_id, from_location, to_location, moved_by, purpose, doc_ref, status, ts, split_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
            ON CONFLICT (id) DO NOTHING`,
           [m.id, m.caseId, m.fromLocation, m.toLocation, m.movedBy, m.purpose || null, m.docRef || null,
            m.status || null,
-           m.timestamp || new Date().toISOString()]
+           m.timestamp || new Date().toISOString(),
+           m.splitId != null ? m.splitId : null]
         );
       } else {
         await client.query(
-          `INSERT INTO movements (case_id, from_location, to_location, moved_by, purpose, doc_ref, status, ts)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          `INSERT INTO movements (case_id, from_location, to_location, moved_by, purpose, doc_ref, status, ts, split_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
           [m.caseId, m.fromLocation, m.toLocation, m.movedBy, m.purpose || null, m.docRef || null,
            m.status || null,
-           m.timestamp || new Date().toISOString()]
+           m.timestamp || new Date().toISOString(),
+           m.splitId != null ? m.splitId : null]
         );
       }
       // Keep the sequence in sync so nextMovementId() returns a free id.
@@ -522,11 +566,12 @@ async function persistDiff(client, pre, post) {
     for (const m of updated) {
       await client.query(
         `UPDATE movements SET case_id=$2, from_location=$3, to_location=$4,
-                             moved_by=$5, purpose=$6, doc_ref=$7, status=$8, ts=$9
+                             moved_by=$5, purpose=$6, doc_ref=$7, status=$8, ts=$9, split_id=$10
          WHERE id=$1`,
         [m.id, m.caseId, m.fromLocation, m.toLocation, m.movedBy, m.purpose || null, m.docRef || null,
          m.status || null,
-         m.timestamp || new Date().toISOString()]
+         m.timestamp || new Date().toISOString(),
+         m.splitId != null ? m.splitId : null]
       );
     }
     for (const m of deleted) {
@@ -768,7 +813,7 @@ export async function getMovements(caseId) {
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
   const { rows } = await pool.query(
-    `SELECT id, case_id, from_location, to_location, moved_by, purpose, doc_ref, ts
+    `SELECT id, case_id, from_location, to_location, moved_by, purpose, doc_ref, status, ts, split_id
      FROM movements WHERE case_id = $1 ORDER BY ts, id`,
     [caseId]
   );
@@ -777,6 +822,7 @@ export async function getMovements(caseId) {
     fromLocation: r.from_location, toLocation: r.to_location, movedBy: r.moved_by,
     purpose: r.purpose || '', docRef: r.doc_ref || '',
     status: r.status || null,
+    splitId: r.split_id != null ? Number(r.split_id) : null,
     timestamp: new Date(r.ts).toISOString(),
   }));
 }

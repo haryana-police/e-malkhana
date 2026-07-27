@@ -71,8 +71,23 @@ export interface MovementLogRow {
   toLocation: string;
   movedBy: string;
   timestamp: string;
-  purpose: string;
-  docRef: string;
+  docRef?: string;
+  purpose?: string;
+  status?: string | null;
+  splitId?: number | null;   // null = main branch; otherwise the split this movement belongs to
+  events?: MovementEvent[];   // optional timeline (for log modal)
+}
+
+// A "split" is a case-level branch of a single seized item.  The item's
+// MK-xxxx code stays single — only the movement ledger branches.  Each split
+// carries a title + description; movements are tagged to it via splitId.
+export interface Split {
+  id: number;
+  caseId: string;
+  title: string;
+  description: string;
+  sortOrder: number;
+}
   status?: string | null;
 }
 
@@ -251,6 +266,7 @@ export interface ScanInput {
   purpose?: string;
   docRef?: string;
   setStatus?: CaseStatus;
+  splitId?: number | null;  // tag the movement to a split (null = main branch)
 }
 
 export interface User {
