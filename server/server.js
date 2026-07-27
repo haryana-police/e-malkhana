@@ -1744,7 +1744,7 @@ app.patch('/api/movement-logs/:id', async (req, res, next) => {
       purpose: b.purpose != null ? movementText(b.purpose) : existing.purpose,
       docRef: b.docRef != null ? movementText(b.docRef) : existing.docRef,
       status: b.status != null ? movementText(b.status) : existing.status,
-      splitId: b.splitId != null ? (Number(b.splitId) || null) : existing.splitId,
+      splitId: b.splitId !== undefined ? (b.splitId != null ? (Number(b.splitId) || null) : null) : existing.splitId,
     };
     await mutate(d => {
       const index = d.movements.findIndex(m => m.id === id);
@@ -1880,6 +1880,7 @@ app.post('/api/movements', async (req, res, next) => {
       purpose:      b.purpose || `Scan @ ${b.toLocation}`,
       docRef:       b.docRef || `SCAN-${Date.now()}`,
       status:       (b.setStatus && STATUSES.includes(b.setStatus)) ? b.setStatus : null,
+      splitId:      b.splitId != null ? (Number(b.splitId) || null) : null,
     };
     await mutate(d => { d.movements.push(movement); });
     if (b.setStatus && STATUSES.includes(b.setStatus)) {

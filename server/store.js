@@ -83,7 +83,7 @@ export async function loadMirror() {
     await ensureReady();
     const client = await pool.connect();
     try {
-      const [kvRes, usersRes, sectionsRes, itRes, bnsRes, casesRes, movRes, auditRes, fmRes, cpRes, mtRes] = await Promise.all([
+      const [kvRes, usersRes, sectionsRes, itRes, bnsRes, casesRes, movRes, auditRes, fmRes, cpRes, mtRes, splitRes] = await Promise.all([
         client.query("SELECT key, value FROM kv WHERE key IN ('meta','officer','alertConfig','alertIssues','backupLog')"),
         client.query(`SELECT id, initials, name, rank, designation, station, password FROM users ORDER BY id`),
         client.query(`SELECT letter, name, count, active, sort_order FROM sections ORDER BY sort_order, length(letter), letter`),
