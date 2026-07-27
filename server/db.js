@@ -41,13 +41,40 @@ function getClient() {
       'Get the connection string from the Neon dashboard: https://console.neon.tech'
     );
   }
+  // Normalize the connection string for the Neon *serverless HTTP* transport.
+  //
+  // The Neon dashboard's default pooler string ships with
+  // `channel_binding=require`.  The HTTP transport (neon() over fetch) does
+  // NOT support channel binding and on a cold start this param causes the
+  // driver's underlying `fetch` to throw a bare `TypeError: fetch failed`,
+  // which propagated up as the `boot_failed` 500 on first hit after a
+  // Vercel cold start.  Drop it (and force sslmode=require, which the HTTP
+  // transport needs) so the string works for both local dev and serverless.
+  const norm = normalizeNeonUrl(cs);
   // neon() returns a tagged-template function: client`SELECT ... ${val}`.
   // Each call is a single HTTP POST to Neon's SQL endpoint.
   // Use fetchConnectionCache: true to cache the small TLS handshake
   // across calls (within a single function instance) — saves ~50ms per
   // query in serverless where cold start is the dominant cost.
-  _client = neon(cs, { fetchConnectionCache: true });
+  _client = neon(norm, { fetchConnectionCache: true });
   return _client;
+}
+
+// Strip channel_binding (unsupported by the HTTP transport) and normalize
+// sslmode so the same connection string works in serverless and locally.
+function normalizeNeonUrl(cs) {
+  try {
+    const qIdx = cs.indexOf('?');
+    if (qIdx === -1) return cs;
+    const base = cs.slice(0, qIdx);
+    const params = cs.slice(qIdx + 1).split('&')
+      .filter(p => p && !/^channel_binding=/i.test(p));
+    // Ensure TLS is on — the Neon serverless endpoint requires it.
+    if (!params.some(p => /^sslmode=/i.test(p))) params.push('sslmode=require');
+    return `${base}?${params.join('&')}`;
+  } catch {
+    return cs; // never let normalization break a valid string
+  }
 }
 
 // Public handle so store.js can do `await pool.query(sql, params)` directly.
