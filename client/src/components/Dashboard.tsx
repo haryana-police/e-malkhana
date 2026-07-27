@@ -53,6 +53,7 @@ export function Dashboard({
   const [dateTo, setDateTo] = useState('');
   const [selSections, setSelSections] = useState<string[]>([]);
   const [selStatuses, setSelStatuses] = useState<CaseStatus[]>([]);
+  const [notSelected, setNotSelected] = useState(false);
 
   // distinct sections present in the data (Section-wise filter options)
   const sectionOptions: SectionOpt[] = useMemo(() => {
@@ -70,6 +71,7 @@ export function Dashboard({
   const filtered = useMemo(() => {
     let out = cases;
     if (selSections.length) out = out.filter(c => selSections.includes(c.section));
+    if (notSelected) out = out.filter(c => !c.section || !c.sectionName);
     if (selStatuses.length) out = out.filter(c => selStatuses.includes(c.status));
     const from = parseDMY(dateFrom);
     const to = parseDMY(dateTo);
@@ -118,7 +120,8 @@ export function Dashboard({
   const activeCount =
     ((dateFrom || dateTo) ? 1 : 0) +
     (selSections.length ? 1 : 0) +
-    (selStatuses.length ? 1 : 0);
+    (selStatuses.length ? 1 : 0) +
+    (notSelected ? 1 : 0);
 
   const dateText =
     dateFrom && dateTo ? `${dateFrom} → ${dateTo}`
@@ -126,11 +129,14 @@ export function Dashboard({
         : dateTo ? `until ${dateTo}` : '';
 
   function clearAll() {
-    setDateFrom(''); setDateTo(''); setSelSections([]); setSelStatuses([]);
+    setDateFrom(''); setDateTo(''); setSelSections([]); setSelStatuses([]); setNotSelected(false);
     setShowFilters(false);
   }
   function toggleSection(letter: string) {
     setSelSections(p => p.includes(letter) ? p.filter(x => x !== letter) : [...p, letter]);
+  }
+  function toggleNotSelected() {
+    setNotSelected(p => !p);
   }
   function toggleStatus(s: CaseStatus) {
     setSelStatuses(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s]);
@@ -146,6 +152,7 @@ export function Dashboard({
       sectionOptions={sectionOptions}
       selSections={selSections} toggleSection={toggleSection}
       selStatuses={selStatuses} toggleStatus={toggleStatus}
+      notSelected={notSelected} toggleNotSelected={toggleNotSelected}
       onClearAll={clearAll}
       onClose={() => setShowFilters(false)}
     />
@@ -201,6 +208,11 @@ export function Dashboard({
               <button className="section-banner-clear" onClick={() => toggleStatus(st)}>×</button>
             </span>
           ))}
+          {notSelected && (
+            <span className="cfp-chip">Not Assigned
+              <button className="section-banner-clear" onClick={toggleNotSelected}>×</button>
+            </span>
+          )}
           <button className="section-banner-clear" onClick={clearAll}>Clear all</button>
         </div>
       )}

@@ -102,7 +102,7 @@ export function FilterButton({
       type="button"
       className={`filter-btn${open || activeCount ? ' active' : ''}`}
       onClick={onToggle}
-      title="Filter (date-wise, section-wise, status-wise)"
+      title="Filter (date-wise, location, status-wise, not selected)"
     >
       <FunnelIcon />
       <span>Filters</span>
@@ -116,6 +116,7 @@ export function FilterPanel({
   dateFrom, setDateFrom, dateTo, setDateTo,
   sectionOptions, selSections, toggleSection,
   selStatuses, toggleStatus, onClearAll,
+  notSelected, toggleNotSelected,
   onClose,
 }: {
   dateFrom: string; setDateFrom: (v: string) => void;
@@ -124,6 +125,7 @@ export function FilterPanel({
   selSections: string[]; toggleSection: (letter: string) => void;
   selStatuses: CaseStatus[]; toggleStatus: (s: CaseStatus) => void;
   onClearAll: () => void;
+  notSelected: boolean; toggleNotSelected: () => void;
   onClose?: () => void;   // "Done" must only close the panel, NOT wipe filters
 }) {
   const dateText =
@@ -147,7 +149,7 @@ export function FilterPanel({
         </div>
 
         <div className="filter-col">
-          <h4>Section-wise</h4>
+          <h4>Location</h4>
           <div className="f-chips">
             {sectionOptions.map(o => (
               <button
@@ -159,7 +161,21 @@ export function FilterPanel({
                 {o.label}
               </button>
             ))}
-            {sectionOptions.length === 0 && <span className="f-empty">No sections</span>}
+            {sectionOptions.length === 0 && <span className="f-empty">No locations</span>}
+          </div>
+        </div>
+
+        <div className="filter-col">
+          <h4>Not Selected</h4>
+          <div className="f-chips">
+            <button
+              type="button"
+              className={`f-chip${notSelected ? ' on' : ''}`}
+              onClick={toggleNotSelected}
+              title="Show property that was received but never assigned to a Malkhana location"
+            >
+              Not Assigned
+            </button>
           </div>
         </div>
 

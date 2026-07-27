@@ -91,6 +91,8 @@ export function CaseProperty({
         toggleSection={toggleSection}
         selStatuses={activeStatus ? [activeStatus] : []}
         toggleStatus={toggleStatus}
+        notSelected={false}
+        toggleNotSelected={() => {}}
         onClearAll={clearAll}
         onClose={() => setShowFilters(false)}
       />

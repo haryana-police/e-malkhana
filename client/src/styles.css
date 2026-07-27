@@ -4060,7 +4060,7 @@ input, select, textarea{
 }
 .filter-grid{
   display:grid;
-  grid-template-columns: 1.3fr 1fr 1fr;
+  grid-template-columns: 1.3fr 1fr 1fr 0.8fr;
   gap:22px;
 }
 .filter-col h4{
