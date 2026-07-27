@@ -995,94 +995,112 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             <fieldset className="edit-step">
               <legend>Step 1 of 2 — FIR / DD &amp; Receipt</legend>
 
-              <div className="form-grid rc-grid">
-                {/* Record Type radio + FIR/DD No. read-only (case id immutable) */}
-                <div className="rc-radio-row full">
-                  <span className="rc-field-label">Record Type</span>
-                  <div className="rc-radio-row-inner">
-                    <label className={`rc-radio-opt ${edRecordType === 'FIR' ? 'on' : ''}`}>
-                      <input type="radio" name="ed-record-type" checked={edRecordType === 'FIR'} onChange={() => setEdRecordType('FIR')} />
-                      <span>FIR</span>
-                    </label>
-                    <label className={`rc-radio-opt ${edRecordType === 'DD' ? 'on' : ''}`}>
-                      <input type="radio" name="ed-record-type" checked={edRecordType === 'DD'} onChange={() => setEdRecordType('DD')} />
-                      <span>DD (Daily Diary)</span>
-                    </label>
+              {/* --- Record group: Record Type / FIR·DD No / FIR Date / DD extras --- */}
+              <section className="rc-group">
+                <div className="rc-group-title">Record (FIR / DD)</div>
+                <div className="rc-grid">
+                  {/* Record Type radio + FIR/DD No. read-only (case id immutable) */}
+                  <div className="rc-radio-row full">
+                    <span className="rc-field-label">Record Type</span>
+                    <div className="rc-radio-row-inner">
+                      <label className={`rc-radio-opt ${edRecordType === 'FIR' ? 'on' : ''}`}>
+                        <input type="radio" name="ed-record-type" checked={edRecordType === 'FIR'} onChange={() => setEdRecordType('FIR')} />
+                        <span>FIR</span>
+                      </label>
+                      <label className={`rc-radio-opt ${edRecordType === 'DD' ? 'on' : ''}`}>
+                        <input type="radio" name="ed-record-type" checked={edRecordType === 'DD'} onChange={() => setEdRecordType('DD')} />
+                        <span>DD (Daily Diary)</span>
+                      </label>
+                    </div>
                   </div>
+
+                  <label>FIR / DD No.
+                    <input
+                      value={edFirNo}
+                      onChange={e => setEdFirNo(e.target.value)}
+                      placeholder="Leave blank if not yet known"
+                      className="ro-val mono"
+                    />
+                  </label>
+                  <label>{edRecordType === 'DD' ? 'DD Date' : 'FIR Date'}
+                    <input type="date" value={edFirDate} onChange={e => setEdFirDate(e.target.value)} max={today} />
+                  </label>
+
+                  {/* DD-extras block — same columns as RegisterCaseModal Step 1,
+                      shown only when Record Type is DD (mirrors registration). */}
+                  {edRecordType === 'DD' && (
+                    <>
+                      <label>Nature of DD
+                        <select value={edNatureOfDd} onChange={e => setEdNatureOfDd(e.target.value)}>
+                          <option value="">— select —</option>
+                          <option value="Unnatural Death">Unnatural Death</option>
+                          <option value="Lost Property">Lost Property</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </label>
+                      {edNatureOfDd === 'Unnatural Death' && (
+                        <label>Name of Deceased
+                          <input value={edNameOfDeceased} onChange={e => setEdNameOfDeceased(e.target.value)} placeholder="Name of deceased" />
+                        </label>
+                      )}
+                      {(edNatureOfDd === 'Lost Property' || edNatureOfDd === 'Other') && (
+                        <label className="full">Reporting Person Name &amp; Address
+                          <input value={edReportingPerson} onChange={e => setEdReportingPerson(e.target.value)} placeholder="Name & address of reporter" />
+                        </label>
+                      )}
+                    </>
+                  )}
                 </div>
+              </section>
 
-                <label>FIR / DD No.
-                  <input
-                    value={edFirNo}
-                    onChange={e => setEdFirNo(e.target.value)}
-                    placeholder="Leave blank if not yet known"
-                    className="ro-val mono"
-                  />
-                </label>
-                <label>{edRecordType === 'DD' ? 'DD Date' : 'FIR Date'}
-                  <input type="date" value={edFirDate} onChange={e => setEdFirDate(e.target.value)} max={today} />
-                </label>
+              {/* --- Legal section group --- */}
+              <section className="rc-group">
+                <div className="rc-group-title">Legal Section</div>
+                <div className="rc-grid">
+                  <label className="full">Section (U/S Legal Section) — multiple allowed
+                    <input
+                      value={edUs}
+                      onChange={e => setEdUs(e.target.value)}
+                      placeholder="e.g. 244, 245 or BNS 101"
+                    />
+                  </label>
+                </div>
+              </section>
 
-                <label className="full">Section (U/S Legal Section) — multiple allowed
-                  <input
-                    value={edUs}
-                    onChange={e => setEdUs(e.target.value)}
-                    placeholder="e.g. 244, 245 or BNS 101"
-                  />
-                </label>
-                {/* DD-extras block — same columns as RegisterCaseModal Step 1,
-                    shown only when Record Type is DD (mirrors registration). */}
-                {edRecordType === 'DD' && (
-                  <>
-                    <label>Nature of DD
-                      <select value={edNatureOfDd} onChange={e => setEdNatureOfDd(e.target.value)}>
-                        <option value="">— select —</option>
-                        <option value="Unnatural Death">Unnatural Death</option>
-                        <option value="Lost Property">Lost Property</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    </label>
-                    {edNatureOfDd === 'Unnatural Death' && (
-                      <label>Name of Deceased
-                        <input value={edNameOfDeceased} onChange={e => setEdNameOfDeceased(e.target.value)} placeholder="Name of deceased" />
-                      </label>
-                    )}
-                    {(edNatureOfDd === 'Lost Property' || edNatureOfDd === 'Other') && (
-                      <label className="full">Reporting Person Name &amp; Address
-                        <input value={edReportingPerson} onChange={e => setEdReportingPerson(e.target.value)} placeholder="Name & address of reporter" />
-                      </label>
-                    )}
-                  </>
-                )}
+              {/* --- Actual Seizure group — the DD under which the property was
+                  ACTUALLY seized. Same columns as RegisterCaseModal Step 1. --- */}
+              <section className="rc-group">
+                <div className="rc-group-title">Actual Seizure</div>
+                <div className="rc-grid">
+                  <label>DD No. (Seizure)
+                    <input
+                      value={edActualSeizureDdNo}
+                      onChange={e => setEdActualSeizureDdNo(e.target.value)}
+                      placeholder="e.g. DD 12/2026"
+                      className="mono"
+                    />
+                  </label>
+                  <label>Date
+                    <input type="date" value={edActualSeizureDate} onChange={e => setEdActualSeizureDate(e.target.value)} max={today} />
+                  </label>
+                </div>
+              </section>
 
-                {/* Actual Seizure group — the DD under which the property was
-                    ACTUALLY seized. Same columns as RegisterCaseModal Step 1. */}
-                <section className="rc-group">
-                  <div className="rc-grid">
-                    <label>DD No. (Seizure)
-                      <input
-                        value={edActualSeizureDdNo}
-                        onChange={e => setEdActualSeizureDdNo(e.target.value)}
-                        placeholder="e.g. DD 12/2026"
-                        className="mono"
-                      />
-                    </label>
-                    <label>Date
-                      <input type="date" value={edActualSeizureDate} onChange={e => setEdActualSeizureDate(e.target.value)} max={today} />
-                    </label>
-                  </div>
-                </section>
-
-                <label>Received By (Malkhana Moharrir)
-                  <input value={edReceivedBy} onChange={e => setEdReceivedBy(e.target.value)} placeholder="Officer name" />
-                </label>
-                <label>Seized Time
-                  <input type="time" value={edSeizedTime} onChange={e => setEdSeizedTime(e.target.value)} />
-                </label>
-                <label>Seizing Officer
-                  <input value={edSeizingOfficer} onChange={e => setEdSeizingOfficer(e.target.value)} placeholder="Officer name" required />
-                </label>
-              </div>
+              {/* --- Receipt / custody group --- */}
+              <section className="rc-group">
+                <div className="rc-group-title">Receipt &amp; Custody</div>
+                <div className="rc-grid">
+                  <label>Received By (Malkhana Moharrir)
+                    <input value={edReceivedBy} onChange={e => setEdReceivedBy(e.target.value)} placeholder="Officer name" />
+                  </label>
+                  <label>Seized Time
+                    <input type="time" value={edSeizedTime} onChange={e => setEdSeizedTime(e.target.value)} />
+                  </label>
+                  <label>Seizing Officer
+                    <input value={edSeizingOfficer} onChange={e => setEdSeizingOfficer(e.target.value)} placeholder="Officer name" required />
+                  </label>
+                </div>
+              </section>
             </fieldset>
 
             {/* ============= Step 2 of 2 — Seized Item Details ============= */}
