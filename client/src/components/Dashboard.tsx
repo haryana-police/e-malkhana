@@ -4,6 +4,7 @@ import type {
   MovementRow,
   AlertRow,
   CaseStatus,
+  RackItem,
 } from '../types';
 import { RegisterTable } from './RegisterTable';
 import {
@@ -19,6 +20,7 @@ interface Props {
   alerts: AlertRow[];
   totalCases: number;
   cases: CaseRow[];
+  racks: RackItem[];
   onStatClick: (target: 'all' | 'pending' | 'expert' | 'fsl' | 'transfer' | 'inspection') => void;
   onOpenTag: (c: CaseRow) => void;
   onOpenTimeline: (fir: string) => void;
@@ -40,7 +42,7 @@ interface TileSpec {
 }
 
 export function Dashboard({
-  stats, movements, alerts, totalCases, cases,
+  stats, movements, alerts, totalCases, cases, racks,
   onStatClick, onOpenTag, onOpenTimeline,
   onOpenScan, onOpenRegister, onChangeStatus, onDownloadReport,
 }: Props) {
@@ -55,18 +57,24 @@ export function Dashboard({
   const [selStatuses, setSelStatuses] = useState<CaseStatus[]>([]);
   const [notSelected, setNotSelected] = useState(false);
 
-  // distinct sections present in the data (Section-wise filter options)
+  // Location filter options = the canonical Malkhana section list from the
+  // server (data.racks), NOT the distinct sections found in the current
+  // cases.  Building from `racks` means every location shows up — including
+  // ones with 0 items (e.g. a freshly added "G · excise") and any new
+  // section the user creates later.  They appear automatically on reload.
   const sectionOptions: SectionOpt[] = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const c of cases) {
-      if (c.section && !map.has(c.section)) map.set(c.section, c.sectionName || c.section);
-    }
-    return Array.from(map.entries()).map(([letter, name]) => ({
-      letter,
-      name,
-      label: `${letter.replace('PART ', '')} · ${name}`,
-    }));
-  }, [cases]);
+    return (racks || [])
+      .slice()
+      .sort((a, b) =>
+        (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+        a.letter.length - b.letter.length ||
+        a.letter.localeCompare(b.letter))
+      .map(r => ({
+        letter: r.letter,
+        name: r.name,
+        label: `${r.letter.replace('PART ', '')} · ${r.name}`,
+      }));
+  }, [racks]);
 
   const filtered = useMemo(() => {
     let out = cases;
@@ -86,7 +94,7 @@ export function Dashboard({
       });
     }
     return out;
-  }, [cases, selSections, selStatuses, dateFrom, dateTo]);
+  }, [cases, selSections, selStatuses, notSelected, dateFrom, dateTo]);
 
   // "Recent Movement Activity" should follow the active filter too — fetch
   // movements for just the filtered case ids whenever the set changes.

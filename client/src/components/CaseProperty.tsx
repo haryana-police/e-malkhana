@@ -93,6 +93,7 @@ export function CaseProperty({
         toggleStatus={toggleStatus}
         notSelected={false}
         toggleNotSelected={() => {}}
+        showNotAssigned={false}
         onClearAll={clearAll}
         onClose={() => setShowFilters(false)}
       />

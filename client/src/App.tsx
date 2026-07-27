@@ -428,6 +428,7 @@ export default function App() {
                 alerts={data.priorityAlerts}
                 totalCases={data.cases.length}
                 cases={data.cases}
+                racks={data.racks}
                 onStatClick={onStatClick}
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
@@ -444,6 +445,7 @@ export default function App() {
                 alerts={data.priorityAlerts}
                 totalCases={data.cases.length}
                 cases={data.cases}
+                racks={data.racks}
                 onStatClick={onStatClick}
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}
@@ -565,6 +567,7 @@ export default function App() {
                 alerts={data.priorityAlerts}
                 totalCases={data.cases.length}
                 cases={data.cases}
+                racks={data.racks}
                 onStatClick={onStatClick}
                 onOpenTag={setTagCase}
                 onOpenTimeline={openTimeline}

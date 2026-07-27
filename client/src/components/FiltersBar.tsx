@@ -118,6 +118,7 @@ export function FilterPanel({
   selStatuses, toggleStatus, onClearAll,
   notSelected, toggleNotSelected,
   onClose,
+  showNotAssigned = true,
 }: {
   dateFrom: string; setDateFrom: (v: string) => void;
   dateTo: string; setDateTo: (v: string) => void;
@@ -127,6 +128,7 @@ export function FilterPanel({
   onClearAll: () => void;
   notSelected: boolean; toggleNotSelected: () => void;
   onClose?: () => void;   // "Done" must only close the panel, NOT wipe filters
+  showNotAssigned?: boolean;
 }) {
   const dateText =
     dateFrom && dateTo ? `${dateFrom} → ${dateTo}`
@@ -162,20 +164,16 @@ export function FilterPanel({
               </button>
             ))}
             {sectionOptions.length === 0 && <span className="f-empty">No locations</span>}
-          </div>
-        </div>
-
-        <div className="filter-col">
-          <h4>Not Selected</h4>
-          <div className="f-chips">
-            <button
-              type="button"
-              className={`f-chip${notSelected ? ' on' : ''}`}
-              onClick={toggleNotSelected}
-              title="Show property that was received but never assigned to a Malkhana location"
-            >
-              Not Assigned
-            </button>
+            {showNotAssigned && (
+              <button
+                type="button"
+                className={`f-chip${notSelected ? ' on' : ''}`}
+                onClick={toggleNotSelected}
+                title="Show property that was received but never assigned to a Malkhana location"
+              >
+                Not Assigned
+              </button>
+            )}
           </div>
         </div>
 

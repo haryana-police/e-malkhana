@@ -795,26 +795,38 @@ export async function nextMovementId() {
 }
 
 // Next unique Malkhana Sr. No. (Register Entry No.), e.g. MK-2026-000521.
-// Computed as MAX(numeric part of existing item_id) + 1 from the `cases`
-// table.  This is deterministic and self-healing on ANY database state
-// (no dependency on a sequence that may have been advanced/corrupted by
-// another instance) and never produces collisions — even when several
-// items are registered under one FIR.  A process-local guard syncs once
-// per cold start; concurrency across instances is negligible at this scale.
-let _seqMax = 0;
-let _seqReady = false;
+// ATOMIC in Postgres — one statement per mint, no process-local cache.
+// The old implementation cached MAX(item_id)+counter per process; with two
+// instances sharing the DB (Vercel warm lambdas, or local dev + prod on the
+// same Neon) the stale cache minted duplicate Sr. Nos. and the INSERT blew
+// up with `duplicate key value violates unique constraint "cases_pkey"`.
+//
+// Strategy: consume nextval('malkhana_seq') — atomic in Postgres, never
+// repeats, never goes backward — then verify it's ahead of MAX(item_id).
+// If the sequence lags the data (fresh sequence on an old table, manual
+// imports), advance it past the gap by consuming values in one statement.
+// Because ONLY nextval is used to advance (never setval, which can move
+// the sequence backward under a concurrent-heal race), two instances can
+// never mint the same number.
 export async function nextMalkhanaSeq() {
   await ensureReady();
-  if (!_seqReady) {
-    const { rows } = await pool.query(
-      `SELECT COALESCE(MAX((regexp_match(item_id, 'MK-[0-9]{4}-([0-9]+)'))[1]::int), 0) AS m
-       FROM cases WHERE item_id ~ '^MK-[0-9]{4}-[0-9]+$'`
+  const { rows } = await pool.query(`SELECT nextval('malkhana_seq') AS v`);
+  let v = Number(rows[0].v);
+  const { rows: mrows } = await pool.query(
+    `SELECT COALESCE(MAX((regexp_match(item_id, 'MK-[0-9]{4}-([0-9]+)'))[1]::int), 0) AS m
+     FROM cases WHERE item_id ~ '^MK-[0-9]{4}-[0-9]+$'`
+  );
+  const m = Number(mrows[0]?.m || 0);
+  while (v <= m) {
+    // One-time heal: burn the gap in a single statement. nextval per row;
+    // concurrent healers each consume distinct ranges — no duplicates.
+    const gap = m - v + 1;
+    const { rows: r2 } = await pool.query(
+      `SELECT max(nextval('malkhana_seq')) AS v FROM generate_series(1, $1)`, [gap]
     );
-    _seqMax = Number(rows[0]?.m || 0);
-    _seqReady = true;
+    v = Number(r2[0].v);
   }
-  _seqMax += 1;
-  return _seqMax;
+  return v;
 }
 
 export function formatMalkhanaSrNo(n) {
