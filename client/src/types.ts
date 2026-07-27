@@ -88,10 +88,8 @@ export interface Split {
   description: string;
   sortOrder: number;
 }
-  status?: string | null;
-}
 
-// Movement Type — one row of the admin-managed "Move to status"
+
 // vocabulary (System Settings -> Movement Types).  Drives the Change
 // Status dropdown, the Register filter, the Dashboard tiles, and the
 // status-validation gate on every case PATCH.  `next` lists the status

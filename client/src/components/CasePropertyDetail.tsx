@@ -151,6 +151,24 @@ function fmtTime(iso: string): string {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
+// One movement-list item (shared by the Main branch and each split branch).
+function renderMovementLi(m: MovementLogRow, idx: number) {
+  return (
+    <li key={`${m.id ?? idx}`}>
+      <div className="t-route">
+        {m.fromLocation || 'New'}
+        <span className="t-arrow">→</span>
+        {m.toLocation || '—'}
+      </div>
+      <div className="t-meta">
+        {m.movedBy || '—'} · {fmtTime(m.timestamp)}
+        {m.purpose ? ` · ${m.purpose}` : ''}
+        {m.status ? ` · [${m.status}]` : ''}
+      </div>
+    </li>
+  );
+}
+
 // ============================================================
 // Read-only cell — wraps a `<label>` exactly like the registration
 // form, but the input is replaced by a `.ro-val` static value so the
@@ -301,6 +319,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
           api.caseProperty(c.itemId).catch(() => null),
           api.itemCategories().catch(() => [] as CategoryOfItem[]),
           api.movements(c.id).catch(() => [] as MovementLogRow[]),
+          api.splits(c.id).catch(() => [] as Split[]),
         ]);
         setQrUrl(qr?.dataUrl ?? null);
         setQrMask(qr?.mask ?? null);
@@ -308,6 +327,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         setCaseProperty(cp);
         setCategories(catList);
         setMovements(Array.isArray(mv) ? mv : []);
+        setSplits(Array.isArray(splits) ? splits : []);
         // The Edit Category dropdown is driven by the item-categories master
         // (already loaded in `categories`), so no separate item-types fetch
         // is needed here.
@@ -327,6 +347,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     if (!caseRow) return;
     setShowLog(true);
     setLogErr(null);
+    setLogSplitId(null); // default to main branch
     // Use helper/logic for existing log form state
   }
 
@@ -342,14 +363,17 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         purpose: data.purpose.trim() || 'Movement',
         docRef: data.docRef || undefined,
         setStatus: (data.toStatus && STATUS_OPTIONS.includes(data.toStatus as CaseStatus)) ? (data.toStatus as CaseStatus) : undefined,
+        splitId: logSplitId,
       });
       setShowLog(false);
-      const [c, mv] = await Promise.all([
+      const [c, mv, sp] = await Promise.all([
         api.case(caseRow.id).catch(() => caseRow),
         api.movements(caseRow.id).catch(() => [] as MovementLogRow[]),
+        api.splits(caseRow.id).catch(() => [] as Split[]),
       ]);
       setCaseRow(c);
       setMovements(Array.isArray(mv) ? mv : []);
+      setSplits(Array.isArray(sp) ? sp : []);
     } catch (err) {
       setLogErr((err as Error).message);
     } finally {
@@ -422,9 +446,54 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEdPhotoFile(null);
   }
 
-  // Open the in-app camera modal to capture a new photo for the Edit modal.
-  function openEditCam() {
-    setEditCamOpen(true);
+  // Create splits from the SplitModal (array of {title, description}).
+  async function handleCreateSplits(drafts: { title: string; description: string }[]) {
+    if (!caseRow) return;
+    setSplitBusy(true); setSplitErr(null);
+    try {
+      const created = await api.createSplits(caseRow.id, drafts);
+      setSplits(prev => [...prev, ...created]);
+      setShowSplit(false);
+    } catch (e) {
+      setSplitErr((e as Error).message);
+    } finally {
+      setSplitBusy(false);
+    }
+  }
+
+  // Delete a split (its movements are auto-reparented to Main branch server-side).
+  async function handleDeleteSplit(id: number) {
+    if (!caseRow) return;
+    if (!window.confirm('Delete this split? Its movements will move back to the Main branch.')) return;
+    try {
+      await api.deleteSplit(id);
+      setSplits(prev => prev.filter(s => s.id !== id));
+      setMovements(prev => prev.map(m => (m.splitId === id ? { ...m, splitId: null } : m)));
+    } catch (e) {
+      window.alert((e as Error).message);
+    }
+  }
+
+  // Edit an existing split's title/description inline-ish via prompt (simple + safe).
+  async function handleEditSplit(s: Split) {
+    const title = window.prompt('Split title', s.title);
+    if (title == null) return;
+    const description = window.prompt('Split description', s.description);
+    if (description == null) return;
+    try {
+      const updated = await api.updateSplit(s.id, { title: title.trim() || s.title, description });
+      setSplits(prev => prev.map(x => (x.id === s.id ? updated : x)));
+    } catch (e) {
+      window.alert((e as Error).message);
+    }
+  }
+
+  // Open the Log modal pre-targeted at a specific split.
+  function openLogForSplit(splitId: number) {
+    if (!caseRow) return;
+    setShowLog(true);
+    setLogErr(null);
+    setLogSplitId(splitId);
   }
   // Camera captured a new image — store as data-URL + File, close modal.
   function onEditCamCapture(dataUrl: string, file: File) {
@@ -809,6 +878,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
         <Link to="/caseproperty" className="link-back">← All Case Property</Link>
         <div className="case-detail-actions">
           <button className="btn" type="button" onClick={openLog}>＋ Log New Movement</button>
+          <button className="btn ghost" type="button" onClick={() => setShowSplit(true)}>⊟ Split Item</button>
           <button className="btn ghost" type="button" onClick={openEdit}>✎ Edit Case Property</button>
           <button className="btn ghost" type="button" onClick={printTag}>🏷 Print Tag</button>
           <button className="btn ghost" type="button" onClick={printDetail}>🖨 Print full detail</button>
@@ -904,6 +974,38 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
               </div>
             </div>
 
+            {/* SPLITS — case-level branches of this single item */}
+            {splits.length > 0 && (
+              <div className="case-a4-card case-a4-splits">
+                <h3>
+                  Splits
+                  <span className="muted"> ({splits.length} {splits.length === 1 ? 'branch' : 'branches'})</span>
+                </h3>
+                <div className="split-list">
+                  {splits.map((s) => {
+                    const mvCount = movements.filter(m => m.splitId === s.id).length;
+                    return (
+                      <div className="split-card" key={s.id}>
+                        <div className="split-card-head">
+                          <span className="split-card-title">{s.title}</span>
+                          <span className="split-card-actions">
+                            <button type="button" className="btn ghost tiny"
+                              onClick={() => openLogForSplit(s.id)} disabled={busy}>＋ Log</button>
+                            <button type="button" className="btn ghost tiny"
+                              onClick={() => handleEditSplit(s)} disabled={busy}>✎</button>
+                            <button type="button" className="btn ghost tiny danger"
+                              onClick={() => handleDeleteSplit(s.id)} disabled={busy}>🗑</button>
+                          </span>
+                        </div>
+                        {s.description ? <div className="split-card-desc">{s.description}</div> : null}
+                        <div className="split-card-count">{mvCount} {mvCount === 1 ? 'movement' : 'movements'}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* MOVEMENT + PHOTO side-by-side */}
             <div className="case-a4-bottom">
               <div className="case-a4-card case-a4-movement">
@@ -914,23 +1016,40 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                 {movements.length === 0
                   ? <div className="case-a4-empty">No movements recorded yet.</div>
                   : (
-                    <ol className="case-a4-timeline">
-                      {movements.map((m, idx) => {
+                    <div className="mv-branches">
+                      {/* Main branch — movements not tied to any split */}
+                      <div className="mv-branch">
+                        <div className="mv-branch-head main">
+                          <span className="mv-branch-dot main" /> Main item
+                          <button type="button" className="btn ghost tiny"
+                            onClick={openLog} disabled={busy}>＋ Log</button>
+                        </div>
+                        <ol className="case-a4-timeline">
+                          {movements.filter(m => !m.splitId).map((m, idx) => renderMovementLi(m, idx))}
+                          {movements.filter(m => !m.splitId).length === 0 &&
+                            <li className="mv-empty">No main-branch movements yet.</li>}
+                        </ol>
+                      </div>
+
+                      {/* One branch per split */}
+                      {splits.map((s) => {
+                        const sm = movements.filter(m => m.splitId === s.id);
                         return (
-                          <li key={idx}>
-                            <div className="t-route">
-                              {m.fromLocation || 'New'}
-                              <span className="t-arrow">→</span>
-                              {m.toLocation || '—'}
+                          <div className="mv-branch" key={s.id}>
+                            <div className="mv-branch-head split">
+                              <span className="mv-branch-dot split" />
+                              {s.title}
+                              <button type="button" className="btn ghost tiny"
+                                onClick={() => openLogForSplit(s.id)} disabled={busy}>＋ Log</button>
                             </div>
-                            <div className="t-meta">
-                              {m.movedBy || '—'} · {fmtTime(m.timestamp)}
-                              {m.purpose ? ` · ${m.purpose}` : ''}
-                            </div>
-                          </li>
+                            <ol className="case-a4-timeline">
+                              {sm.map((m, idx) => renderMovementLi(m, idx))}
+                              {sm.length === 0 && <li className="mv-empty">No movements for this split yet.</li>}
+                            </ol>
+                          </div>
                         );
                       })}
-                    </ol>
+                    </div>
                   )}
               </div>
 
@@ -968,6 +1087,23 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             <button type="button" className="tag-close" onClick={() => setShowLog(false)} aria-label="Close">✕</button>
             <h3>Log / Edit Movement — {c.id}</h3>
             <div className="sub">{c.itemType} · Current: {c.sectionName}</div>
+
+            {/* Split selector: when splits exist, choose which branch this
+                movement belongs to.  "Main item" = the item itself (null). */}
+            {splits.length > 0 && (
+              <label className="full">
+                This movement belongs to
+                <select
+                  value={logSplitId != null ? String(logSplitId) : ''}
+                  onChange={e => setLogSplitId(e.target.value ? Number(e.target.value) : null)}
+                  disabled={logBusy}
+                >
+                  <option value="">Main item (no split)</option>
+                  {splits.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                </select>
+              </label>
+            )}
+
             <MovementForm
               caseRow={c}
               fromLocation={c.sectionName || '—'}
@@ -978,6 +1114,21 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
             />
             {logErr && <div className="form-msg show error" style={{ marginTop: 8 }}>{logErr}</div>}
           </div>
+        </div>
+      )}
+
+      {/* Split Item modal */}
+      {showSplit && (
+        <SplitModal
+          caseId={c.id}
+          busy={splitBusy}
+          onCancel={() => setShowSplit(false)}
+          onSubmit={handleCreateSplits}
+        />
+      )}
+      {splitErr && (
+        <div className="form-msg show error" style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 50 }}>
+          {splitErr}
         </div>
       )}
 
@@ -1353,7 +1504,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                           📁 Upload new
                           <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onEditPhotoFile} />
                         </label>
-                        <button type="button" className="btn ghost edit-photo-btn" onClick={openEditCam}>📷 Use camera</button>
+                        <button type="button" className="btn ghost edit-photo-btn" onClick={() => setEditCamOpen(true)}>📷 Use camera</button>
                         {previewPhoto && (
                           <button type="button" className="btn ghost edit-photo-btn danger" onClick={clearEditPhoto}>🗑 Remove</button>
                         )}
