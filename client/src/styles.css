@@ -4038,6 +4038,77 @@ input, select, textarea{
   word-break: break-word;
 }
 
+/* ---- Splits (case-level branches) + grouped movement branches ---- */
+.case-a4-splits { margin-top: 12px; }
+.split-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.split-card {
+  flex: 1 1 220px;
+  border: 1px solid #D9D2C2;
+  border-left: 4px solid #8C7A54;
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: #fff;
+}
+.split-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.split-card-title { font-weight: 700; color: #14243D; font-size: 13px; }
+.split-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.split-card-desc {
+  font-size: 11.5px; color: #4F6079; margin-top: 3px;
+  word-break: break-word;
+}
+.split-card-count { font-size: 11px; color: #8C7A54; margin-top: 4px; }
+
+.mv-branches { display: flex; flex-direction: column; gap: 12px; }
+.mv-branch {
+  border: 1px solid #E3DCC8;
+  border-radius: 5px;
+  padding: 8px 10px 10px;
+  background: #FBF8EF;
+}
+.mv-branch-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #14243D;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.mv-branch-head .btn { text-transform: none; letter-spacing: 0; margin-left: auto; }
+.mv-branch-dot {
+  width: 11px; height: 11px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+}
+.mv-branch-dot.main { background: #8C7A54; }
+.mv-branch-dot.split { background: #2E6E8E; }
+.mv-branch .case-a4-timeline li { background: #fff; }
+.mv-empty {
+  font-size: 12px; color: #8a98a8; font-style: italic;
+  padding: 2px 0 2px 14px; border-left: 2px dashed #D9D2C2; margin-left: 5px;
+}
+.btn.ghost.tiny, .btn.tiny {
+  padding: 3px 8px; font-size: 11px; line-height: 1.4;
+}
+.split-rows { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+.split-row {
+  border: 1px solid #D9D2C2; border-radius: 5px; padding: 8px 10px; background: #FBF8EF;
+}
+.split-row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.split-idx { font-weight: 700; color: #8C7A54; font-size: 12px; text-transform: uppercase; }
+.split-row label { display: block; margin-top: 4px; }
+.split-row textarea { width: 100%; resize: vertical; }
+
 /* Photo card body on the sheet */
 .case-a4-photo-body {
   text-align: center;
