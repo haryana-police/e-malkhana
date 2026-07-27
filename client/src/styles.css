@@ -880,6 +880,13 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
 /* Tighten the inner grid inside groups so fields stay evenly spaced. */
 .edit-step .rc-group .rc-grid{ gap: 10px 14px; }
 
+/* Step 2 of the Edit modal — outer wrapper that holds the grouped
+   .rc-group sections (Item Details / Seizure & Seal / Description /
+   Photo). Replaces the old single flat grid so each logical block reads
+   as its own card, matching Step 1. */
+.edit-step-fields{ display: flex; flex-direction: column; gap: 14px; margin-top: 6px; }
+.edit-step .edit-step-fields .rc-grid{ gap: 10px 14px; }
+
 /* The Edit Case Property photo zone — preview + 3 action buttons.
    Sized so the existing on-screen card keeps the same vertical proportions. */
 .edit-photo-zone{

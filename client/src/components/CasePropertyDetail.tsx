@@ -1110,7 +1110,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                 categories, description, photo). */}
             <fieldset className="edit-step">
               <legend>Step 2 of 2 — Seized Item Details</legend>
-              <div className="form-grid rc-grid item-grid">
+              <div className="edit-step-fields">
                 {(() => {
                   const cat = findCatById(categories, edCatId);
                   const noCat = !edCatId;
@@ -1132,6 +1132,9 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                     setEdCatValues(prev => ({ ...prev, [key]: val }));
                   return (
                     <>
+                      <section className="rc-group">
+                        <div className="rc-group-title">Item Details</div>
+                        <div className="rc-grid">
                       <label>Category of Item
                         <select
                           value={edCatId}
@@ -1201,7 +1204,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                       {/* Per-category fields (e.g. Quantity Seized for Narcotics,
                           Total Amount for Cash, Weight for Jewellery).  These are
                           the column(s) registration captured for this category. */}
-                      {cat?.fields.map(f => (
+                        {cat?.fields.map(f => (
                         <label key={f.key}>
                           {f.label}{f.unit ? ` (${f.unit})` : ''}
                           {f.type === 'select' ? (
@@ -1278,9 +1281,13 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                         </label>
                       )}
 
-                      {/* Common seal block — same categories as registration. */}
+                        </div>{/* /Item Details grid */}
+                      </section>
+
                       {showSealBlock && (
-                        <>
+                        <section className="rc-group">
+                          <div className="rc-group-title">Seizure &amp; Seal</div>
+                          <div className="rc-grid">
                           <label>Place of Seizure
                             <input value={edPlaceOfSeizure} onChange={e => setEdPlaceOfSeizure(e.target.value)} placeholder="e.g. Near bus stand" />
                           </label>
@@ -1296,47 +1303,56 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                           <label>Sealed By (Officer)
                             <input value={edSealBy} onChange={e => setEdSealBy(e.target.value)} placeholder="Officer name" />
                           </label>
-                        </>
+                          </div>
+                        </section>
                       )}
 
-                      <label className="full">Item Description (detailed — brand, colour, size, marks)
-                        <textarea
-                          value={edRemarks}
-                          onChange={e => setEdRemarks(e.target.value)}
-                          placeholder="Detailed description"
-                          rows={3}
-                        />
-                      </label>
+                      <section className="rc-group">
+                        <div className="rc-group-title">Description</div>
+                        <div className="rc-grid">
+                          <label className="full">Item Description (detailed — brand, colour, size, marks)
+                            <textarea
+                              value={edRemarks}
+                              onChange={e => setEdRemarks(e.target.value)}
+                              placeholder="Detailed description"
+                              rows={3}
+                            />
+                          </label>
+                        </div>
+                      </section>
                     </>
                   );
                 })()}
-              </div>
-              <label className="full rc-photo-label">Photo of the seized object
-                <div className="edit-photo-zone">
-                  {previewPhoto ? (
-                    <div className="edit-photo-preview">
-                      <img src={previewPhoto} alt={`Seized ${composeItemType(findCatById(categories, edCatId), edSubType) || ''}`} />
-                      <span className="edit-photo-meta">
-                        {edPhotoDataUrl && edPhotoDataUrl !== ''
-                          ? 'New photo selected — click Save to upload.'
-                          : 'Current photo (unchanged).'}
-                      </span>
+                <section className="rc-group">
+                  <div className="rc-group-title">Photo</div>
+                  <label className="full rc-photo-label">Photo of the seized object
+                    <div className="edit-photo-zone">
+                      {previewPhoto ? (
+                        <div className="edit-photo-preview">
+                          <img src={previewPhoto} alt={`Seized ${composeItemType(findCatById(categories, edCatId), edSubType) || ''}`} />
+                          <span className="edit-photo-meta">
+                            {edPhotoDataUrl && edPhotoDataUrl !== ''
+                              ? 'New photo selected — click Save to upload.'
+                              : 'Current photo (unchanged).'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="rc-photo-empty">No photo on this case property.</div>
+                      )}
+                      <div className="edit-photo-actions">
+                        <label className="btn ghost edit-photo-btn">
+                          📁 Upload new
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onEditPhotoFile} />
+                        </label>
+                        <button type="button" className="btn ghost edit-photo-btn" onClick={openEditCam}>📷 Use camera</button>
+                        {previewPhoto && (
+                          <button type="button" className="btn ghost edit-photo-btn danger" onClick={clearEditPhoto}>🗑 Remove</button>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="rc-photo-empty">No photo on this case property.</div>
-                  )}
-                  <div className="edit-photo-actions">
-                    <label className="btn ghost edit-photo-btn">
-                      📁 Upload new
-                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onEditPhotoFile} />
-                    </label>
-                    <button type="button" className="btn ghost edit-photo-btn" onClick={openEditCam}>📷 Use camera</button>
-                    {previewPhoto && (
-                      <button type="button" className="btn ghost edit-photo-btn danger" onClick={clearEditPhoto}>🗑 Remove</button>
-                    )}
-                  </div>
-                </div>
-              </label>
+                  </label>
+                </section>
+              </div>
             </fieldset>
 
             {editErr && <div className="form-msg show error" style={{ marginTop: 8 }}>{editErr}</div>}
