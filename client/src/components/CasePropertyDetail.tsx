@@ -221,6 +221,10 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
   const [splitErr, setSplitErr] = useState<string | null>(null);
   // Which split the "Log New Movement" form is tagging (null = main branch).
   const [logSplitId, setLogSplitId] = useState<number | null>(null);
+  // Inline split editing state.
+  const [editSplitId, setEditSplitId] = useState<number | null>(null);
+  const [editSplitTitle, setEditSplitTitle] = useState('');
+  const [editSplitDesc, setEditSplitDesc] = useState('');
   // ---- Step 1 (FIR / DD & Receipt) — Edit state ----
   const [edRecordType, setEdRecordType] = useState<'FIR' | 'DD'>('FIR');
   const [edFirNo, setEdFirNo] = useState('');              // FIR/DD No. (editable for future entry)
@@ -473,15 +477,20 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     }
   }
 
-  // Edit an existing split's title/description inline-ish via prompt (simple + safe).
-  async function handleEditSplit(s: Split) {
-    const title = window.prompt('Split title', s.title);
-    if (title == null) return;
-    const description = window.prompt('Split description', s.description);
-    if (description == null) return;
+  // Open inline edit for a split (title/description) inside the branch.
+  function startEditSplit(s: Split) {
+    setEditSplitId(s.id);
+    setEditSplitTitle(s.title);
+    setEditSplitDesc(s.description || '');
+  }
+
+  // Save inline split edit.
+  async function saveEditSplit(id: number) {
+    if (!editSplitTitle.trim()) return;
     try {
-      const updated = await api.updateSplit(s.id, { title: title.trim() || s.title, description });
-      setSplits(prev => prev.map(x => (x.id === s.id ? updated : x)));
+      const updated = await api.updateSplit(id, { title: editSplitTitle.trim(), description: editSplitDesc });
+      setSplits(prev => prev.map(x => (x.id === id ? updated : x)));
+      setEditSplitId(null);
     } catch (e) {
       window.alert((e as Error).message);
     }
@@ -972,55 +981,22 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
               </div>
             </div>
 
-            {/* SPLITS — case-level branches of this single item */}
-            {splits.length > 0 && (
-              <div className="case-a4-card case-a4-splits">
-                <h3>
-                  Splits
-                  <span className="muted"> ({splits.length} {splits.length === 1 ? 'branch' : 'branches'})</span>
-                </h3>
-                <div className="split-list">
-                  {splits.map((s) => {
-                    const mvCount = movements.filter(m => m.splitId === s.id).length;
-                    return (
-                      <div className="split-card" key={s.id}>
-                        <div className="split-card-head">
-                          <span className="split-card-title">{s.title}</span>
-                          <span className="split-card-actions">
-                            <button type="button" className="btn ghost tiny"
-                              onClick={() => openLogForSplit(s.id)} disabled={busy}>＋ Log</button>
-                            <button type="button" className="btn ghost tiny"
-                              onClick={() => handleEditSplit(s)} disabled={busy}>✎</button>
-                            <button type="button" className="btn ghost tiny danger"
-                              onClick={() => handleDeleteSplit(s.id)} disabled={busy}>🗑</button>
-                          </span>
-                        </div>
-                        {s.description ? <div className="split-card-desc">{s.description}</div> : null}
-                        <div className="split-card-count">{mvCount} {mvCount === 1 ? 'movement' : 'movements'}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* MOVEMENT + PHOTO side-by-side */}
+            {/* MOVEMENT CHAIN — single tree: Main item on top, splits branch off it */}
             <div className="case-a4-bottom">
               <div className="case-a4-card case-a4-movement">
                 <h3>
                   Movement Chain
                   <span className="muted"> ({movements.length} {movements.length === 1 ? 'entry' : 'entries'})</span>
                 </h3>
-                {movements.length === 0
+                {movements.length === 0 && splits.length === 0
                   ? <div className="case-a4-empty">No movements recorded yet.</div>
                   : (
-                    <div className="mv-branches">
-                      {/* Main branch — movements not tied to any split */}
-                      <div className="mv-branch">
-                        <div className="mv-branch-head main">
-                          <span className="mv-branch-dot main" /> Main item
-                          <button type="button" className="btn ghost tiny"
-                            onClick={openLog} disabled={busy}>＋ Log</button>
+                    <div className="mv-tree">
+                      {/* MAIN BRANCH (root) — no Log button; main item is the item itself */}
+                      <div className="mv-node mv-root">
+                        <div className="mv-node-head main">
+                          <span className="mv-branch-dot main" />
+                          <span className="mv-node-title">Main item</span>
                         </div>
                         <ol className="case-a4-timeline">
                           {movements.filter(m => !m.splitId).map((m, idx) => renderMovementLi(m, idx))}
@@ -1029,17 +1005,56 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                         </ol>
                       </div>
 
-                      {/* One branch per split */}
+                      {/* SPLIT BRANCHES — children hanging off Main (tree connector) */}
                       {splits.map((s) => {
                         const sm = movements.filter(m => m.splitId === s.id);
+                        const editing = editSplitId === s.id;
                         return (
-                          <div className="mv-branch" key={s.id}>
-                            <div className="mv-branch-head split">
+                          <div className="mv-node mv-child" key={s.id}>
+                            <div className="mv-node-head split">
                               <span className="mv-branch-dot split" />
-                              {s.title}
-                              <button type="button" className="btn ghost tiny"
-                                onClick={() => openLogForSplit(s.id)} disabled={busy}>＋ Log</button>
+                              {editing ? (
+                                <input
+                                  className="mv-edit-title"
+                                  value={editSplitTitle}
+                                  onChange={e => setEditSplitTitle(e.target.value)}
+                                  placeholder="Split title"
+                                  disabled={busy}
+                                />
+                              ) : (
+                                <span className="mv-node-title">{s.title}</span>
+                              )}
+                              <span className="mv-node-actions">
+                                {editing ? (
+                                  <>
+                                    <button type="button" className="btn ghost tiny" disabled={busy || !editSplitTitle.trim()}
+                                      onClick={() => saveEditSplit(s.id)}>Save</button>
+                                    <button type="button" className="btn ghost tiny" disabled={busy}
+                                      onClick={() => setEditSplitId(null)}>Cancel</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button type="button" className="btn ghost tiny"
+                                      onClick={() => openLogForSplit(s.id)} disabled={busy}>＋ Log</button>
+                                    <button type="button" className="btn ghost tiny"
+                                      onClick={() => startEditSplit(s)} disabled={busy}>✎</button>
+                                    <button type="button" className="btn ghost tiny danger"
+                                      onClick={() => handleDeleteSplit(s.id)} disabled={busy}>🗑</button>
+                                  </>
+                                )}
+                              </span>
                             </div>
+                            {editing && (
+                              <textarea
+                                className="mv-edit-desc"
+                                value={editSplitDesc}
+                                onChange={e => setEditSplitDesc(e.target.value)}
+                                placeholder="Description (optional)"
+                                rows={2}
+                                disabled={busy}
+                              />
+                            )}
+                            {!editing && s.description ? <div className="mv-node-desc">{s.description}</div> : null}
                             <ol className="case-a4-timeline">
                               {sm.map((m, idx) => renderMovementLi(m, idx))}
                               {sm.length === 0 && <li className="mv-empty">No movements for this split yet.</li>}

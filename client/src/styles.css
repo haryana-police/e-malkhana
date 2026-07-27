@@ -4049,68 +4049,40 @@ input, select, textarea{
   word-break: break-word;
 }
 
-/* ---- Splits (case-level branches) + grouped movement branches ---- */
-.case-a4-splits { margin-top: 12px; }
-.split-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+/* ---- Movement chain as a tree: Main item root, splits branch off it ---- */
+.mv-tree { display: flex; flex-direction: column; gap: 10px; }
+.mv-node { border: 1px solid #E3DCC8; border-radius: 6px; padding: 8px 10px 10px; background: #FBF8EF; }
+.mv-node-head {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 13px; color: #14243D;
+  text-transform: uppercase; letter-spacing: 0.04em;
 }
-.split-card {
-  flex: 1 1 220px;
-  border: 1px solid #D9D2C2;
-  border-left: 4px solid #8C7A54;
-  border-radius: 4px;
-  padding: 8px 10px;
-  background: #fff;
-}
-.split-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-.split-card-title { font-weight: 700; color: #14243D; font-size: 13px; }
-.split-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.split-card-desc {
-  font-size: 11.5px; color: #4F6079; margin-top: 3px;
-  word-break: break-word;
-}
-.split-card-count { font-size: 11px; color: #8C7A54; margin-top: 4px; }
-
-.mv-branches { display: flex; flex-direction: column; gap: 12px; }
-.mv-branch {
-  border: 1px solid #E3DCC8;
-  border-radius: 5px;
-  padding: 8px 10px 10px;
-  background: #FBF8EF;
-}
-.mv-branch-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  font-size: 13px;
-  color: #14243D;
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.mv-branch-head .btn { text-transform: none; letter-spacing: 0; margin-left: auto; }
-.mv-branch-dot {
-  width: 11px; height: 11px; border-radius: 50%;
-  display: inline-block; flex-shrink: 0;
-}
+.mv-node-head.split { background: #fff; border: 1px solid #D9E2E8; border-radius: 5px; padding: 6px 8px; }
+.mv-node-title { line-height: 1.3; word-break: break-word; }
+.mv-node-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: auto; }
+.mv-branch-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .mv-branch-dot.main { background: #8C7A54; }
 .mv-branch-dot.split { background: #2E6E8E; }
-.mv-branch .case-a4-timeline li { background: #fff; }
+.mv-node-desc { font-size: 11.5px; color: #4F6079; margin: 4px 0 2px; word-break: break-word; }
+.mv-edit-title {
+  flex: 1 1 auto; min-width: 0; padding: 4px 7px; font-size: 13px; font-weight: 600;
+  border: 1px solid #C9BFA6; border-radius: 5px; color: #14243D; background: #fff; outline: none;
+  text-transform: none; letter-spacing: 0;
+}
+.mv-edit-title:focus { border-color: #14243D; }
+.mv-edit-desc {
+  width: 100%; box-sizing: border-box; margin-top: 6px; padding: 6px 8px;
+  font-size: 12px; border: 1px solid #C9BFA6; border-radius: 5px; color: #14243D;
+  background: #fff; outline: none; resize: vertical; font-family: inherit;
+}
+/* Child split node indented + connector line back to the Main root */
+.mv-node.mv-child { margin-left: 16px; border-left: 3px solid #2E6E8E; border-radius: 0 6px 6px 0; }
+.mv-node.mv-child .case-a4-timeline li { background: #fff; }
 .mv-empty {
   font-size: 12px; color: #8a98a8; font-style: italic;
   padding: 2px 0 2px 14px; border-left: 2px dashed #D9D2C2; margin-left: 5px;
 }
-.btn.ghost.tiny, .btn.tiny {
-  padding: 3px 8px; font-size: 11px; line-height: 1.4;
-}
+.btn.ghost.tiny, .btn.tiny { padding: 3px 8px; font-size: 11px; line-height: 1.4; }
 /* ---- SplitModal (count + per-split title/description rows) ---- */
 .split-rows { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
 .split-row {

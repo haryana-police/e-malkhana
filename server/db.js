@@ -1307,7 +1307,7 @@ export async function getCaseProperty(itemId) {
 // in-memory mirror copy is built in store.js (casePropertyFields) for
 // synchronous reads; this SQL-backed version is used by POST handlers and
 // any path that needs fresh data outside the mirror.
-export async function getCasePropertyFields(itemId: string) {
+export async function getCasePropertyFields(itemId) {
   const { rows } = await pool.query(
     'SELECT field_key, field_value FROM case_property_fields WHERE item_id = $1 ORDER BY id',
     [itemId]
