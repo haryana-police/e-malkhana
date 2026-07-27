@@ -19,6 +19,7 @@ export interface CaseRow {
   quantity?: string;          // parsed count, e.g. "2" (decorated server-side)
   itemTypeId?: number | null; // FK to item_types master row (controlled vocab)
   description?: string;       // free-text specifics, e.g. "80 grams, sealed poly bag"
+  categoryDetail?: string;    // Misc sub-detail (other_desc), shown under the category label
   lastMovement?: string;      // YYYY-MM-DD of last movement-log entry (decorated server-side)
   section: string;            // "PART B" — letter reference, never display
   sectionName: string;        // "Weapons Almirah" — joined from sections table at read time

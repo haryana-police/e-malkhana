@@ -241,7 +241,20 @@ export function RegisterTable({
     },
     category: {
       key: 'category', label: 'Category of Item', className: 'col-category',
-      render: (c) => <td className="type">{c.itemType ? c.itemType : <span style={{ color: 'var(--text-muted, #999)', fontStyle: 'italic' }}>Not Selected</span>}</td>,
+      render: (c) => (
+        <td className="type">
+          {c.itemType ? (
+            <>
+              <span className="type-main">{c.itemType}</span>
+              {c.categoryDetail ? (
+                <span className="type-detail">{c.categoryDetail}</span>
+              ) : null}
+            </>
+          ) : (
+            <span style={{ color: 'var(--text-muted, #999)', fontStyle: 'italic' }}>Not Selected</span>
+          )}
+        </td>
+      ),
     },
     location: {
       key: 'location', label: 'Location', className: 'col-location',

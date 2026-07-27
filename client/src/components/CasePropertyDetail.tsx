@@ -393,7 +393,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
     setEdFirDate(caseRow.firDate || '');
     setEdReceivedBy(caseRow.receivedBy || caseProperty?.receivedBy || '');
     setEdSeizingOfficer(caseRow.seizingOfficer || '');
-    setEdSeizedTime(caseProperty?.seizedTime || '');
     // DD-extras — pull from the FIR master row (registration stored them there).
     setEdDdDate(firMaster?.ddDate || '');
     setEdNatureOfDd(firMaster?.natureOfDd || '');
@@ -545,12 +544,11 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       }
 
       const cpPatch: Partial<{
-        receivedBy: string; quantity: string; remarks: string; seizedTime: string;
+        receivedBy: string; quantity: string; remarks: string;
         placeOfSeizure: string; sealSealed: string; sealNo: string; sealBy: string;
         fields: { key: string; value: string }[];
       }> = {
         receivedBy: edReceivedBy.trim() || undefined,
-        seizedTime: edSeizedTime.trim() || undefined,
         // Common Quantity — kept in the case_property.quantity column so it
         // round-trips exactly like at registration (where it was sent via
         // the batch endpoint). Undefined when the category doesn't expose it.
@@ -1253,9 +1251,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                   <label>Received By (Malkhana Moharrir)
                     <input value={edReceivedBy} onChange={e => setEdReceivedBy(e.target.value)} placeholder="Officer name" />
                   </label>
-                  <label>Seized Time
-                    <input type="time" value={edSeizedTime} onChange={e => setEdSeizedTime(e.target.value)} />
-                  </label>
                   <label>Seizing Officer
                     <input value={edSeizingOfficer} onChange={e => setEdSeizingOfficer(e.target.value)} placeholder="Officer name" required />
                   </label>
@@ -1385,15 +1380,14 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                       ))}
 
                       {/* NDPS Quantity Class badge — live Small / Intermediate /
-                          Commercial classification for Narcotics articles. Shown
-                          when a Narcotic Type + Quantity Seized exist. The user
-                          may override the auto value via the radio buttons (same
-                          as the registration form).  Persisted as the
-                          `quantity_class` per-item field. */}
-                      {cat?.id === 'narcotics' && edSubType && (() => {
+                          Commercial classification for Narcotics articles. Always
+                          shown for the Narcotics category (this is mandatory legal
+                          classification data). Renders as soon as a Narcotic Type
+                          and Quantity Seized yield a class; otherwise it shows a
+                          hint prompting the user to pick the type / enter quantity. */}
+                      {cat?.id === 'narcotics' && (() => {
                         const auto = classifyNdps(edSubType, edCatValues['quantity_seized'] || '');
-                        if (auto === 'Unknown') return null;
-                        const effective = edNdpsOverride ?? auto;
+                        const effective = edNdpsOverride ?? (auto !== 'Unknown' ? auto : null);
                         const tone = effective === 'Small' ? 'small' : effective === 'Intermediate' ? 'inter' : 'comm';
                         const overriden = edNdpsOverride != null && edNdpsOverride !== auto;
                         const NDPS_CLASSES: ('Small' | 'Intermediate' | 'Commercial')[] = ['Small', 'Intermediate', 'Commercial'];
@@ -1401,10 +1395,14 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                           <div className="ndps-class-badge full">
                             <div className="ndps-class-main">
                               <span className="ndps-class-label">NDPS Quantity Class</span>
-                              <span className={`ndps-class ndps-${tone}`}>{effective} Quantity</span>
-                              {overriden
+                              {effective ? (
+                                <span className={`ndps-class ndps-${tone}`}>{effective} Quantity</span>
+                              ) : (
+                                <span className="ndps-class-hint">Pick a Narcotic Type and enter Quantity Seized to classify</span>
+                              )}
+                              {effective && (overriden
                                 ? <span className="ndps-class-hint">auto: {auto}</span>
-                                : <span className="ndps-class-hint">auto from NDPS table</span>}
+                                : <span className="ndps-class-hint">auto from NDPS table</span>)}
                             </div>
                             <div className="ndps-override" role="radiogroup" aria-label="Override NDPS quantity class">
                               <span className="ndps-override-cap">Change class:</span>

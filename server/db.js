@@ -1302,6 +1302,19 @@ export async function getCaseProperty(itemId) {
   };
 }
 
+// Per-item type-specific popup field values for a single item (e.g. the
+// Miscellaneous "Description" stored under field_key = 'other_desc').  The
+// in-memory mirror copy is built in store.js (casePropertyFields) for
+// synchronous reads; this SQL-backed version is used by POST handlers and
+// any path that needs fresh data outside the mirror.
+export async function getCasePropertyFields(itemId: string) {
+  const { rows } = await pool.query(
+    'SELECT field_key, field_value FROM case_property_fields WHERE item_id = $1 ORDER BY id',
+    [itemId]
+  );
+  return rows.map((f) => ({ key: f.field_key, value: f.field_value }));
+}
+
 // Write the COMMON case_property row + the per-item popup field values.
 // `common.physicalStorage` = the real rack/almirah/yard slot; `common.placeOfSeizure`
 // = where the article was seized.  `common.storageLocation` (legacy) is kept

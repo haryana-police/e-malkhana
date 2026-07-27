@@ -83,7 +83,7 @@ export async function loadMirror() {
     await ensureReady();
     const client = await pool.connect();
     try {
-      const [kvRes, usersRes, sectionsRes, itRes, bnsRes, casesRes, movRes, auditRes, fmRes, cpRes, mtRes, splitRes] = await Promise.all([
+      const [kvRes, usersRes, sectionsRes, itRes, bnsRes, casesRes, movRes, auditRes, fmRes, cpRes, cpfRes, mtRes, splitRes] = await Promise.all([
         client.query("SELECT key, value FROM kv WHERE key IN ('meta','officer','alertConfig','alertIssues','backupLog')"),
         client.query(`SELECT id, initials, name, rank, designation, station, password FROM users ORDER BY id`),
         client.query(`SELECT letter, name, count, active, sort_order FROM sections ORDER BY sort_order, length(letter), letter`),
@@ -107,6 +107,12 @@ export async function loadMirror() {
         // those two columns without a per-row round-trip to Postgres.
         client.query(`SELECT fir_no, fir_date, record_type, dd_date, us_sections FROM fir_master`),
         client.query(`SELECT item_id, received_by FROM case_property`),
+        // Per-item type-specific popup field values (e.g. Miscellaneous
+        // "Description" / other_desc).  Loaded into the mirror so the Case
+        // Property Register can show a Miscellaneous row's sub-detail
+        // (description) right under the category in the table, without a
+        // per-row round-trip to Postgres.
+        client.query(`SELECT item_id, field_key, field_value FROM case_property_fields`),
         // Movement Types — the configurable "Move to status" vocabulary.
         // Loaded into the mirror so the Change Status modal and the
         // Register filter dropdown can read it synchronously.  Seeded by
@@ -213,6 +219,15 @@ export async function loadMirror() {
         caseProperty: cpRes.rows
           .filter(r => r.item_id)
           .map(r => ({ itemId: r.item_id, receivedBy: r.received_by || null })),
+        // case_property_fields → every per-item type-specific popup value
+        // (keyed by item_id + field_key).  Lets the register decorate a row
+        // with its Miscellaneous "Description" (field_key = 'other_desc')
+        // without a per-row SQL round-trip.
+        casePropertyFields: cpfRes.rows.map(r => ({
+          itemId: r.item_id,
+          key: r.field_key,
+          value: r.field_value || '',
+        })),
         movements: movRes.rows.map(r => ({
           id: Number(r.id),
           caseId: r.case_id,

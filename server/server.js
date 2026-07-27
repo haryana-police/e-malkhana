@@ -352,6 +352,22 @@ function decorateCaseRow(c, db) {
   const cp = (db.caseProperty || []).find(p => p.itemId && p.itemId.toLowerCase() === cpKey);
   c.receivedBy = cp && cp.receivedBy ? cp.receivedBy : '';
 
+  // Category sub-detail: for "Miscellaneous" items the specific article is
+  // captured in a per-item field ('other_desc').  Surface it on the row so
+  // the Register can show it right under the "Miscellaneous" category label
+  // instead of leaving the cell blank.  Other categories that store a
+  // meaningful single 'description' field behave the same way.  Empty when
+  // no such field exists (most categories have nothing extra to show).
+  const cpf = (db.casePropertyFields || []).filter(
+    f => f.itemId && cpKey && f.itemId.toLowerCase() === cpKey
+  );
+  const detailVal = cpf.length
+    ? cpf.find(f => f.key === 'other_desc')?.value
+        || cpf.find(f => f.key === 'description')?.value
+        || ''
+    : '';
+  c.categoryDetail = detailVal ? String(detailVal) : '';
+
   // Last-movement date: most recent movements-log entry for this case,
   // else the case's createdAt / seizedOn as a fallback.
   const ms = (db.movements || [])

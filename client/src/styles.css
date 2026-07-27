@@ -550,6 +550,13 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 .register-table .col-actions{ padding-left:4px; padding-right:4px; }
 .register-table .date-col{ font-family:'IBM Plex Mono',monospace; font-size:12px; white-space:nowrap; }
 .register-table .type{ font-weight:600; color:var(--slate); }
+.register-table .type-main{ display:block; line-height:1.25; }
+/* Per-item category sub-detail (e.g. Miscellaneous "Description") shown
+   right under the category label so the article is identifiable at a glance. */
+.register-table .type-detail{
+  display:block; margin-top:3px; font-weight:400; font-size:11px;
+  color:var(--slate-soft); font-style:italic; line-height:1.3;
+}
 .register-table .bns-chip{ margin-top:4px; }
 .fir{
   font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:600; color: var(--ink-navy);
@@ -879,17 +886,21 @@ tr.row-clickable:focus-visible { box-shadow: inset 2px 0 0 var(--khaki); }
    options as compact inline pills (not full-width cards) with a small
    uppercase label above them, mirroring the registration form. */
 .rc-radio-row.full{ display: block; grid-column: 1 / -1; }
-.rc-radio-row-inner{ display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+.rc-radio-row-inner{ display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
 .rc-radio-row.full .rc-field-label{
   font-size:10.5px; color: var(--slate-soft); text-transform:uppercase;
   letter-spacing:0.06em; font-weight:600;
 }
-/* Compact pill sizing for the edit radios (override any inherited large
-   card styling). */
+/* Compact pill sizing for the edit radios.  MUST reset the inherited
+   `.rc-grid label{ display:flex; flex-direction:column }` rule — otherwise
+   the dot stacks ABOVE the text and the pills balloon to full width. */
 .rc-radio-row-inner .rc-radio-opt{
-  padding: 6px 14px; border-radius: 8px; font-size: 12.5px; min-width: 78px; justify-content: center;
+  display:inline-flex; flex-direction:row; align-items:center; gap:8px;
+  flex:0 0 auto; width:auto;
+  padding: 7px 16px; border-radius: 8px; font-size: 12.5px; min-width: 78px; justify-content: flex-start;
+  text-transform:none; letter-spacing:0;
 }
-.rc-radio-row-inner .rc-radio-opt input{ width: 14px; height: 14px; }
+.rc-radio-row-inner .rc-radio-opt input{ width: 14px; height: 14px; margin:0; }
 
 /* Grouped sections inside the Edit modal's Step fieldsets — give the
    .rc-group blocks a little breathing room and keep the group title in
@@ -4100,14 +4111,46 @@ input, select, textarea{
 .btn.ghost.tiny, .btn.tiny {
   padding: 3px 8px; font-size: 11px; line-height: 1.4;
 }
-.split-rows { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+/* ---- SplitModal (count + per-split title/description rows) ---- */
+.split-rows { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
 .split-row {
-  border: 1px solid #D9D2C2; border-radius: 5px; padding: 8px 10px; background: #FBF8EF;
+  border: 1px solid #D9D2C2; border-radius: 6px; padding: 10px 12px; background: #FBF8EF;
 }
-.split-row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.split-idx { font-weight: 700; color: #8C7A54; font-size: 12px; text-transform: uppercase; }
-.split-row label { display: block; margin-top: 4px; }
-.split-row textarea { width: 100%; resize: vertical; }
+.split-row-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.split-idx {
+  font-weight: 700; color: #8C7A54; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.split-row label {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 11px; color: #4F6079; text-transform: uppercase;
+  letter-spacing: 0.06em; font-weight: 600; margin-top: 8px;
+}
+.split-row label:first-of-type { margin-top: 0; }
+.split-row input,
+.split-row textarea {
+  width: 100%; box-sizing: border-box; padding: 7px 9px;
+  border: 1px solid #C9BFA6; border-radius: 6px; font-size: 13px;
+  color: #14243D; background: #fff; outline: none; font-family: inherit;
+}
+.split-row input:focus,
+.split-row textarea:focus { border-color: #14243D; background: #fff; }
+.split-row textarea { resize: vertical; min-height: 52px; }
+
+/* The "divide into how many splits?" field + the Log-modal split selector
+   both use a wrapping <label>; stack label above a constrained input. */
+.form-card > label.full {
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 12px; color: #4F6079; font-weight: 600; margin-top: 10px;
+}
+.form-card > label.full input {
+  width: 110px; box-sizing: border-box; padding: 7px 9px;
+  border: 1px solid #C9BFA6; border-radius: 6px; font-size: 14px;
+  color: #14243D; background: #fff; outline: none;
+}
+.form-card > label.full input:focus { border-color: #14243D; }
 
 /* Photo card body on the sheet */
 .case-a4-photo-body {
