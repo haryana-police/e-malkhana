@@ -121,6 +121,9 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
 
   // ---------- common block (once) ----------
   const [receivedBy, setReceivedBy] = useState('');
+  // Seizing Officer is a common receipt value (same for all items), so it
+  // lives at the form level — NOT on items[0], which is empty at step 1.
+  const [seizingOfficer, setSeizingOfficer] = useState('');
 
   // ---------- multi-item list ----------
   const [items, setItems] = useState<DraftItem[]>([]);
@@ -169,6 +172,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     setFirHits([]); setFirOpen(false); setFirActive(-1);
     setLegalAct(''); setLegalQuery(''); setLegalSections([]);
     setReceivedBy('');
+    setSeizingOfficer('');
     setItems([]); setMsg(null); setErrors([]); setItemsCollapsed(false);
   }
 
@@ -217,6 +221,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
      setNameOfDeceased(m.nameOfDeceased || ''); setReportingPerson(m.reportingPerson || '');
      setActualSeizureDdNo(m.actualSeizureDdNo || ''); setActualSeizureDate(m.actualSeizureDate || '');
      if (!receivedBy.trim()) setReceivedBy(defaultIo(user));
+     if (!seizingOfficer.trim()) setSeizingOfficer(defaultIo(user));
      setMsg({ kind: 'ok', text: `${fir.firNo} already on file — details loaded. Review below, then click Next.` });
    } catch {
      setFirExists(false); setFirLoaded(false);
@@ -253,6 +258,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
       // straight to item entry without step 1 blocking on empty required
       // fields.  Received-By defaults to the signed-in Moharrir.
       if (!receivedBy.trim()) setReceivedBy(defaultIo(user));
+      if (!seizingOfficer.trim()) setSeizingOfficer(defaultIo(user));
       // Fill the details in place and STAY on Step 1 (same page) — do NOT
       // auto-advance to Step 2. The MM can review the loaded details and
       // click "Next" when ready to add the seized item(s).
@@ -286,7 +292,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
     setItems(prev => [...prev, {
       localId: newLocalId(),
       categoryId: '', subType: '', sectionLetter: '',
-      catValues: {}, seizingOfficer: defaultIo(user),
+      catValues: {}, seizingOfficer,
       quantity: '1', placeOfSeizure: '', physicalStorage: '', remarks: '',
       photo: null, sealSealed: 'Yes', sealNo: '', sealBy: '', ndpsOverride: undefined,
     }]);
@@ -414,7 +420,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
           witness1: null, witness2: null,  // removed from form
           receivedBy, malkhanaLocation: '',
           legalSections: legalSections.map(s => lsKey(s.actCode, s.sectionNo)),
-          seizingOfficer: items[0]?.seizingOfficer || defaultIo(user),
+          seizingOfficer: seizingOfficer.trim() ? seizingOfficer : defaultIo(user),
         },
         items: items.map((it, idx) => {
           const cat = getCat(categories, it.categoryId);
@@ -704,7 +710,7 @@ export function RegisterCaseModal({ open, racks, user, onClose, onCreated, asPag
                     <input value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Moharrir name" />
                   </label>
                   <label>Seizing Officer
-                    <input value={items[0]?.seizingOfficer || defaultIo(user)} onChange={e => setItems(prev => prev.map((it, i) => i === 0 ? { ...it, seizingOfficer: e.target.value } : it))} />
+                    <input value={seizingOfficer} onChange={e => setSeizingOfficer(e.target.value)} placeholder="Seizing officer name" />
                   </label>
                 </div>
               </section>
