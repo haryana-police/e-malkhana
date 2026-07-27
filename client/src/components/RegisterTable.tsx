@@ -137,7 +137,11 @@ export function RegisterTable({
   const [openCol, setOpenCol] = useState<ColKey | null>(null);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, string>>>({});
   const [statusFilter, setStatusFilter] = useState<CaseStatus[]>([]);
-  const [openActionsFor, setOpenActionsFor] = useState<string | null>(null);
+  // "Take Action" popover: anchored to the clicked button. `place` picks
+  // above (preferred) or below when there isn't enough room above.
+  const [openActionsFor, setOpenActionsFor] = useState<{
+    id: string; top: number; bottom: number; right: number; place: 'above' | 'below';
+  } | null>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
 
   // Close the "Take Action" popup with the Escape key.
@@ -284,7 +288,14 @@ export function RegisterTable({
               type="button"
               className="act-btn act-take"
               title="Take action (QR code · Movement log · Change status)"
-              onClick={(e) => { e.stopPropagation(); setOpenActionsFor(c.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                // Prefer opening ABOVE the button; flip below when the row
+                // is near the top of the viewport (~230px popup height).
+                const place: 'above' | 'below' = r.top > 240 ? 'above' : 'below';
+                setOpenActionsFor({ id: c.id, top: r.top, bottom: r.bottom, right: r.right, place });
+              }}
             ><span className="act-ico">⚙</span><span className="act-lbl">Take Action</span></button>
           </div>
         </td>
@@ -520,11 +531,15 @@ export function RegisterTable({
       )}
 
       {openActionsFor && (() => {
-        const c = cases.find(x => x.id === openActionsFor);
+        const c = cases.find(x => x.id === openActionsFor.id);
         if (!c) return null;
+        const a = openActionsFor;
+        const pos: React.CSSProperties = a.place === 'above'
+          ? { position: 'fixed', bottom: window.innerHeight - a.top + 8, right: Math.max(8, window.innerWidth - a.right), zIndex: 210 }
+          : { position: 'fixed', top: a.bottom + 8, right: Math.max(8, window.innerWidth - a.right), zIndex: 210 };
         return (
-          <div className="overlay open" onClick={e => { if (e.target === e.currentTarget) setOpenActionsFor(null); }}>
-            <div className="act-popup" role="dialog" aria-modal="true" aria-label="Take action">
+          <div className="act-pop-backdrop" onClick={e => { if (e.target === e.currentTarget) setOpenActionsFor(null); }}>
+            <div className={`act-popup act-popup-anchored ${a.place === 'above' ? 'act-popup-above' : 'act-popup-below'}`} style={pos} role="dialog" aria-modal="true" aria-label="Take action">
               <button className="tag-close" onClick={() => setOpenActionsFor(null)} aria-label="Close">✕</button>
               <h3>Take Action</h3>
               <div className="fir-line">FIR/DD: {c.firNo || c.id} · Status: {c.status}</div>

@@ -343,6 +343,28 @@ body{
   position: relative;
   padding: 18px 18px 16px;
 }
+/* Anchored popover: invisible full-screen backdrop catches outside clicks;
+   the card itself is fixed-positioned right ABOVE the clicked Take Action
+   button (flips below when the row is near the viewport top). */
+.act-pop-backdrop{
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(20,36,61,0.18);
+}
+.act-popup-anchored{ border: 1px solid var(--line); }
+.act-popup-anchored::after{
+  content: ''; position: absolute; right: 24px;
+  border-left: 9px solid transparent; border-right: 9px solid transparent;
+}
+.act-popup-above::after{
+  top: 100%;
+  border-top: 9px solid var(--white-paper);
+  filter: drop-shadow(0 1px 0 var(--line));
+}
+.act-popup-below::after{
+  bottom: 100%;
+  border-bottom: 9px solid var(--white-paper);
+  filter: drop-shadow(0 -1px 0 var(--line));
+}
 .act-popup h3{ margin: 0 0 4px; font-size: 16px; color: var(--ink-navy); }
 .act-popup .fir-line{ font-size: 12px; color: var(--slate-soft); margin-bottom: 12px; }
 .act-popup-btns{ display:flex; flex-direction:column; gap:8px; }
