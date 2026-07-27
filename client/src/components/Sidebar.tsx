@@ -21,16 +21,16 @@ interface Props {
     onOpenSectionsManagerPage?: () => void;
   }
 
-const navItems: { view: ViewName; label: string }[] = [
-  { view: 'dashboard',     label: 'Case Property' },
-  { view: 'templates',     label: 'Templates' },
-  { view: 'alerts',        label: 'Alerts & Compliance' },
+const navItems: { view: ViewName; label: string; icon: string; desc: string }[] = [
+  { view: 'dashboard',     label: 'Case Property',        icon: '📦', desc: 'Registered FIR / DD property & evidence' },
+  { view: 'templates',     label: 'Templates',            icon: '📝', desc: 'Fill-in-the-blank receipt & form sheets' },
+  { view: 'alerts',        label: 'Alerts & Compliance',  icon: '🔔', desc: 'Overdue / threshold & compliance flags' },
 ];
 
 // Icon glyphs used by the collapsed mini-rail (desktop only).
 const navIcons: Record<string, string> = {
-  dashboard: '▦',
-  templates: '▤',
+  dashboard: '📦',
+  templates: '📝',
   alerts:    '🔔',
 };
 
@@ -130,7 +130,7 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
               key={item.view}
               type="button"
               className={`rail-btn${active === item.view ? ' active' : ''}`}
-              title={item.label}
+              title={`${item.label} — ${item.desc}`}
               onClick={() => { onNav(item.view); onSectionFilter(null); }}
             >
               <span aria-hidden="true">{navIcons[item.view]}</span>
@@ -207,7 +207,11 @@ export function Sidebar({ active, onNav, racks, onRacksChange, onOpenSettings, o
               data-view={item.view}
               onClick={() => { onNav(item.view); onSectionFilter(null); collapseAfterNav(); }}
             >
-              <span className="dot"></span>{item.label}
+              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+              <span className="nav-text">
+                <span className="nav-label">{item.label}</span>
+                <span className="nav-desc">{item.desc}</span>
+              </span>
             </div>
           ))}
         </div>
