@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import type {
@@ -384,6 +384,20 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
       setLogBusy(false);
     }
   }
+
+  // "From" location shown in the Log modal — scoped to the ACTIVE branch so a
+  // split's chain never borrows the previous location of a sibling split.
+  // Main branch: last main-branch toLocation (else the section as seed).
+  // Split branch: last toLocation of that split's own movements (else the Main
+  // branch head — the physical split-off point — never a sibling's route).
+  const logFrom = useMemo(() => {
+    if (logSplitId == null) {
+      const main = movements.filter(m => !m.splitId);
+      return main.length ? main[main.length - 1].toLocation : (caseRow?.sectionName || '—');
+    }
+    const branch = movements.filter(m => m.splitId === logSplitId);
+    return branch.length ? branch[branch.length - 1].toLocation : '—';
+  }, [movements, logSplitId, caseRow]);
 
   function openEdit() {
     if (!caseRow) return;
@@ -1118,7 +1132,7 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
 
             <MovementForm
               caseRow={c}
-              fromLocation={c.sectionName || '—'}
+              fromLocation={logFrom}
               busy={logBusy}
               submitLabel="Record movement"
               onSubmit={submitLog}

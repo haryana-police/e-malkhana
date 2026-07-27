@@ -1727,7 +1727,10 @@ app.post('/api/movement-logs', async (req, res, next) => {
     if (!movedBy) { const e = new Error('movedBy is required'); e.status = 400; throw e; }
 
     const c = findOrThrow(caseId);
-    const prior = await getMovements(c.id);
+    const allM = await getMovements(c.id);
+    const prior = b.splitId != null
+      ? allM.filter(m => m.splitId === Number(b.splitId))
+      : allM.filter(m => !m.splitId);
     const movement = {
       id: await nextMovementId(),
       caseId: c.id,
@@ -1899,7 +1902,7 @@ app.post('/api/movements', async (req, res, next) => {
     const movement = {
       id: movementId,
       caseId: c.id,
-      fromLocation: await lastLocationOf(c.id),
+      fromLocation: await lastLocationOf(c.id, b.splitId != null ? Number(b.splitId) : null),
       toLocation:   b.toLocation,
       movedBy:      b.movedBy || getDb().officer.name,
       timestamp:    nowISO(),
@@ -1923,9 +1926,14 @@ app.post('/api/movements', async (req, res, next) => {
 
 // =================== API: scan endpoint ===================
 
-async function lastLocationOf(caseId) {
-  const ms = await getMovements(caseId);
-  return ms.length ? ms[ms.length - 1].toLocation : '—';
+async function lastLocationOf(caseId, splitId = null) {
+  const all = await getMovements(caseId);
+  // Scope strictly to the active branch so splits never link to each other
+  // (or to the Main branch).  Each branch's from = its own last toLocation.
+  const branch = splitId != null
+    ? all.filter(m => m.splitId === splitId)
+    : all.filter(m => !m.splitId);
+  return branch.length ? branch[branch.length - 1].toLocation : '—';
 }
 
 // =================== API: scan endpoint ===================
