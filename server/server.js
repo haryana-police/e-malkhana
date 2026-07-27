@@ -54,7 +54,10 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
-app.use(express.json({ limit: '256kb' }));
+// Body-size cap. 256kb was too small for /api/cases/batch when a registration
+// inlines base64 photo data-URLs (esp. multi-item batches) -> 413. Raised to
+// 4mb; override via MAX_JSON_BODY. Keep <= platform cap (Vercel hobby ~4.5MB).
+app.use(express.json({ limit: process.env.MAX_JSON_BODY || '4mb' }));
 
 // Audit context middleware: every request gets `req.mm = { id, name }` from
 // the X-MM-Id header (set by the client).  Falls back to 'anonymous' for
