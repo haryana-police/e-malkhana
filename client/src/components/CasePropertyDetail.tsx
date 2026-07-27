@@ -995,7 +995,6 @@ export function CasePropertyDetail({ refresh = 0 }: { refresh?: number }) {
                       {/* MAIN BRANCH (root) — no Log button; main item is the item itself */}
                       <div className="mv-node mv-root">
                         <div className="mv-node-head main">
-                          <span className="mv-branch-dot main" />
                           <span className="mv-node-title">Main item</span>
                         </div>
                         <ol className="case-a4-timeline">
