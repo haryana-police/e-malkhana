@@ -352,20 +352,30 @@ function decorateCaseRow(c, db) {
   const cp = (db.caseProperty || []).find(p => p.itemId && p.itemId.toLowerCase() === cpKey);
   c.receivedBy = cp && cp.receivedBy ? cp.receivedBy : '';
 
-  // Category sub-detail: for "Miscellaneous" items the specific article is
-  // captured in a per-item field ('other_desc').  Surface it on the row so
-  // the Register can show it right under the "Miscellaneous" category label
-  // instead of leaving the cell blank.  Other categories that store a
-  // meaningful single 'description' field behave the same way.  Empty when
-  // no such field exists (most categories have nothing extra to show).
+  // Category sub-detail: a one-line description of the seized article, shown
+  // right under the Category-of-Item label in the Register so each row is
+  // identifiable at a glance (e.g. Narcotics -> "1 Packet — brown powder…",
+  // Miscellaneous -> the article's Description).  Built per category:
+  //   • Miscellaneous: the per-item 'other_desc' field (its "Description").
+  //   • Narcotics / NDPS: itemSub ("1 Packet") + the free-text description
+  //     ("brown coloured powder…"), joined as "itemSub — description".
+  //   • Everything else: falls back to itemSub when present.
+  // Empty string when nothing meaningful exists (the cell then shows just
+  // the category name).
   const cpf = (db.casePropertyFields || []).filter(
     f => f.itemId && cpKey && f.itemId.toLowerCase() === cpKey
   );
-  const detailVal = cpf.length
-    ? cpf.find(f => f.key === 'other_desc')?.value
-        || cpf.find(f => f.key === 'description')?.value
-        || ''
-    : '';
+  const otherDesc = cpf.find(f => f.key === 'other_desc')?.value || '';
+  let detailVal = '';
+  if (otherDesc) {
+    detailVal = otherDesc;                       // Miscellaneous / any 'other_desc'
+  } else if (/narcotic|ndps/i.test(c.itemType || '')) {
+    const sub = (c.itemSub || '').trim();
+    const desc = (c.description || '').trim();
+    detailVal = [sub, desc].filter(Boolean).join(' — ');
+  } else if (c.itemSub) {
+    detailVal = c.itemSub;                        // generic fallback
+  }
   c.categoryDetail = detailVal ? String(detailVal) : '';
 
   // Last-movement date: most recent movements-log entry for this case,
@@ -4410,11 +4420,16 @@ if (!IS_VERCEL) {
         'cases=' + (getDb().cases.length),
         'sections=' + (getDb().sections.length));
     } catch (e) {
-      console.error('[boot] FATAL — store mirror load failed:', e && e.message);
+      // DO NOT `throw` here.  Throwing at module-load crashes the whole
+      // function instance → Vercel returns FUNCTION_INVOCATION_FAILED (an
+      // HTML page), and the client gets `500: undefined`.  Instead log the
+      // real error; bootStore() already records it in store.js's _bootError,
+      // and api/index.js's bootWithRetry() re-runs boot on the first request
+      // (with the query-level retry in db.js absorbing Neon cold-start
+      // wake-ups).  So a failed module-load boot is recovered per-request
+      // rather than taking down the instance.
+      console.error('[boot] module-load mirror load failed (non-fatal — recovered per-request):', e && e.message);
       console.error('[boot] stack:', e && e.stack);
-      // NOTE: we deliberately do NOT swallow this.  The error is recorded
-      // in store.js's _bootError so getDb() throws the real message.
-      throw e;
     }
     // Load multi-Act legal-section reference into the in-memory db so the
     // new "ACT:N" picker (Register form) and server-side validation can

@@ -80,20 +80,45 @@ function normalizeNeonUrl(cs) {
 // Public handle so store.js can do `await pool.query(sql, params)` directly.
 // The neon HTTP client has a built-in .query(sql, params, options) method
 // that accepts $1/$2 placeholders, so we just delegate straight to it.
-export const pool = {
-  async query(sql, params = []) {
-    const client = getClient();
+
+// Neon serverless computes AUTO-SUSPEND on idle.  The very first query after
+// a cold start often fails with a bare `TypeError: fetch failed` (or a
+// NeonDbError) while the compute is still waking up.  That used to bubble up
+// to boot() and become a hard 500 / FUNCTION_INVOCATION_FAILED.  Retry each
+// query a few times with a short back-off so a transient suspend wake-up is
+// absorbed here — at the lowest level — instead of failing the whole boot.
+function isTransientDbError(e) {
+  if (!e) return false;
+  const msg = (e.message || '') + ' ' + (e.code || '');
+  return /fetch failed|ECONNRESET|ETIMEDOUT|ECONNREFUSED|timeout|terminating connection|connection reset|session not found/i.test(msg)
+    || (e.name === 'NeonDbError' && /connection/i.test(msg));
+}
+
+async function queryWithRetry(sql, params, attempt = 1) {
+  const client = getClient();
+  try {
     const result = await client.query(sql, params);
-    // neon returns the rows array directly when using the HTTP transport.
-    // Normalise to { rows, rowCount } for pg-compat consumers.
     const rows = Array.isArray(result) ? result : (result?.rows || []);
     return { rows, rowCount: rows.length };
+  } catch (e) {
+    if (attempt < 4 && isTransientDbError(e)) {
+      console.error(`[db] query attempt ${attempt} transient failure (${e?.message || e}); retrying…`);
+      await new Promise(r => setTimeout(r, 700 * attempt));
+      return queryWithRetry(sql, params, attempt + 1);
+    }
+    throw e;
+  }
+}
+
+export const pool = {
+  async query(sql, params = []) {
+    return queryWithRetry(sql, params);
   },
   async connect() {
     // HTTP transport has no "connection" to acquire; return a thin shim
     // that exposes .query and .release so seedIfEmpty() works unchanged.
     return {
-      query: (sql, params) => pool.query(sql, params),
+      query: (sql, params) => queryWithRetry(sql, params),
       release() { /* no-op for HTTP */ },
     };
   },

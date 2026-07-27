@@ -43,10 +43,16 @@ export function getCurrentMm() { return currentMmId; }
 function isColdStartError(status: number, body: any): boolean {
   if (status !== 500) return false;
   const msg = (body && body.error) || (typeof body === 'string' ? body : '');
+  // Function crashed at module-load (Vercel returns an HTML
+  // "FUNCTION_INVOCATION_FAILED" page, not JSON) — treat that as a
+  // cold-start transient too so we retry instead of showing "500: undefined".
+  const isHtml = typeof msg === 'string' && /function_invocation_failed|server error has occurred/i.test(msg);
+  if (isHtml) return true;
   return typeof msg === 'string' && (
     msg.includes('before boot()') ||
     msg.includes('boot still in progress') ||
-    msg.includes('cold start')
+    msg.includes('cold start') ||
+    msg.includes('boot_failed')
   );
 }
 
