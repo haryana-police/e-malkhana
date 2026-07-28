@@ -3572,6 +3572,7 @@ input, select, textarea{
   /* Status column: stop the rotated stamp from breaking into stacked
      letters — give it room and un-rotate on small screens. */
   .panel.is-mobile .register-table .col-status{ width: 9%; min-width: 96px; }
+  .panel.is-mobile .register-table .col-lastmove{ width: 10%; min-width: 110px; white-space:nowrap; }
   .panel.is-mobile .register-table .stamp{ transform: none; white-space: nowrap; }
   /* Action column: give it real width and stack the 3 buttons vertically
      so the red "Change status" label can't bleed over / ghost onto its

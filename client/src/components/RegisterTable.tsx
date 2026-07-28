@@ -289,7 +289,7 @@ export function RegisterTable({
       ),
     },
     lastMovement: {
-      key: 'lastMovement', label: 'Last Movement Date',
+      key: 'lastMovement', label: 'Last Movement Date', className: 'col-lastmove',
       render: (c) => <td className="date-col">{c.lastMovement ? c.lastMovement : '—'}</td>,
     },
     actions: {
