@@ -541,7 +541,9 @@ tbody tr:hover{ background: rgba(140,122,84,0.05); }
 .register-table .col-location{   width:12%;  }
 .register-table .col-received{   width:12%;  }
 .register-table .col-lastmove{   width:9%;   }
-.register-table .col-status{     width:8%;   }
+.register-table .col-status{     width:110px; min-width:110px; }
+.register-table td.col-status{ overflow:visible; }
+.register-table td.col-status .stamp{ white-space:normal; line-height:1.3; max-width:100%; }
 .register-table .col-actions{    width:15%; min-width:150px; }
 .register-table .sno{ text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }
 .panel table .col-sno{ width:44px; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--slate-soft); }

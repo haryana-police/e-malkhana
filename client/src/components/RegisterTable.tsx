@@ -281,9 +281,9 @@ export function RegisterTable({
       render: (c) => <td>{c.receivedBy ? c.receivedBy : '—'}</td>,
     },
     status: {
-      key: 'status', label: 'Status',
+      key: 'status', label: 'Status', className: 'col-status',
       render: (c) => (
-        <td>
+        <td className="col-status">
           <span className={`stamp ${statusClass(c.status)}`}>{c.status}</span>
         </td>
       ),
